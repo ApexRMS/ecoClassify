@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8"?>
+<package name="imageclassifier" displayName="Image Classifier" description="Image classifier using semantic image segmentation" version="1.0.0" url="https://apexrms.github.io/imageclassifier/">
+       
+    <!--Model Inputs-->
+    <dataSheet name="RunControl" displayName="Run Control" isRunControl="True" timestepTitle="Timestep" showMinIteration="False">
+	</dataSheet>
+
+    <dataSheet name="RasterInput" displayName="Training/Testing Data">
+        <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
+        <column name="PredictorRasterFile" dataType="String" displayName="Predictor raster" isExternalFile="True"/>
+        <column name="ResponseRasterFile" dataType="String" displayName="Response raster" isExternalFile="True"/>
+    </dataSheet>
+
+    <dataSheet name="ModelInput" displayName="Classifier options" isSingleRow="True">
+        <column name="Nobs" dataType="Integer" displayName="Sample size"/>
+        <column name="filterResolution" dataType="Double" displayName="Filter resolution"/>
+        <column name="filterPercent" dataType="Double" displayName="Filter threshold"/>
+    </dataSheet>
+
+    <!--Model Outputs-->  
+    <dataSheet name="RasterOutput" displayName="Rasters" hasTimestep="True" hasIteration="True">
+        <column name="PredictedUnfiltered" dataType="String" displayName="Predicted" isExternalFile="True" isRaster="True"/>
+        <column name="PredictedFiltered" dataType="String" displayName="Predicted filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
+        <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True"/>
+    </dataSheet>
+
+    <dataSheet name="ConfusionMatrix" displayName="Confusion matrix">
+        <column name="Prediction" dataType="Integer" displayName="Prediction"/>
+        <column name="Reference" dataType="Integer" displayName="Reference"/>
+        <column name="Frequency" dataType="Double" displayName="Frequency"/>
+        <column name="ConfusionSD" dataType="Double" displayName="Standard Deviation"/>
+    </dataSheet>
+
+    <dataSheet name="ModelStatistics" displayName="Statistics">
+        <column name="Statistic" dataType="String" displayName="Statistic"/>
+        <column name="Value" dataType="Double" displayName="Value"/>
+        <column name="ModelSD" dataType="Double" displayName="Standard Deviation"/>
+    </dataSheet>
+
+    <!--Main transformer--> 
+    <transformer name="Main" displayName="Image classifier" programName="Rscript" programArguments="model.R">
+        <dataSheet name="RunControl" type="Input"/>
+        <dataSheet name="RasterInput" type="Input"/>
+        <dataSheet name="ModelInput" type="Input"/>
+        <dataSheet name="RasterOutput" type="Output"/>
+        <dataSheet name="ConfusionMatrix" type="Output"/>
+        <dataSheet name="ModelStatistics" type="Output"/>
+    </transformer>
+
+    <!--Export transformers-->
+    <transformer name="ConfusionMatrixExport" dataSheet="ConfusionMatrix" isExport="True"/>
+    
+    <transformer name="ModelStatisticsExport" dataSheet="ModelStatistics" isExport="True"/>
+
+    <transformer name="PredictedUnfilteredExport" dataSheet="RasterOutput" column="PredictedUnfiltered" isRasterExport="True"/>
+    <transformer name="PredictedFilteredExport" dataSheet="RasterOutput" column="PredictedFiltered" isRasterExport="True"/>
+
+    <!--Scenario Layout-->
+    <layout type="Scenario">
+
+        <item name="RunControl"/>
+
+        <group name="AllInputs" displayName="Input">
+            <item name="RasterInput"/>
+            <item name="ModelInput"/>
+        </group>
+
+        <group name="AllOutputs" displayName="Output">
+            <item name="RasterOutput"/>
+            <item name="ConfusionMatrix"/>
+            <item name="ModelStatistics"/>
+        </group>
+
+    </layout>
+
+    <!--Map Layout-->
+	<layout type="Map" configurationSheet="RunControl">
+        <group name="PredictionMaps" displayName="Predictions">
+		    <item name="RasterMap1" displayName="Unfiltered" dataSheet="RasterOutput" column="PredictedUnfiltered"/>
+            <item name="RasterMap2" displayName="Filtered" dataSheet="RasterOutput" column="PredictedFiltered"/>
+        </group>
+    </layout>
+
+    <!--Export Layout-->
+    <layout type="Export">
+        <item name="ConfusionMatrixExport" displayName="Confusion Matrix"/>
+
+        <item name="ModelStatisticsExport" displayName="Model Statistics"/>
+
+        <group name="MapExport" displayName="Map Outputs">
+            <item name="PredictedUnfilteredExport" displayName="Unfiltered Prediction"/>
+            <item name="PredictedFilteredExport" displayName="Filtered Prediction"/>
+        </group>
+
+    </layout>
+
+</package>
