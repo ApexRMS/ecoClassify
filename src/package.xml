@@ -5,14 +5,29 @@
     <dataSheet name="RunControl" displayName="Run Control" isRunControl="True" timestepTitle="Timestep" showMinIteration="False">
 	</dataSheet>
 
-    <dataSheet name="RasterInput" displayName="Training/Testing Data">
-        <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
-        <column name="PredictorRasterFile" dataType="String" displayName="Predictor raster" isExternalFile="True"/>
-        <column name="ResponseRasterFile" dataType="String" displayName="Response raster" isExternalFile="True"/>
-    </dataSheet>
+    <group name="RasterInputs" displayName=" Raster Inputs">
+        
+        <dataSheet name="TrainingData" displayName="Training">
+            <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
+            <column name="PredictorRasterFile" dataType="String" displayName="Predictor raster" isExternalFile="True"/>
+        </dataSheet>
+
+        <dataSheet name="ResponseData" displayName="Response">
+            <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
+            <column name="ResponseRasterFile" dataType="String" displayName="Response raster" isExternalFile="True"/>
+        </dataSheet>
+
+        <dataSheet name="TestingData" displayName="Testing">
+            <column name="Timesteps" dataType="Integer" displayName="Timestep" isOptional="True"/>
+            <column name="TestingRasterFile" dataType="String" displayName="Testing raster" isExternalFile="True" isOptional="True"/>
+        </dataSheet>
+
+    </group>
 
     <dataSheet name="ModelInput" displayName="Classifier options" isSingleRow="True">
         <column name="Nobs" dataType="Integer" displayName="Sample size"/>
+        <column name="ApplyFiltering" dataType="Boolean" displayName="Apply filtering"/>
+        <column name="GroupByTimestep" dataType="Boolean" displayName="Group by timestep"/>
         <column name="filterResolution" dataType="Double" displayName="Filter resolution"/>
         <column name="filterPercent" dataType="Double" displayName="Filter threshold"/>
     </dataSheet>
@@ -49,9 +64,7 @@
 
     <!--Export transformers-->
     <transformer name="ConfusionMatrixExport" dataSheet="ConfusionMatrix" isExport="True"/>
-    
     <transformer name="ModelStatisticsExport" dataSheet="ModelStatistics" isExport="True"/>
-
     <transformer name="PredictedUnfilteredExport" dataSheet="RasterOutput" column="PredictedUnfiltered" isRasterExport="True"/>
     <transformer name="PredictedFilteredExport" dataSheet="RasterOutput" column="PredictedFiltered" isRasterExport="True"/>
 

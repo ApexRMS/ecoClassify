@@ -24,32 +24,57 @@ Nobs <- modelInputDataframe$Nobs
 filterResolution <- modelInputDataframe$filterResolution
 filterPercent <- modelInputDataframe$filterPercent
 
-# Load raster input
-rasterInputDataframe <- datasheet(myScenario,
-                                  name = "imageclassifier_RasterInput")
+# Load raster input datasheets
+rasterTrainingDataframe <- datasheet(myScenario,
+                                     name = "imageclassifier_TrainingData")
 
-# extract list of predictor and response rasters using their respective filepaths
-# this could be turned into a function
+rasterResponseDataframe <- datasheet(myScenario,
+                                     name = "imageclassifier_ResponseData")
+
+rasterTestingeDataframe <- datasheet(myScenario,
+                                     name = "imageclassifier_TestingData")
+
+# extract list of predictor, testing, and response rasters
+# include grouping by timestep!!
+extractRasters <- function(dataframe, column) {
+
+  allFiles <- as.vector(column)
+  rasterDict <- dict()
+
+  for (file in allFiles) {
+    Raster <- rast(file)
+    rasterList <- c(rasterList, Raster)
+  }
+
+  return(rasterList)
+}
+
+predictorRasterList <- extractRasters(rasterTrainingDataframe,
+                                      rasterTrainingDataframe$PredictorRasterFile)
+responseRasterList <- extractRasters(rasterResponseDataframe,
+                                     rasterResponseDataframe$ResponseRasterFile)
+testingRasterList <- extractRasters(rasterTestingeDataframe,
+                                    rasterTestingeDataframe$TestingRasterFile)
 
 # predictor raster list
-allPredictorFiles <- as.vector(rasterInputDataframe$PredictorRasterFile)
+# allPredictorFiles <- as.vector(rasterInputDataframe$PredictorRasterFile)
 
-predictorRasterList <- c()
+# predictorRasterList <- c()
 
-for (file in allPredictorFiles) {
-  predictorRaster <- rast(file)
-  predictorRasterList <- c(predictorRasterList, predictorRaster)
-}
+# for (file in allPredictorFiles) {
+#   predictorRaster <- rast(file)
+#   predictorRasterList <- c(predictorRasterList, predictorRaster)
+# }
 
-# response raster list
-allResponseFiles <- as.vector(rasterInputDataframe$ResponseRasterFile)
+# # response raster list
+# allResponseFiles <- as.vector(rasterInputDataframe$ResponseRasterFile)
 
-responseRasterList <- c()
+# responseRasterList <- c()
 
-for (file in allResponseFiles) {
-  responseRaster <- rast(file)
-  responseRasterList <- c(responseRasterList, responseRaster)
-}
+# for (file in allResponseFiles) {
+#   responseRaster <- rast(file)
+#   responseRasterList <- c(responseRasterList, responseRaster)
+# }
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(Iteration = numeric(0),
@@ -66,8 +91,12 @@ modelOutputDataframe <- data.frame(Statistic = character(0),
                                    Value = numeric(0),
                                    ModelSD = numeric(0))
 
-# For loop through iterations
-for (t in timesteps) {
+# create empty lists for binding data
+allTrainData <- c()
+allTestData <- c()
+
+# For loop through each raster pair
+for (i in seq_along(predictorRasterList)) {
 
   ## Decompose satellite image raster
   modelData <- decomposedRaster(predictorRasterList[[t]],
@@ -84,23 +113,43 @@ for (t in timesteps) {
   train <- modelDataSampled %>% filter(kfold != 1)
   test <- modelDataSampled %>% filter(kfold == 1)
 
-  ## Train model
-  mainModel <- formula(sprintf("%s ~ %s",
-                               "presence",
-                               paste(names(predictorRasterList[[t]]),
-                                     collapse = " + ")))
+  # bind to list
+  allTrainData <- rbind(allTrainData, train)
+  allTestData <- rbind(allTestData, test)
 
-  rf1 <-  ranger(mainModel,
-                 data = train,
-                 mtry = 2)
+}
 
-  ## Predict over area
+## Train model
+mainModel <- formula(sprintf("%s ~ %s",
+                             "presence",
+                             paste(names(predictorRasterList[[1]]),
+                                   collapse = " + ")))
+
+rf1 <-  ranger(mainModel,
+               data = allTrainData,
+               mtry = 2)
+
+## Predict for each timestep group
+for (t in timesteps) {
+
+  # USE THE MOST ACCURATELY PREDICTED RASTSER FROM EACH GROUP
+  # THIS WILL NOT WORK PROPERLY IF MORE THAN ONE IMAGE PER TIMESTEP
+  # SUBSET DATAFRAME BASED ON TIMESTEP AND READ IN RASTER AGAIN
+  
+  # EVENTUALLY REPLACE WITH TESTING DATA
+  subsetPredictorDataframe <- rasterTrainingDataframe[rasterTrainingDataframe$Timestep == t]
+  # reset index
+  # start of for loop ---------
+  # predict presence for each, and keep the best prediction in the group
+
   PredictedPresence <- predictRanger(predictorRasterList[[t]],
                                      rf1)
 
   # assign values
   values(PredictedPresence) <- ifelse(values(PredictedPresence) == 2, 1, 0)
+  # end of for loop ----------
 
+  # ADD IF STATEMENT HERE - IF FILTERING WAS REQUESTED
   # filter out presence pixels surrounded by non-presence
   filteredPredictedPresence <- focal(PredictedPresence,
                                      w = matrix(1, 5, 5),
@@ -109,8 +158,8 @@ for (t in timesteps) {
                                      percent = filterPercent)
 
   # calculate statistics using the test data
-  prediction <- predict(rf1, test)
-  confusionMatrix <- confusionMatrix(data.frame(prediction)[, 1], test$presence)
+  prediction <- predict(rf1, allTestData)
+  confusionMatrix <- confusionMatrix(data.frame(prediction)[, 1], allTestData$presence)
 
   # reformat and add to output datasheets
   confusion_matrix <- data.frame(confusionMatrix$table) %>%
@@ -149,6 +198,7 @@ for (t in timesteps) {
               overwrite = TRUE)
 
   # Store the relevant outputs from both rasters in a temporary dataframe
+  # ADD BINARY OUTPUT (RESPONSE RASTER) TO OUTPUT DATAFRAME - HERE AND IN XML FILE
   rasterDataframe <- data.frame(Iteration = 1,
                                 Timestep = t,
                                 PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
@@ -163,7 +213,6 @@ for (t in timesteps) {
 
   modelOutputDataframe <- addRow(modelOutputDataframe,
                                  model_stats)
-
 }
 
 # calculate mean values for model statistics -----------------------------------

@@ -7,6 +7,7 @@ library(ranger)
 library(caret)
 library(gtools)
 library(reshape2)
+library(Dict)
 
 # define functions ------------------------------------------------
 decomposedRaster <- function(predRast,
