@@ -8,8 +8,22 @@ library(caret)
 library(gtools)
 library(reshape2)
 library(Dict)
+library(ggplot2)
 
 # define functions ------------------------------------------------
+extractRasters <- function(dataframe, column) {
+
+  allFiles <- as.vector(column)
+  rasterList <- c()
+
+  for (file in allFiles) {
+    Raster <- rast(file)
+    rasterList <- c(rasterList, Raster)
+  }
+
+  return(rasterList)
+}
+
 decomposedRaster <- function(predRast,
                              responseRast,
                              nobs) {

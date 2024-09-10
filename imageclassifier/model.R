@@ -35,26 +35,16 @@ rasterTestingeDataframe <- datasheet(myScenario,
                                      name = "imageclassifier_TestingData")
 
 # extract list of predictor, testing, and response rasters
-# include grouping by timestep!!
-extractRasters <- function(dataframe, column) {
-
-  allFiles <- as.vector(column)
-  rasterDict <- dict()
-
-  for (file in allFiles) {
-    Raster <- rast(file)
-    rasterList <- c(rasterList, Raster)
-  }
-
-  return(rasterList)
-}
-
 predictorRasterList <- extractRasters(rasterTrainingDataframe,
                                       rasterTrainingDataframe$PredictorRasterFile)
+
 responseRasterList <- extractRasters(rasterResponseDataframe,
                                      rasterResponseDataframe$ResponseRasterFile)
-testingRasterList <- extractRasters(rasterTestingeDataframe,
-                                    rasterTestingeDataframe$TestingRasterFile)
+
+if (length(rasterTestingeDataframe$TestingRasterFile) > 0) {
+  testingRasterList <- extractRasters(rasterTestingeDataframe,
+                                      rasterTestingeDataframe$TestingRasterFile)
+}
 
 # predictor raster list
 # allPredictorFiles <- as.vector(rasterInputDataframe$PredictorRasterFile)
@@ -80,7 +70,8 @@ testingRasterList <- extractRasters(rasterTestingeDataframe,
 rasterOutputDataframe <- data.frame(Iteration = numeric(0),
                                     Timestep = numeric(0),
                                     PredictedUnfiltered = character(0),
-                                    PredictedFiltered = character(0))
+                                    PredictedFiltered = character(0),
+                                    Response = character(0))
 
 confusionOutputDataframe <- data.frame(Prediction = numeric(0),
                                        Reference = numeric(0),
@@ -99,15 +90,15 @@ allTestData <- c()
 for (i in seq_along(predictorRasterList)) {
 
   ## Decompose satellite image raster
-  modelData <- decomposedRaster(predictorRasterList[[t]],
-                                responseRasterList[[t]],
+  modelData <- decomposedRaster(predictorRasterList[[i]],
+                                responseRasterList[[i]],
                                 nobs = Nobs)
 
   modelDataSampled <- modelData %>%
-      mutate(presence = as.factor(response)) %>%
-      select(-ID, -response) %>%
-      mutate(kfold = sample(1:10, nrow(.), replace = TRUE)) %>%
-      drop_na()
+    mutate(presence = as.factor(response)) %>%
+    select(-ID, -response) %>%
+    mutate(kfold = sample(1:10, nrow(.), replace = TRUE)) %>%
+    drop_na()
 
   # split into training and testing data
   train <- modelDataSampled %>% filter(kfold != 1)
@@ -127,27 +118,36 @@ mainModel <- formula(sprintf("%s ~ %s",
 
 rf1 <-  ranger(mainModel,
                data = allTrainData,
-               mtry = 2)
+               mtry = 2,
+               importance = "impurity")
 
-## Predict for each timestep group
-for (t in timesteps) {
+# extract variable importance and plot -----------------------------------------
+# STILL NEED TO ADD PLOT TO OUTPUT (LOOK INTO GGPLOT OUTPUTS)
+# SHOW AS AN IMAGE?
+variableImportance <- melt(rf1$variable.importance) %>%
+  rownames_to_column("variable")
 
-  # USE THE MOST ACCURATELY PREDICTED RASTSER FROM EACH GROUP
-  # THIS WILL NOT WORK PROPERLY IF MORE THAN ONE IMAGE PER TIMESTEP
-  # SUBSET DATAFRAME BASED ON TIMESTEP AND READ IN RASTER AGAIN
-  
-  # EVENTUALLY REPLACE WITH TESTING DATA
-  subsetPredictorDataframe <- rasterTrainingDataframe[rasterTrainingDataframe$Timestep == t]
-  # reset index
-  # start of for loop ---------
-  # predict presence for each, and keep the best prediction in the group
+variableImportancePlot <- ggplot(variableImportance, aes(x = reorder(variable, value),
+                                                         y = value,
+                                                         fill = value)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  coord_flip() +
+  ylab("Variable Importance") +
+  xlab("Variable") +
+  ggtitle("Information Value Summary") +
+  theme_classic() +
+  scale_fill_gradientn(colours = c("#3f4885"), guide = "none")
 
+## Predict for each timestep group ---------------------------------------------
+# EVENTUALLY REPLACE WITH ACTUAL TESTING DATA
+for (t in seq_along(predictorRasterList)) {
+
+  # predict presence for each raster
   PredictedPresence <- predictRanger(predictorRasterList[[t]],
                                      rf1)
 
   # assign values
   values(PredictedPresence) <- ifelse(values(PredictedPresence) == 2, 1, 0)
-  # end of for loop ----------
 
   # ADD IF STATEMENT HERE - IF FILTERING WAS REQUESTED
   # filter out presence pixels surrounded by non-presence
@@ -157,13 +157,17 @@ for (t in timesteps) {
                                      resolution = filterResolution,
                                      percent = filterPercent)
 
+  # define response (binary) raster output
+  Response <- responseRasterList[[t]]
+
   # calculate statistics using the test data
   prediction <- predict(rf1, allTestData)
   confusionMatrix <- confusionMatrix(data.frame(prediction)[, 1], allTestData$presence)
 
   # reformat and add to output datasheets
   confusion_matrix <- data.frame(confusionMatrix$table) %>%
-    rename("Frequency" = "Freq")
+    rename("Frequency" = "Freq") %>%
+    mutate(Timestep = t)
 
   overall_stats <- data.frame(confusionMatrix$overall) %>%
     rename(Value = 1) %>%
@@ -172,7 +176,8 @@ for (t in timesteps) {
     rename(Value = 1) %>%
     drop_na(Value)
   model_stats <- rbind(overall_stats, class_stats) %>%
-    tibble::rownames_to_column("Statistic")
+    tibble::rownames_to_column("Statistic") %>%
+    mutate(Timestep = t)
 
   writeRaster(PredictedPresence,
               filename = file.path(paste0(transferDir,
@@ -188,21 +193,29 @@ for (t in timesteps) {
                                           ".tif")),
               overwrite = TRUE)
 
-  # export both rasters to an external folder (eventually remove)
-  writeRaster(PredictedPresence,
-              filename = file.path(paste0("C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Documents/Projects/A333 UMU Tamarisk Pilot/output/PredictedPresence", t, ".tif")),
-              overwrite = TRUE)
+    writeRaster(Response,
+                filename = file.path(paste0(transferDir,
+                                            "/filteredPredictedPresence",
+                                            t,
+                                            ".tif")),
+                overwrite = TRUE)
 
-  writeRaster(filteredPredictedPresence,
-              filename = file.path(paste0("C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Documents/Projects/A333 UMU Tamarisk Pilot/output/filteredPredictedPresence", t, ".tif")),
-              overwrite = TRUE)
+  # export both rasters to an external folder (eventually remove)
+  # writeRaster(PredictedPresence,
+  #             filename = file.path(paste0("C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/output/PredictedPresence", t, ".tif")),
+  #             overwrite = TRUE)
+
+  # writeRaster(filteredPredictedPresence,
+  #             filename = file.path(paste0("C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/output/filteredPredictedPresence", t, ".tif")),
+  #             overwrite = TRUE)
 
   # Store the relevant outputs from both rasters in a temporary dataframe
   # ADD BINARY OUTPUT (RESPONSE RASTER) TO OUTPUT DATAFRAME - HERE AND IN XML FILE
   rasterDataframe <- data.frame(Iteration = 1,
                                 Timestep = t,
                                 PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
-                                PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")))
+                                PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
+                                Response = file.path(paste0(transferDir, "/Response", t, ".tif")))
 
   rasterOutputDataframe <- addRow(rasterOutputDataframe,
                                   rasterDataframe)
@@ -213,12 +226,15 @@ for (t in timesteps) {
 
   modelOutputDataframe <- addRow(modelOutputDataframe,
                                  model_stats)
+  # ADD BINARY OUTPUT
+  # REPORT FILTERING
 }
 
 # calculate mean values for model statistics -----------------------------------
 if (length(timesteps) > 1) {
 
   modelOutputDataframe <- modelOutputDataframe %>%
+    select(-Timestep) %>%
     group_by(Statistic) %>%
     summarise(mean = mean(Value),
               sd = sd(Value)) %>%
@@ -231,6 +247,7 @@ if (length(timesteps) > 1) {
     drop_na(ModelSD)
 
   confusionOutputDataframe <- confusionOutputDataframe %>%
+    select(-Timestep) %>%
     group_by(Prediction, Reference) %>%
     summarise(mean = mean(Frequency),
               sd = sd(Frequency)) %>%
@@ -252,3 +269,9 @@ saveDatasheet(myScenario,
 saveDatasheet(myScenario,
               data = modelOutputDataframe,
               name = "imageclassifier_ModelStatistics")
+
+# may need to add timestep to confusion matrix and model output from the beginning
+# add filter threshold to output (make a separate non-RF stats output)
+# add variable importance plot to output
+# something is up with the extractRasters function, test the function first, then 
+# go back to the original code
