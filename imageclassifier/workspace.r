@@ -11,7 +11,7 @@ library(Dict)
 library(ggplot2)
 
 # define functions ------------------------------------------------
-extractRasters <- function(dataframe, column) {
+extractRasters <- function(column) {
 
   allFiles <- as.vector(column)
   rasterList <- c()

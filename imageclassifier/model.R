@@ -35,19 +35,16 @@ rasterTestingeDataframe <- datasheet(myScenario,
                                      name = "imageclassifier_TestingData")
 
 # extract list of predictor, testing, and response rasters
-predictorRasterList <- extractRasters(rasterTrainingDataframe,
-                                      rasterTrainingDataframe$PredictorRasterFile)
+predictorRasterList <- extractRasters(rasterTrainingDataframe$PredictorRasterFile)
 
-responseRasterList <- extractRasters(rasterResponseDataframe,
-                                     rasterResponseDataframe$ResponseRasterFile)
+responseRasterList <- extractRasters(rasterResponseDataframe$ResponseRasterFile)
 
-if (length(rasterTestingeDataframe$TestingRasterFile) > 0) {
-  testingRasterList <- extractRasters(rasterTestingeDataframe,
-                                      rasterTestingeDataframe$TestingRasterFile)
+if (length(rasterTestingeDataframe$TestingRasterFile) > 1) {
+  testingRasterList <- extractRasters(rasterTestingeDataframe$TestingRasterFile)
 }
 
-# predictor raster list
-# allPredictorFiles <- as.vector(rasterInputDataframe$PredictorRasterFile)
+# # predictor raster list
+# allPredictorFiles <- as.vector(rasterTrainingDataframe$PredictorRasterFile)
 
 # predictorRasterList <- c()
 
@@ -57,7 +54,7 @@ if (length(rasterTestingeDataframe$TestingRasterFile) > 0) {
 # }
 
 # # response raster list
-# allResponseFiles <- as.vector(rasterInputDataframe$ResponseRasterFile)
+# allResponseFiles <- as.vector(rasterResponseDataframe$ResponseRasterFile)
 
 # responseRasterList <- c()
 
@@ -73,12 +70,14 @@ rasterOutputDataframe <- data.frame(Iteration = numeric(0),
                                     PredictedFiltered = character(0),
                                     Response = character(0))
 
-confusionOutputDataframe <- data.frame(Prediction = numeric(0),
+confusionOutputDataframe <- data.frame(Timestep = numeric(0),
+                                       Prediction = numeric(0),
                                        Reference = numeric(0),
                                        Frequency = numeric(0),
                                        ConfusionSD = numeric(0))
 
-modelOutputDataframe <- data.frame(Statistic = character(0),
+modelOutputDataframe <- data.frame(Timestep = numeric(0),
+                                   Statistic = character(0),
                                    Value = numeric(0),
                                    ModelSD = numeric(0))
 
@@ -193,12 +192,12 @@ for (t in seq_along(predictorRasterList)) {
                                           ".tif")),
               overwrite = TRUE)
 
-    writeRaster(Response,
-                filename = file.path(paste0(transferDir,
-                                            "/filteredPredictedPresence",
-                                            t,
-                                            ".tif")),
-                overwrite = TRUE)
+  writeRaster(Response,
+              filename = file.path(paste0(transferDir,
+                                          "/Response",
+                                          t,
+                                          ".tif")),
+              overwrite = TRUE)
 
   # export both rasters to an external folder (eventually remove)
   # writeRaster(PredictedPresence,

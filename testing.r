@@ -1,7 +1,22 @@
 # script to help test image classifier
 
 # set up workspace --------------------------------------------------------
-source(file.path("src/workspace.r"))
+source(file.path("imageclassifier/workspace.r"))
+
+## Connect to SyncroSim Library ----
+libraryName <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image_classifier_testing.ssim"
+myLibrary <- ssimLibrary(name = libraryName)
+myProject <- rsyncrosim::project(ssimObject = myLibrary, project = "Definitions")
+scenario(myProject)
+
+# Load testing scenario
+myScenario <- scenario(ssimObject = myProject, scenario = 89)
+datasheet(myScenario)
+
+# view input datasheets
+datasheet(myScenario, name = "imageclassifier_TrainingData")
+datasheet(myScenario, name = "imageclassifier_ResponseData")
+datasheet(myScenario, name = "imageclassifier_TestingData")
 
 # Set timesteps
 timesteps <- seq(1, 4)
@@ -30,7 +45,7 @@ rasterTestingDataframe <- data.frame(Timesteps = numeric(0),
                                       TestingRasterFile = character(0)) # may not need timesteps?
 
 # extract list of predictor, testing, and response rasters
-extractRasters <- function(dataframe, column) {
+extractRasters <- function(column) {
 
   allFiles <- as.vector(column)
   rasterList <- c()
@@ -43,8 +58,7 @@ extractRasters <- function(dataframe, column) {
   return(rasterList)
 }
 
-predictorRasterList <- extractRasters(rasterTrainingDataframe,
-                                      rasterTrainingDataframe$PredictorRasterFile)
+predictorRasterList <- extractRasters(rasterTrainingDataframe$PredictorRasterFile)
 
 responseRasterList <- extractRasters(rasterResponseDataframe,
                                      rasterResponseDataframe$ResponseRasterFile)
