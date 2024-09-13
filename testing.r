@@ -19,7 +19,7 @@ datasheet(myScenario, name = "imageclassifier_ResponseData")
 datasheet(myScenario, name = "imageclassifier_TestingData")
 
 # Set timesteps
-timesteps <- seq(1, 4)
+timesteps <- seq(1, 2)
 
 # Load (or create) input Datasheets
 modelInputDataframe <- data.frame(Nobs = 1000, filterResolution = 5, filterPercent = 0.25)
@@ -29,13 +29,13 @@ Nobs <- modelInputDataframe$Nobs
 filterResolution <- modelInputDataframe$filterResolution
 filterPercent <- modelInputDataframe$filterPercent
 
-rasterTrainingDataframe <- data.frame(Timesteps = c(1, 2, 3, 4),
+rasterTrainingDataframe <- data.frame(Timesteps = c(1, 1, 2, 2),
                                       PredictorRasterFile = c("C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/test/Landsat_Predictor_LC08_042025_20141014.tif",
                                                               "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/test/Landsat_Predictor_LC08_042025_20151001.tif",
                                                               "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/test/Landsat_Predictor_LC08_042025_20160901.tif",
                                                               "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/test/Landsat_Predictor_LC08_042025_20180227.tif"))
 
-rasterResponseDataframe <- data.frame(Timesteps = c(1, 2, 3, 4),
+rasterResponseDataframe <- data.frame(Timesteps = c(1, 1, 2, 2),
                                       ResponseRasterFile = c("C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_1.tif",
                                                               "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_2.tif",
                                                               "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_3.tif",
@@ -43,6 +43,48 @@ rasterResponseDataframe <- data.frame(Timesteps = c(1, 2, 3, 4),
 
 rasterTestingDataframe <- data.frame(Timesteps = numeric(0),
                                       TestingRasterFile = character(0)) # may not need timesteps?
+# old extraction function
+extractRasters <- function(column) {
+
+  allFiles <- as.vector(column)
+  rasterList <- c()
+
+  for (file in allFiles) {
+    Raster <- rast(file)
+    rasterList <- c(rasterList, Raster)
+  }
+
+  return(rasterList)
+}
+
+extractRastersV2 <- function(dataframe) {
+
+  # define timesteps
+  timesteps <- unique(dataframe[,1])
+
+  # create an empty list
+  rasterList <- c()
+
+  # loop through timesteps, reading and combining rasters
+  for (t in timesteps) {
+    
+    # subset based on timestep
+    subsetData <- dataframe %>% filter(Timesteps == t)
+
+    # list all files
+    allFiles <- as.vector(subsetData[, 2])
+    
+    # read in all files as a single raster
+    subsetRaster <- rast(allFiles)
+
+    # add to main raster list
+    rasterList <- c(rasterList, subsetRaster)
+  }
+
+  return(rasterList)
+}
+
+extractionTest <- extractRastersV2(rasterTrainingDataframe)
 
 # extract list of predictor, testing, and response rasters
 extractRasters <- function(column) {

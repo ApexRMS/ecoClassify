@@ -23,6 +23,7 @@ modelInputDataframe <- datasheet(myScenario,
 Nobs <- modelInputDataframe$Nobs
 filterResolution <- modelInputDataframe$filterResolution
 filterPercent <- modelInputDataframe$filterPercent
+ApplyFiltering <- modelInputDataframe$ApplyFiltering
 
 # Load raster input datasheets
 rasterTrainingDataframe <- datasheet(myScenario,
@@ -35,33 +36,13 @@ rasterTestingeDataframe <- datasheet(myScenario,
                                      name = "imageclassifier_TestingData")
 
 # extract list of predictor, testing, and response rasters
-predictorRasterList <- extractRasters(rasterTrainingDataframe$PredictorRasterFile)
+predictorRasterList <- extractRasters(rasterTrainingDataframe)
 
-responseRasterList <- extractRasters(rasterResponseDataframe$ResponseRasterFile)
+responseRasterList <- extractRasters(rasterResponseDataframe)
 
 if (length(rasterTestingeDataframe$TestingRasterFile) > 1) {
-  testingRasterList <- extractRasters(rasterTestingeDataframe$TestingRasterFile)
+  testingRasterList <- extractRasters(rasterTestingeDataframe)
 }
-
-# # predictor raster list
-# allPredictorFiles <- as.vector(rasterTrainingDataframe$PredictorRasterFile)
-
-# predictorRasterList <- c()
-
-# for (file in allPredictorFiles) {
-#   predictorRaster <- rast(file)
-#   predictorRasterList <- c(predictorRasterList, predictorRaster)
-# }
-
-# # response raster list
-# allResponseFiles <- as.vector(rasterResponseDataframe$ResponseRasterFile)
-
-# responseRasterList <- c()
-
-# for (file in allResponseFiles) {
-#   responseRaster <- rast(file)
-#   responseRasterList <- c(responseRasterList, responseRaster)
-# }
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(Iteration = numeric(0),
@@ -148,13 +129,35 @@ for (t in seq_along(predictorRasterList)) {
   # assign values
   values(PredictedPresence) <- ifelse(values(PredictedPresence) == 2, 1, 0)
 
-  # ADD IF STATEMENT HERE - IF FILTERING WAS REQUESTED
-  # filter out presence pixels surrounded by non-presence
-  filteredPredictedPresence <- focal(PredictedPresence,
-                                     w = matrix(1, 5, 5),
-                                     fun = filterFun,
-                                     resolution = filterResolution,
-                                     percent = filterPercent)
+  if (ApplyFiltering == TRUE) {
+    # filter out presence pixels surrounded by non-presence
+    filteredPredictedPresence <- focal(PredictedPresence,
+                                       w = matrix(1, 5, 5),
+                                       fun = filterFun,
+                                       resolution = filterResolution,
+                                       percent = filterPercent)
+
+    # save raster
+    writeRaster(filteredPredictedPresence,
+                filename = file.path(paste0(transferDir,
+                                            "/filteredPredictedPresence",
+                                            t,
+                                            ".tif")),
+                overwrite = TRUE)
+
+    rasterDataframe <- data.frame(Iteration = 1,
+                                  Timestep = t,
+                                  PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
+                                  PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
+                                  Response = file.path(paste0(transferDir, "/Response", t, ".tif")))
+
+  } else {
+    rasterDataframe <- data.frame(Iteration = 1,
+                                  Timestep = t,
+                                  PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
+                                  PredictedFiltered = "",
+                                  Response = file.path(paste0(transferDir, "/Response", t, ".tif")))
+  }
 
   # define response (binary) raster output
   Response <- responseRasterList[[t]]
@@ -178,16 +181,10 @@ for (t in seq_along(predictorRasterList)) {
     tibble::rownames_to_column("Statistic") %>%
     mutate(Timestep = t)
 
+  # save raster
   writeRaster(PredictedPresence,
               filename = file.path(paste0(transferDir,
                                           "/PredictedPresence",
-                                          t,
-                                          ".tif")),
-              overwrite = TRUE)
-
-  writeRaster(filteredPredictedPresence,
-              filename = file.path(paste0(transferDir,
-                                          "/filteredPredictedPresence",
                                           t,
                                           ".tif")),
               overwrite = TRUE)
@@ -209,13 +206,6 @@ for (t in seq_along(predictorRasterList)) {
   #             overwrite = TRUE)
 
   # Store the relevant outputs from both rasters in a temporary dataframe
-  # ADD BINARY OUTPUT (RESPONSE RASTER) TO OUTPUT DATAFRAME - HERE AND IN XML FILE
-  rasterDataframe <- data.frame(Iteration = 1,
-                                Timestep = t,
-                                PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
-                                PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
-                                Response = file.path(paste0(transferDir, "/Response", t, ".tif")))
-
   rasterOutputDataframe <- addRow(rasterOutputDataframe,
                                   rasterDataframe)
 
@@ -225,11 +215,11 @@ for (t in seq_along(predictorRasterList)) {
 
   modelOutputDataframe <- addRow(modelOutputDataframe,
                                  model_stats)
-  # ADD BINARY OUTPUT
   # REPORT FILTERING
 }
 
 # calculate mean values for model statistics -----------------------------------
+# INSTEAD OF THIS, JUST KEEP TIMESTEP AND ADD ONE MORE ROW WHERE TIMESTEP = "ALL"
 if (length(timesteps) > 1) {
 
   modelOutputDataframe <- modelOutputDataframe %>%
@@ -272,5 +262,3 @@ saveDatasheet(myScenario,
 # may need to add timestep to confusion matrix and model output from the beginning
 # add filter threshold to output (make a separate non-RF stats output)
 # add variable importance plot to output
-# something is up with the extractRasters function, test the function first, then 
-# go back to the original code

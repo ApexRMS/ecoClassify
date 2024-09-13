@@ -11,14 +11,30 @@ library(Dict)
 library(ggplot2)
 
 # define functions ------------------------------------------------
-extractRasters <- function(column) {
 
-  allFiles <- as.vector(column)
+# updated function that combines multiple raster types from each timestep
+extractRasters <- function(dataframe) {
+
+  # define timesteps
+  timesteps <- unique(dataframe[,1])
+
+  # create an empty list
   rasterList <- c()
 
-  for (file in allFiles) {
-    Raster <- rast(file)
-    rasterList <- c(rasterList, Raster)
+  # loop through timesteps, combining rasters
+  for (t in timesteps) {
+
+    # subset based on timestep
+    subsetData <- dataframe %>% filter(Timesteps == t)
+
+    # list all files
+    allFiles <- as.vector(subsetData[, 2])
+
+    # read in all files as a single raster
+    subsetRaster <- rast(allFiles)
+
+    # add to main raster list
+    rasterList <- c(rasterList, subsetRaster)
   }
 
   return(rasterList)

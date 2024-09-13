@@ -65,6 +65,7 @@
     <transformer name="ModelStatisticsExport" dataSheet="ModelStatistics" isExport="True"/>
     <transformer name="PredictedUnfilteredExport" dataSheet="RasterOutput" column="PredictedUnfiltered" isRasterExport="True"/>
     <transformer name="PredictedFilteredExport" dataSheet="RasterOutput" column="PredictedFiltered" isRasterExport="True"/>
+    <transformer name="ResponseExport" dataSheet="RasterOutput" column="Response" isRasterExport="True"/>
 
     <!--Scenario Layout-->
     <layout type="Scenario">
@@ -104,6 +105,7 @@
         <group name="MapExport" displayName="Map Outputs">
             <item name="PredictedUnfilteredExport" displayName="Unfiltered Prediction"/>
             <item name="PredictedFilteredExport" displayName="Filtered Prediction"/>
+            <item name="ResponseExport" displayName="Response"/>
         </group>
 
     </layout>
