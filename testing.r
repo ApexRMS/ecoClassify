@@ -4,8 +4,9 @@
 source(file.path("imageclassifier/workspace.r"))
 
 ## Connect to SyncroSim Library ----
-libraryName <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image_classifier_testing.ssim"
-myLibrary <- ssimLibrary(name = libraryName)
+mySession <- session("C:/Program Files/SyncroSim Studio")
+libraryName <- "C:/Users/HannahAdams/Documents/Projects/A331 Snowpack/Snowpack Classifier.ssim"
+myLibrary <- ssimLibrary(libraryName)
 myProject <- rsyncrosim::project(ssimObject = myLibrary, project = "Definitions")
 scenario(myProject)
 
@@ -19,7 +20,7 @@ datasheet(myScenario, name = "imageclassifier_ResponseData")
 datasheet(myScenario, name = "imageclassifier_TestingData")
 
 # Set timesteps
-timesteps <- seq(1, 2)
+timesteps <- seq(1, 10)
 
 # Load (or create) input Datasheets
 modelInputDataframe <- data.frame(Nobs = 1000, filterResolution = 5, filterPercent = 0.25)
@@ -28,23 +29,36 @@ modelInputDataframe <- data.frame(Nobs = 1000, filterResolution = 5, filterPerce
 Nobs <- modelInputDataframe$Nobs
 filterResolution <- modelInputDataframe$filterResolution
 filterPercent <- modelInputDataframe$filterPercent
+ApplyFiltering <- TRUE
 
-rasterTrainingDataframe <- data.frame(Timesteps = c(1, 1, 2, 2),
-                                      PredictorRasterFile = c("C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/test/Landsat_Predictor_LC08_042025_20141014.tif",
-                                                              "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/test/Landsat_Predictor_LC08_042025_20151001.tif",
-                                                              "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/test/Landsat_Predictor_LC08_042025_20160901.tif",
-                                                              "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/test/Landsat_Predictor_LC08_042025_20180227.tif"))
+rasterTrainingDataframe <- data.frame(Timesteps = seq(1, 10),
+                                      PredictorRasterFile = c("C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/train/Landsat_Predictor_1.tif",
+                                                              "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/train/Landsat_Predictor_2.tif",
+                                                              "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/train/Landsat_Predictor_3.tif",
+                                                              "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/train/Landsat_Predictor_4.tif",
+                                                              "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/train/Landsat_Predictor_5.tif",
+                                                              "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/train/Landsat_Predictor_6.tif",
+                                                              "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/train/Landsat_Predictor_7.tif",
+                                                              "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/train/Landsat_Predictor_8.tif",
+                                                              "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/train/Landsat_Predictor_9.tif",
+                                                              "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/train/Landsat_Predictor_10.tif"))
 
-rasterResponseDataframe <- data.frame(Timesteps = c(1, 1, 2, 2),
+rasterResponseDataframe <- data.frame(Timesteps = seq(1, 10),
                                       ResponseRasterFile = c("C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_1.tif",
-                                                              "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_2.tif",
-                                                              "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_3.tif",
-                                                              "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_4.tif"))
+                                                             "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_2.tif",
+                                                             "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_3.tif",
+                                                             "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_4.tif",
+                                                             "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_5.tif",
+                                                             "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_6.tif",
+                                                             "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_7.tif",
+                                                             "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_8.tif",
+                                                             "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_9.tif",
+                                                             "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_10.tif"))
 
 rasterTestingDataframe <- data.frame(Timesteps = numeric(0),
                                       TestingRasterFile = character(0)) # may not need timesteps?
 # old extraction function
-extractRasters <- function(column) {
+extractRastersV1 <- function(column) {
 
   allFiles <- as.vector(column)
   rasterList <- c()
@@ -57,7 +71,7 @@ extractRasters <- function(column) {
   return(rasterList)
 }
 
-extractRastersV2 <- function(dataframe) {
+extractRasters <- function(dataframe) {
 
   # define timesteps
   timesteps <- unique(dataframe[,1])
@@ -84,29 +98,18 @@ extractRastersV2 <- function(dataframe) {
   return(rasterList)
 }
 
-extractionTest <- extractRastersV2(rasterTrainingDataframe)
+# extractionTest <- extractRasters(rasterTrainingDataframe)
 
-# extract list of predictor, testing, and response rasters
-extractRasters <- function(column) {
+predictorRasterList <- extractRasters(rasterTrainingDataframe)
 
-  allFiles <- as.vector(column)
-  rasterList <- c()
+# doing this here only, names should be different when using package
+# newNames <- c("band.1", "band.2", "band.3", "band.4", "band.5", "band.6", "band.7", "band.8", "band.9", "band.10", "band.11", "band.12")
+# names(predictorRasterList[[1]]) <- newNames
+# names(predictorRasterList[[2]]) <- newNames
 
-  for (file in allFiles) {
-    Raster <- rast(file)
-    rasterList <- c(rasterList, Raster)
-  }
+responseRasterList <- extractRasters(rasterResponseDataframe)
 
-  return(rasterList)
-}
-
-predictorRasterList <- extractRasters(rasterTrainingDataframe$PredictorRasterFile)
-
-responseRasterList <- extractRasters(rasterResponseDataframe,
-                                     rasterResponseDataframe$ResponseRasterFile)
-
-testingRasterList <- extractRasters(rasterTestingDataframe,
-                                    rasterTestingDataframe$TestingRasterFile)
+testingRasterList <- extractRasters(rasterTestingDataframe)
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(Iteration = numeric(0),
@@ -133,16 +136,17 @@ allTestData <- c()
 # For loop through each raster pair
 for (i in seq_along(predictorRasterList)) {
 
+  print(i)
   ## Decompose satellite image raster
   modelData <- decomposedRaster(predictorRasterList[[i]],
                                 responseRasterList[[i]],
                                 nobs = Nobs)
 
   modelDataSampled <- modelData %>%
-      mutate(presence = as.factor(response)) %>%
-      select(-ID, -response) %>%
-      mutate(kfold = sample(1:10, nrow(.), replace = TRUE)) %>%
-      drop_na()
+    mutate(presence = as.factor(response)) %>%
+    select(-ID, -response) %>%
+    mutate(kfold = sample(1:10, nrow(.), replace = TRUE)) %>%
+    drop_na()
 
   # split into training and testing data
   train <- modelDataSampled %>% filter(kfold != 1)
@@ -166,12 +170,14 @@ rf1 <-  ranger(mainModel,
                importance = "impurity")
 
 # extract variable importance and plot -----------------------------------------
-varImportance <- melt(rf1$variable.importance) %>%
+# STILL NEED TO ADD PLOT TO OUTPUT (LOOK INTO GGPLOT OUTPUTS)
+# SHOW AS AN IMAGE?
+variableImportance <- melt(rf1$variable.importance) %>%
   rownames_to_column("variable")
 
-ggplot(varImportance, aes(x = reorder(variable, value),
-                          y = value,
-                          fill = value)) +
+variableImportancePlot <- ggplot(variableImportance, aes(x = reorder(variable, value),
+                                                         y = value,
+                                                         fill = value)) +
   geom_bar(stat = "identity", position = "dodge") +
   coord_flip() +
   ylab("Variable Importance") +
@@ -181,7 +187,7 @@ ggplot(varImportance, aes(x = reorder(variable, value),
   scale_fill_gradientn(colours = c("#3f4885"), guide = "none")
 
 ## Predict for each timestep group ---------------------------------------------
-# EVENTUALLY REPLACE WITH ACTUAL TESTING DATA
+# EVENTUALLY REPLACE WITH TESTING DATA
 for (t in seq_along(predictorRasterList)) {
 
   # predict presence for each raster
@@ -191,13 +197,35 @@ for (t in seq_along(predictorRasterList)) {
   # assign values
   values(PredictedPresence) <- ifelse(values(PredictedPresence) == 2, 1, 0)
 
-  # ADD IF STATEMENT HERE - IF FILTERING WAS REQUESTED
-  # filter out presence pixels surrounded by non-presence
-  filteredPredictedPresence <- focal(PredictedPresence,
-                                     w = matrix(1, 5, 5),
-                                     fun = filterFun,
-                                     resolution = filterResolution,
-                                     percent = filterPercent)
+  if (ApplyFiltering == TRUE) {
+    # filter out presence pixels surrounded by non-presence
+    filteredPredictedPresence <- focal(PredictedPresence,
+                                       w = matrix(1, 5, 5),
+                                       fun = filterFun,
+                                       resolution = filterResolution,
+                                       percent = filterPercent)
+
+    # save raster
+    # writeRaster(filteredPredictedPresence,
+    #             filename = file.path(paste0(transferDir,
+    #                                         "/filteredPredictedPresence",
+    #                                         t,
+    #                                         ".tif")),
+    #             overwrite = TRUE)
+
+    rasterDataframe <- data.frame(Iteration = 1,
+                                  Timestep = t,
+                                  PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
+                                  PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
+                                  Response = file.path(paste0(transferDir, "/Response", t, ".tif")))
+
+  } else {
+    rasterDataframe <- data.frame(Iteration = 1,
+                                  Timestep = t,
+                                  PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
+                                  PredictedFiltered = "",
+                                  Response = file.path(paste0(transferDir, "/Response", t, ".tif")))
+  }
 
   # define response (binary) raster output
   Response <- responseRasterList[[t]]
@@ -221,44 +249,31 @@ for (t in seq_along(predictorRasterList)) {
     tibble::rownames_to_column("Statistic") %>%
     mutate(Timestep = t)
 
-  writeRaster(PredictedPresence,
-              filename = file.path(paste0(transferDir,
-                                          "/PredictedPresence",
-                                          t,
-                                          ".tif")),
-              overwrite = TRUE)
+  # save raster
+  # writeRaster(PredictedPresence,
+  #             filename = file.path(paste0(transferDir,
+  #                                         "/PredictedPresence",
+  #                                         t,
+  #                                         ".tif")),
+  #             overwrite = TRUE)
 
-  writeRaster(filteredPredictedPresence,
-              filename = file.path(paste0(transferDir,
-                                          "/filteredPredictedPresence",
-                                          t,
-                                          ".tif")),
-              overwrite = TRUE)
-
-    writeRaster(Response,
-                filename = file.path(paste0(transferDir,
-                                            "/filteredPredictedPresence",
-                                            t,
-                                            ".tif")),
-                overwrite = TRUE)
+  # writeRaster(Response,
+  #             filename = file.path(paste0(transferDir,
+  #                                         "/Response",
+  #                                         t,
+  #                                         ".tif")),
+  #             overwrite = TRUE)
 
   # export both rasters to an external folder (eventually remove)
-  writeRaster(PredictedPresence,
-              filename = file.path(paste0("C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/output/PredictedPresence", t, ".tif")),
-              overwrite = TRUE)
+  # writeRaster(PredictedPresence,
+  #             filename = file.path(paste0("C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/output/PredictedPresence", t, ".tif")),
+  #             overwrite = TRUE)
 
-  writeRaster(filteredPredictedPresence,
-              filename = file.path(paste0("C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/output/filteredPredictedPresence", t, ".tif")),
-              overwrite = TRUE)
+  # writeRaster(filteredPredictedPresence,
+  #             filename = file.path(paste0("C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/output/filteredPredictedPresence", t, ".tif")),
+  #             overwrite = TRUE)
 
   # Store the relevant outputs from both rasters in a temporary dataframe
-  # ADD BINARY OUTPUT (RESPONSE RASTER) TO OUTPUT DATAFRAME - HERE AND IN XML FILE
-  rasterDataframe <- data.frame(Iteration = 1,
-                                Timestep = t,
-                                PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
-                                PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
-                                Response = file.path(paste0(transferDir, "/Response", t, ".tif")))
-
   rasterOutputDataframe <- addRow(rasterOutputDataframe,
                                   rasterDataframe)
 
@@ -268,6 +283,50 @@ for (t in seq_along(predictorRasterList)) {
 
   modelOutputDataframe <- addRow(modelOutputDataframe,
                                  model_stats)
-  # ADD BINARY OUTPUT
   # REPORT FILTERING
 }
+
+# calculate mean values for model statistics -----------------------------------
+# INSTEAD OF THIS, JUST KEEP TIMESTEP AND ADD ONE MORE ROW WHERE TIMESTEP = "ALL"
+if (length(timesteps) > 1) {
+
+  modelOutputDataframe <- modelOutputDataframe %>%
+    select(-Timestep) %>%
+    group_by(Statistic) %>%
+    summarise(mean = mean(Value),
+              sd = sd(Value)) %>%
+    ungroup() %>%
+    select(Statistic,
+          mean,
+          sd) %>%
+    rename(Value = mean,
+          ModelSD = sd) %>%
+    drop_na(ModelSD)
+
+  confusionOutputDataframe <- confusionOutputDataframe %>%
+    select(-Timestep) %>%
+    group_by(Prediction, Reference) %>%
+    summarise(mean = mean(Frequency),
+              sd = sd(Frequency)) %>%
+    ungroup() %>%
+    rename(Frequency = mean,
+          ConfusionSD = sd) %>%
+    drop_na(ConfusionSD)
+}
+
+# Save dataframes back to SyncroSim library's output datasheets ----------------
+saveDatasheet(myScenario,
+              data = rasterOutputDataframe,
+              name = "imageclassifier_RasterOutput")
+
+saveDatasheet(myScenario,
+              data = confusionOutputDataframe,
+              name = "imageclassifier_ConfusionMatrix")
+
+saveDatasheet(myScenario,
+              data = modelOutputDataframe,
+              name = "imageclassifier_ModelStatistics")
+
+# may need to add timestep to confusion matrix and model output from the beginning
+# add filter threshold to output (make a separate non-RF stats output)
+# add variable importance plot to output

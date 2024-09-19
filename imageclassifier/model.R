@@ -119,7 +119,7 @@ variableImportancePlot <- ggplot(variableImportance, aes(x = reorder(variable, v
   scale_fill_gradientn(colours = c("#3f4885"), guide = "none")
 
 ## Predict for each timestep group ---------------------------------------------
-# EVENTUALLY REPLACE WITH ACTUAL TESTING DATA
+# EVENTUALLY REPLACE WITH TESTING DATA
 for (t in seq_along(predictorRasterList)) {
 
   # predict presence for each raster
@@ -229,10 +229,10 @@ if (length(timesteps) > 1) {
               sd = sd(Value)) %>%
     ungroup() %>%
     select(Statistic,
-          mean,
-          sd) %>%
+           mean,
+           sd) %>%
     rename(Value = mean,
-          ModelSD = sd) %>%
+           ModelSD = sd) %>%
     drop_na(ModelSD)
 
   confusionOutputDataframe <- confusionOutputDataframe %>%
@@ -242,7 +242,7 @@ if (length(timesteps) > 1) {
               sd = sd(Frequency)) %>%
     ungroup() %>%
     rename(Frequency = mean,
-          ConfusionSD = sd) %>%
+           ConfusionSD = sd) %>%
     drop_na(ConfusionSD)
 }
 

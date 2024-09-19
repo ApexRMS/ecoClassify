@@ -5,17 +5,17 @@
     <dataSheet name="RunControl" displayName="Run Control" isRunControl="True" timestepTitle="Timestep" showMinIteration="False">
 	</dataSheet>
         
-    <dataSheet name="TrainingData" displayName="Training">
+    <dataSheet name="TrainingData" displayName="Training Rasters">
         <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
         <column name="PredictorRasterFile" dataType="String" displayName="Predictor raster" isExternalFile="True"/>
     </dataSheet>
 
-    <dataSheet name="ResponseData" displayName="Response">
+    <dataSheet name="ResponseData" displayName="Response Rasters">
         <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
         <column name="ResponseRasterFile" dataType="String" displayName="Response raster" isExternalFile="True"/>
     </dataSheet>
 
-    <dataSheet name="TestingData" displayName="Testing">
+    <dataSheet name="TestingData" displayName="Testing Rasters">
         <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
         <column name="TestingRasterFile" dataType="String" displayName="Testing raster" isExternalFile="True"/>
     </dataSheet>
@@ -92,8 +92,8 @@
         <group name="PredictionMaps" displayName="Predictions">
 		    <item name="RasterMap1" displayName="Unfiltered" dataSheet="RasterOutput" column="PredictedUnfiltered"/>
             <item name="RasterMap2" displayName="Filtered" dataSheet="RasterOutput" column="PredictedFiltered"/>
-            <item name="RasterMap3" displayName="Response" dataSheet="RasterOutput" column="Response"/>
         </group>
+        <item name="RasterMap3" displayName="Response" dataSheet="RasterOutput" column="Response"/>
     </layout>
 
     <!--Export Layout-->
