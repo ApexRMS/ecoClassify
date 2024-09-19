@@ -32,8 +32,8 @@ rasterTrainingDataframe <- datasheet(myScenario,
 rasterGroundTruthDataframe <- datasheet(myScenario,
                                         name = "imageclassifier_GroundTruthData")
 
-rasterTestingeDataframe <- datasheet(myScenario,
-                                     name = "imageclassifier_TestingData")
+rasterTestingDataframe <- datasheet(myScenario,
+                                    name = "imageclassifier_TestingData")
 
 # extract list of predictor, testing, and ground truth rasters
 predictorRasterList <- extractRasters(rasterTrainingDataframe)

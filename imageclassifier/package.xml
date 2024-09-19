@@ -7,7 +7,7 @@
         
     <dataSheet name="TrainingData" displayName="Training Rasters">
         <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
-        <column name="PredictorRasterFile" dataType="String" displayName="Predictor raster" isExternalFile="True"/>
+        <column name="PredictorRasterFile" dataType="String" displayName="Training raster" isExternalFile="True"/>
     </dataSheet>
 
     <dataSheet name="GroundTruthData" displayName="Ground Truth Rasters">
