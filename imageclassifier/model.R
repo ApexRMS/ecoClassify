@@ -29,19 +29,19 @@ ApplyFiltering <- modelInputDataframe$ApplyFiltering
 rasterTrainingDataframe <- datasheet(myScenario,
                                      name = "imageclassifier_TrainingData")
 
-rasterResponseDataframe <- datasheet(myScenario,
-                                     name = "imageclassifier_ResponseData")
+rasterGroundTruthDataframe <- datasheet(myScenario,
+                                        name = "imageclassifier_GroundTruthData")
 
 rasterTestingeDataframe <- datasheet(myScenario,
                                      name = "imageclassifier_TestingData")
 
-# extract list of predictor, testing, and response rasters
+# extract list of predictor, testing, and ground truth rasters
 predictorRasterList <- extractRasters(rasterTrainingDataframe)
 
-responseRasterList <- extractRasters(rasterResponseDataframe)
+groundTruthRasterList <- extractRasters(rasterGroundTruthDataframe)
 
-if (length(rasterTestingeDataframe$TestingRasterFile) > 1) {
-  testingRasterList <- extractRasters(rasterTestingeDataframe)
+if (length(rasterTestingDataframe$TestingRasterFile) > 1) {
+  testingRasterList <- extractRasters(rasterTestingDataframe)
 }
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
@@ -49,7 +49,7 @@ rasterOutputDataframe <- data.frame(Iteration = numeric(0),
                                     Timestep = numeric(0),
                                     PredictedUnfiltered = character(0),
                                     PredictedFiltered = character(0),
-                                    Response = character(0))
+                                    GroundTruth = character(0))
 
 confusionOutputDataframe <- data.frame(Timestep = numeric(0),
                                        Prediction = numeric(0),
@@ -71,7 +71,7 @@ for (i in seq_along(predictorRasterList)) {
 
   ## Decompose satellite image raster
   modelData <- decomposedRaster(predictorRasterList[[i]],
-                                responseRasterList[[i]],
+                                groundTruthRasterList[[i]],
                                 nobs = Nobs)
 
   modelDataSampled <- modelData %>%
@@ -149,18 +149,18 @@ for (t in seq_along(predictorRasterList)) {
                                   Timestep = t,
                                   PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
                                   PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
-                                  Response = file.path(paste0(transferDir, "/Response", t, ".tif")))
+                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")))
 
   } else {
     rasterDataframe <- data.frame(Iteration = 1,
                                   Timestep = t,
                                   PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
                                   PredictedFiltered = "",
-                                  Response = file.path(paste0(transferDir, "/Response", t, ".tif")))
+                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")))
   }
 
-  # define response (binary) raster output
-  Response <- responseRasterList[[t]]
+  # define GroundTruth (binary) raster output
+  groundTruth <- groundTruthRasterList[[t]]
 
   # calculate statistics using the test data
   prediction <- predict(rf1, allTestData)
@@ -189,21 +189,12 @@ for (t in seq_along(predictorRasterList)) {
                                           ".tif")),
               overwrite = TRUE)
 
-  writeRaster(Response,
+  writeRaster(groundTruth,
               filename = file.path(paste0(transferDir,
-                                          "/Response",
+                                          "/GroundTruth",
                                           t,
                                           ".tif")),
               overwrite = TRUE)
-
-  # export both rasters to an external folder (eventually remove)
-  # writeRaster(PredictedPresence,
-  #             filename = file.path(paste0("C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/output/PredictedPresence", t, ".tif")),
-  #             overwrite = TRUE)
-
-  # writeRaster(filteredPredictedPresence,
-  #             filename = file.path(paste0("C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/output/filteredPredictedPresence", t, ".tif")),
-  #             overwrite = TRUE)
 
   # Store the relevant outputs from both rasters in a temporary dataframe
   rasterOutputDataframe <- addRow(rasterOutputDataframe,
@@ -219,7 +210,6 @@ for (t in seq_along(predictorRasterList)) {
 }
 
 # calculate mean values for model statistics -----------------------------------
-# INSTEAD OF THIS, JUST KEEP TIMESTEP AND ADD ONE MORE ROW WHERE TIMESTEP = "ALL"
 if (length(timesteps) > 1) {
 
   modelOutputDataframe <- modelOutputDataframe %>%
@@ -259,6 +249,6 @@ saveDatasheet(myScenario,
               data = modelOutputDataframe,
               name = "imageclassifier_ModelStatistics")
 
-# may need to add timestep to confusion matrix and model output from the beginning
 # add filter threshold to output (make a separate non-RF stats output)
 # add variable importance plot to output
+# add probability raster to the output

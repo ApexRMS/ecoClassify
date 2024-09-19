@@ -5,19 +5,20 @@ source(file.path("imageclassifier/workspace.r"))
 
 ## Connect to SyncroSim Library ----
 mySession <- session("C:/Program Files/SyncroSim Studio")
-libraryName <- "C:/Users/HannahAdams/Documents/Projects/A331 Snowpack/Snowpack Classifier.ssim"
-myLibrary <- ssimLibrary(libraryName)
+libraryName <- "C:/Users/HannahAdams/Documents/Projects/A331 Snowpack/Snow Classifier.ssim"
+myLibrary <- ssimLibrary(name = libraryName, session = mySession)
 myProject <- rsyncrosim::project(ssimObject = myLibrary, project = "Definitions")
 scenario(myProject)
 
 # Load testing scenario
-myScenario <- scenario(ssimObject = myProject, scenario = 89)
+myScenario <- scenario(ssimObject = myProject, scenario = 1)
 datasheet(myScenario)
 
 # view input datasheets
 datasheet(myScenario, name = "imageclassifier_TrainingData")
-datasheet(myScenario, name = "imageclassifier_ResponseData")
+datasheet(myScenario, name = "imageclassifier_GroundTruthData")
 datasheet(myScenario, name = "imageclassifier_TestingData")
+datasheet(myScenario, name = "imageclassifier_RasterOutput")
 
 # Set timesteps
 timesteps <- seq(1, 10)
@@ -43,7 +44,7 @@ rasterTrainingDataframe <- data.frame(Timesteps = seq(1, 10),
                                                               "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/train/Landsat_Predictor_9.tif",
                                                               "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/train/Landsat_Predictor_10.tif"))
 
-rasterResponseDataframe <- data.frame(Timesteps = seq(1, 10),
+rasterGroundTruthDataframe <- data.frame(Timesteps = seq(1, 10),
                                       ResponseRasterFile = c("C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_1.tif",
                                                              "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_2.tif",
                                                              "C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/response/Sentinel_Snow_3.tif",
@@ -57,6 +58,7 @@ rasterResponseDataframe <- data.frame(Timesteps = seq(1, 10),
 
 rasterTestingDataframe <- data.frame(Timesteps = numeric(0),
                                       TestingRasterFile = character(0)) # may not need timesteps?
+
 # old extraction function
 extractRastersV1 <- function(column) {
 
@@ -100,23 +102,27 @@ extractRasters <- function(dataframe) {
 
 # extractionTest <- extractRasters(rasterTrainingDataframe)
 
-predictorRasterList <- extractRasters(rasterTrainingDataframe)
-
 # doing this here only, names should be different when using package
 # newNames <- c("band.1", "band.2", "band.3", "band.4", "band.5", "band.6", "band.7", "band.8", "band.9", "band.10", "band.11", "band.12")
 # names(predictorRasterList[[1]]) <- newNames
 # names(predictorRasterList[[2]]) <- newNames
 
-responseRasterList <- extractRasters(rasterResponseDataframe)
 
-testingRasterList <- extractRasters(rasterTestingDataframe)
+# extract list of predictor, testing, and ground truth rasters
+predictorRasterList <- extractRasters(rasterTrainingDataframe)
+
+groundTruthRasterList <- extractRasters(rasterGroundTruthDataframe)
+
+if (length(rasterTestingDataframe$TestingRasterFile) > 1) {
+  testingRasterList <- extractRasters(rasterTestingeDataframe)
+}
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(Iteration = numeric(0),
                                     Timestep = numeric(0),
                                     PredictedUnfiltered = character(0),
                                     PredictedFiltered = character(0),
-                                    Response = character(0))
+                                    GroundTruth = character(0))
 
 confusionOutputDataframe <- data.frame(Timestep = numeric(0),
                                        Prediction = numeric(0),
@@ -136,10 +142,9 @@ allTestData <- c()
 # For loop through each raster pair
 for (i in seq_along(predictorRasterList)) {
 
-  print(i)
   ## Decompose satellite image raster
   modelData <- decomposedRaster(predictorRasterList[[i]],
-                                responseRasterList[[i]],
+                                groundTruthRasterList[[i]],
                                 nobs = Nobs)
 
   modelDataSampled <- modelData %>%
@@ -205,7 +210,7 @@ for (t in seq_along(predictorRasterList)) {
                                        resolution = filterResolution,
                                        percent = filterPercent)
 
-    # save raster
+    # # save raster
     # writeRaster(filteredPredictedPresence,
     #             filename = file.path(paste0(transferDir,
     #                                         "/filteredPredictedPresence",
@@ -217,18 +222,18 @@ for (t in seq_along(predictorRasterList)) {
                                   Timestep = t,
                                   PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
                                   PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
-                                  Response = file.path(paste0(transferDir, "/Response", t, ".tif")))
+                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")))
 
   } else {
     rasterDataframe <- data.frame(Iteration = 1,
                                   Timestep = t,
                                   PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
                                   PredictedFiltered = "",
-                                  Response = file.path(paste0(transferDir, "/Response", t, ".tif")))
+                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")))
   }
 
-  # define response (binary) raster output
-  Response <- responseRasterList[[t]]
+  # define GroundTruth (binary) raster output
+  groundTruth <- groundTruthRasterList[[t]]
 
   # calculate statistics using the test data
   prediction <- predict(rf1, allTestData)
@@ -257,20 +262,11 @@ for (t in seq_along(predictorRasterList)) {
   #                                         ".tif")),
   #             overwrite = TRUE)
 
-  # writeRaster(Response,
+  # writeRaster(groundTruth,
   #             filename = file.path(paste0(transferDir,
-  #                                         "/Response",
+  #                                         "/GroundTruth",
   #                                         t,
   #                                         ".tif")),
-  #             overwrite = TRUE)
-
-  # export both rasters to an external folder (eventually remove)
-  # writeRaster(PredictedPresence,
-  #             filename = file.path(paste0("C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/output/PredictedPresence", t, ".tif")),
-  #             overwrite = TRUE)
-
-  # writeRaster(filteredPredictedPresence,
-  #             filename = file.path(paste0("C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/output/filteredPredictedPresence", t, ".tif")),
   #             overwrite = TRUE)
 
   # Store the relevant outputs from both rasters in a temporary dataframe
@@ -287,7 +283,6 @@ for (t in seq_along(predictorRasterList)) {
 }
 
 # calculate mean values for model statistics -----------------------------------
-# INSTEAD OF THIS, JUST KEEP TIMESTEP AND ADD ONE MORE ROW WHERE TIMESTEP = "ALL"
 if (length(timesteps) > 1) {
 
   modelOutputDataframe <- modelOutputDataframe %>%
@@ -297,10 +292,10 @@ if (length(timesteps) > 1) {
               sd = sd(Value)) %>%
     ungroup() %>%
     select(Statistic,
-          mean,
-          sd) %>%
+           mean,
+           sd) %>%
     rename(Value = mean,
-          ModelSD = sd) %>%
+           ModelSD = sd) %>%
     drop_na(ModelSD)
 
   confusionOutputDataframe <- confusionOutputDataframe %>%
@@ -310,7 +305,7 @@ if (length(timesteps) > 1) {
               sd = sd(Frequency)) %>%
     ungroup() %>%
     rename(Frequency = mean,
-          ConfusionSD = sd) %>%
+           ConfusionSD = sd) %>%
     drop_na(ConfusionSD)
 }
 
@@ -327,6 +322,6 @@ saveDatasheet(myScenario,
               data = modelOutputDataframe,
               name = "imageclassifier_ModelStatistics")
 
-# may need to add timestep to confusion matrix and model output from the beginning
 # add filter threshold to output (make a separate non-RF stats output)
 # add variable importance plot to output
+# add probability raster to the output

@@ -10,9 +10,9 @@
         <column name="PredictorRasterFile" dataType="String" displayName="Predictor raster" isExternalFile="True"/>
     </dataSheet>
 
-    <dataSheet name="ResponseData" displayName="Response Rasters">
+    <dataSheet name="GroundTruthData" displayName="Ground Truth Rasters">
         <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
-        <column name="ResponseRasterFile" dataType="String" displayName="Response raster" isExternalFile="True"/>
+        <column name="GroundTruthRasterFile" dataType="String" displayName="Ground truth raster" isExternalFile="True"/>
     </dataSheet>
 
     <dataSheet name="TestingData" displayName="Testing Rasters">
@@ -31,7 +31,7 @@
     <dataSheet name="RasterOutput" displayName="Rasters" hasTimestep="True" hasIteration="True">
         <column name="PredictedUnfiltered" dataType="String" displayName="Predicted" isExternalFile="True" isRaster="True"/>
         <column name="PredictedFiltered" dataType="String" displayName="Predicted filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
-        <column name="Response" dataType="String" displayName="Response" isExternalFile="True" isRaster="True"/>
+        <column name="GroundTruth" dataType="String" displayName="Ground truth" isExternalFile="True" isRaster="True"/>
         <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True"/>
     </dataSheet>
 
@@ -52,7 +52,7 @@
     <transformer name="Main" displayName="Image classifier" programName="Rscript" programArguments="model.R">
         <dataSheet name="RunControl" type="Input"/>
         <dataSheet name="TrainingData" type="Input"/>
-        <dataSheet name="ResponseData" type="Input"/>
+        <dataSheet name="GroundTruthData" type="Input"/>
         <dataSheet name="TestingData" type="Input"/>
         <dataSheet name="ModelInput" type="Input"/>
         <dataSheet name="RasterOutput" type="Output"/>
@@ -65,7 +65,7 @@
     <transformer name="ModelStatisticsExport" dataSheet="ModelStatistics" isExport="True"/>
     <transformer name="PredictedUnfilteredExport" dataSheet="RasterOutput" column="PredictedUnfiltered" isRasterExport="True"/>
     <transformer name="PredictedFilteredExport" dataSheet="RasterOutput" column="PredictedFiltered" isRasterExport="True"/>
-    <transformer name="ResponseExport" dataSheet="RasterOutput" column="Response" isRasterExport="True"/>
+    <transformer name="GroundTruthExport" dataSheet="RasterOutput" column="GroundTruth" isRasterExport="True"/>
 
     <!--Scenario Layout-->
     <layout type="Scenario">
@@ -74,7 +74,7 @@
 
         <group name="AllInputs" displayName="Input">
             <item name="TrainingData"/>
-            <item name="ResponseData"/>
+            <item name="GroundTruthData"/>
             <item name="TestingData"/>
             <item name="ModelInput"/>
         </group>
@@ -93,7 +93,7 @@
 		    <item name="RasterMap1" displayName="Unfiltered" dataSheet="RasterOutput" column="PredictedUnfiltered"/>
             <item name="RasterMap2" displayName="Filtered" dataSheet="RasterOutput" column="PredictedFiltered"/>
         </group>
-        <item name="RasterMap3" displayName="Response" dataSheet="RasterOutput" column="Response"/>
+        <item name="RasterMap3" displayName="Ground Truth" dataSheet="RasterOutput" column="GroundTruth"/>
     </layout>
 
     <!--Export Layout-->
@@ -105,7 +105,7 @@
         <group name="MapExport" displayName="Map Outputs">
             <item name="PredictedUnfilteredExport" displayName="Unfiltered Prediction"/>
             <item name="PredictedFilteredExport" displayName="Filtered Prediction"/>
-            <item name="ResponseExport" displayName="Response"/>
+            <item name="GroundTruthExport" displayName="Ground Truth"/>
         </group>
 
     </layout>
