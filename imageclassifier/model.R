@@ -9,7 +9,7 @@ myScenario <- scenario()  # Get the SyncroSim Scenario that is currently running
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
-# Load RunControl datasheet to be able to set timesteps
+# Load RunControl datasheet to set timesteps
 runSettings <- datasheet(myScenario, name = "imageclassifier_RunControl")
 
 # Set timesteps - can set to different frequencies if desired
@@ -24,6 +24,12 @@ Nobs <- modelInputDataframe$Nobs
 filterResolution <- modelInputDataframe$filterResolution
 filterPercent <- modelInputDataframe$filterPercent
 ApplyFiltering <- modelInputDataframe$ApplyFiltering
+OptimizeFiltering <- modelInputDataframe$OptimizeFiltering
+
+# assign default filter resolution = 5 if left blank
+if (is.na(filterResolution)) {
+  filterResolution <- 5
+}
 
 # Load raster input datasheets
 rasterTrainingDataframe <- datasheet(myScenario,
@@ -49,7 +55,8 @@ rasterOutputDataframe <- data.frame(Iteration = numeric(0),
                                     Timestep = numeric(0),
                                     PredictedUnfiltered = character(0),
                                     PredictedFiltered = character(0),
-                                    GroundTruth = character(0))
+                                    GroundTruth = character(0),
+                                    FilterThreshold = numeric(0))
 
 confusionOutputDataframe <- data.frame(Timestep = numeric(0),
                                        Prediction = numeric(0),
@@ -130,33 +137,72 @@ for (t in seq_along(predictorRasterList)) {
   values(PredictedPresence) <- ifelse(values(PredictedPresence) == 2, 1, 0)
 
   if (ApplyFiltering == TRUE) {
-    # filter out presence pixels surrounded by non-presence
-    filteredPredictedPresence <- focal(PredictedPresence,
-                                       w = matrix(1, 5, 5),
-                                       fun = filterFun,
-                                       resolution = filterResolution,
-                                       percent = filterPercent)
 
-    # save raster
-    writeRaster(filteredPredictedPresence,
-                filename = file.path(paste0(transferDir,
-                                            "/filteredPredictedPresence",
-                                            t,
-                                            ".tif")),
-                overwrite = TRUE)
+    if (OptimizeFiltering == TRUE) {
 
-    rasterDataframe <- data.frame(Iteration = 1,
-                                  Timestep = t,
-                                  PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
-                                  PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
-                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")))
+      # optimize the filtering threshold
 
+      optimizedThreshold <- optimize(filterRaster,
+                                     c(0, 1),
+                                     tol = 0.001,
+                                     maximum = TRUE,
+                                     filterResolution = 5,
+                                     PredictedPresence =  PredictedPresence,
+                                     groundTruthRaster = groundTruthRasterList[[t]])
+      print(t)
+      print(optimizedThreshold)
+
+      filteredPredictedPresence <- focal(PredictedPresence,
+                                         w = matrix(1, 5, 5),
+                                         fun = filterFun,
+                                         resolution = filterResolution,
+                                         percent = optimizedThreshold$maximum)
+
+      # save raster
+      writeRaster(filteredPredictedPresence,
+                  filename = file.path(paste0(transferDir,
+                                              "/filteredPredictedPresence",
+                                              t,
+                                              ".tif")),
+                  overwrite = TRUE)
+
+      rasterDataframe <- data.frame(Iteration = 1,
+                                    Timestep = t,
+                                    PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
+                                    PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
+                                    GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")),
+                                    FilterThreshold = optimizedThreshold$maximum)
+
+    } else {
+      # filter out presence pixels surrounded by non-presence
+      filteredPredictedPresence <- focal(PredictedPresence,
+                                         w = matrix(1, 5, 5),
+                                         fun = filterFun,
+                                         resolution = filterResolution,
+                                         percent = filterPercent)
+
+      # save raster
+      writeRaster(filteredPredictedPresence,
+                  filename = file.path(paste0(transferDir,
+                                              "/filteredPredictedPresence",
+                                              t,
+                                              ".tif")),
+                  overwrite = TRUE)
+
+      rasterDataframe <- data.frame(Iteration = 1,
+                                    Timestep = t,
+                                    PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
+                                    PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
+                                    GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")),
+                                    FilterThreshold = filterPercent)
+    }
   } else {
     rasterDataframe <- data.frame(Iteration = 1,
                                   Timestep = t,
                                   PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
                                   PredictedFiltered = "",
-                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")))
+                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")),
+                                  FilterThreshold = "")
   }
 
   # define GroundTruth (binary) raster output
@@ -206,7 +252,6 @@ for (t in seq_along(predictorRasterList)) {
 
   modelOutputDataframe <- addRow(modelOutputDataframe,
                                  model_stats)
-  # REPORT FILTERING
 }
 
 # calculate mean values for model statistics -----------------------------------
@@ -236,6 +281,10 @@ if (length(timesteps) > 1) {
     drop_na(ConfusionSD)
 }
 
+# add filtering values to output datasheet
+filteringOutputDataframe <- data.frame(filterResolutionOutput = filterResolution,
+                                       filterThresholdOutput = filterPercent)
+
 # Save dataframes back to SyncroSim library's output datasheets ----------------
 saveDatasheet(myScenario,
               data = rasterOutputDataframe,
@@ -249,6 +298,9 @@ saveDatasheet(myScenario,
               data = modelOutputDataframe,
               name = "imageclassifier_ModelStatistics")
 
-# add filter threshold to output (make a separate non-RF stats output)
+saveDatasheet(myScenario,
+              data = filteringOutputDataframe,
+              name = "imageclassifier_FilterStatistics")
+
 # add variable importance plot to output
 # add probability raster to the output

@@ -9,6 +9,7 @@ library(gtools)
 library(reshape2)
 library(Dict)
 library(ggplot2)
+library(stats)
 
 # define functions ------------------------------------------------
 
@@ -82,3 +83,42 @@ filterFun <- function(raster, resolution, percent) {
     return(raster[midPixel])
   }
 }
+
+filterRaster <- function(filterPercent,
+                         filterResolution,
+                         PredictedPresence,
+                         groundTruthRaster) {
+
+  # filter out presence pixels surrounded by non-presence
+  filteredPredictedPresence <- focal(PredictedPresence,
+                                     w = matrix(1, 5, 5),
+                                     fun = filterFun,
+                                     resolution = filterResolution,
+                                     percent = filterPercent)
+
+  # make a raster that is the sum of both layers
+  sumRaster <- mosaic(filteredPredictedPresence,
+                      groundTruthRaster,
+                      fun = "sum")
+
+  # calculate the max value
+  maxVal <- minmax(sumRaster)[2]
+
+  # count the number of pixels with the max value
+  numPixels <- freq(sumRaster, value = maxVal)[, "count"]
+
+  return(numPixels)
+}
+
+
+# next steps
+# 1. finish filterAccuracy function
+# 2. add to model script
+# 3. add optimize wrapper
+
+# 4. do some testing
+# 5. run the package and see if it works!
+# 6. confirm variable importance argument
+# 7. fix confusion matrix calculation
+# 8. eventually find a way to calculate average filter threshold and 
+# then apply to test rasters (no ground truth)

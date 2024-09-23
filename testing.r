@@ -5,13 +5,13 @@ source(file.path("imageclassifier/workspace.r"))
 
 ## Connect to SyncroSim Library ----
 mySession <- session("C:/Program Files/SyncroSim Studio")
-libraryName <- "C:/Users/HannahAdams/Documents/Projects/A331 Snowpack/Snow Classifier.ssim"
+libraryName <- "C:/Users/HannahAdams/Documents/Projects/A331 Snowpack/image_classifier_testing.ssim"
 myLibrary <- ssimLibrary(name = libraryName, session = mySession)
 myProject <- rsyncrosim::project(ssimObject = myLibrary, project = "Definitions")
 scenario(myProject)
 
 # Load testing scenario
-myScenario <- scenario(ssimObject = myProject, scenario = 1)
+myScenario <- scenario(ssimObject = myProject, scenario = "package testing")
 datasheet(myScenario)
 
 # view input datasheets
@@ -31,6 +31,7 @@ Nobs <- modelInputDataframe$Nobs
 filterResolution <- modelInputDataframe$filterResolution
 filterPercent <- modelInputDataframe$filterPercent
 ApplyFiltering <- TRUE
+optimizeFiltering <- TRUE
 
 rasterTrainingDataframe <- data.frame(Timesteps = seq(1, 10),
                                       PredictorRasterFile = c("C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/train/Landsat_Predictor_1.tif",
@@ -59,49 +60,6 @@ rasterGroundTruthDataframe <- data.frame(Timesteps = seq(1, 10),
 rasterTestingDataframe <- data.frame(Timesteps = numeric(0),
                                       TestingRasterFile = character(0)) # may not need timesteps?
 
-# old extraction function
-extractRastersV1 <- function(column) {
-
-  allFiles <- as.vector(column)
-  rasterList <- c()
-
-  for (file in allFiles) {
-    Raster <- rast(file)
-    rasterList <- c(rasterList, Raster)
-  }
-
-  return(rasterList)
-}
-
-extractRasters <- function(dataframe) {
-
-  # define timesteps
-  timesteps <- unique(dataframe[,1])
-
-  # create an empty list
-  rasterList <- c()
-
-  # loop through timesteps, reading and combining rasters
-  for (t in timesteps) {
-    
-    # subset based on timestep
-    subsetData <- dataframe %>% filter(Timesteps == t)
-
-    # list all files
-    allFiles <- as.vector(subsetData[, 2])
-    
-    # read in all files as a single raster
-    subsetRaster <- rast(allFiles)
-
-    # add to main raster list
-    rasterList <- c(rasterList, subsetRaster)
-  }
-
-  return(rasterList)
-}
-
-# extractionTest <- extractRasters(rasterTrainingDataframe)
-
 # doing this here only, names should be different when using package
 # newNames <- c("band.1", "band.2", "band.3", "band.4", "band.5", "band.6", "band.7", "band.8", "band.9", "band.10", "band.11", "band.12")
 # names(predictorRasterList[[1]]) <- newNames
@@ -122,7 +80,8 @@ rasterOutputDataframe <- data.frame(Iteration = numeric(0),
                                     Timestep = numeric(0),
                                     PredictedUnfiltered = character(0),
                                     PredictedFiltered = character(0),
-                                    GroundTruth = character(0))
+                                    GroundTruth = character(0),
+                                    FilterThreshold = numeric(0))
 
 confusionOutputDataframe <- data.frame(Timestep = numeric(0),
                                        Prediction = numeric(0),
@@ -203,33 +162,72 @@ for (t in seq_along(predictorRasterList)) {
   values(PredictedPresence) <- ifelse(values(PredictedPresence) == 2, 1, 0)
 
   if (ApplyFiltering == TRUE) {
-    # filter out presence pixels surrounded by non-presence
-    filteredPredictedPresence <- focal(PredictedPresence,
-                                       w = matrix(1, 5, 5),
-                                       fun = filterFun,
-                                       resolution = filterResolution,
-                                       percent = filterPercent)
 
-    # # save raster
-    # writeRaster(filteredPredictedPresence,
-    #             filename = file.path(paste0(transferDir,
-    #                                         "/filteredPredictedPresence",
-    #                                         t,
-    #                                         ".tif")),
-    #             overwrite = TRUE)
+    if (optimizeFiltering == TRUE) {
 
-    rasterDataframe <- data.frame(Iteration = 1,
-                                  Timestep = t,
-                                  PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
-                                  PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
-                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")))
+      # optimize the filtering threshold
 
+      optimizedThreshold <- optimize(filterRaster,
+                                     c(0, 1),
+                                     tol = 0.001,
+                                     maximum = TRUE,
+                                     filterResolution = 5,
+                                     PredictedPresence =  PredictedPresence,
+                                     groundTruthRaster = groundTruthRasterList[[t]])
+      print(t)
+      print(optimizedThreshold)
+
+      filteredPredictedPresence <- focal(PredictedPresence,
+                                         w = matrix(1, 5, 5),
+                                         fun = filterFun,
+                                         resolution = filterResolution,
+                                         percent = optimizedThreshold$maximum)
+
+      # # save raster
+      # writeRaster(filteredPredictedPresence,
+      #             filename = file.path(paste0(transferDir,
+      #                                         "/filteredPredictedPresence",
+      #                                         t,
+      #                                         ".tif")),
+      #             overwrite = TRUE)
+
+      rasterDataframe <- data.frame(Iteration = 1,
+                                    Timestep = t,
+                                    PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
+                                    PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
+                                    GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")),
+                                    FilterThreshold = optimizedThreshold$maximum)
+
+    } else {
+      # filter out presence pixels surrounded by non-presence
+      filteredPredictedPresence <- focal(PredictedPresence,
+                                         w = matrix(1, 5, 5),
+                                         fun = filterFun,
+                                         resolution = filterResolution,
+                                         percent = filterPercent)
+
+      # # save raster
+      # writeRaster(filteredPredictedPresence,
+      #             filename = file.path(paste0(transferDir,
+      #                                         "/filteredPredictedPresence",
+      #                                         t,
+      #                                         ".tif")),
+      #             overwrite = TRUE)
+
+      rasterDataframe <- data.frame(Iteration = 1,
+                                    Timestep = t,
+                                    PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
+                                    PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
+                                    GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")),
+                                    FilterThreshold = filterPercent)
+    }
   } else {
     rasterDataframe <- data.frame(Iteration = 1,
                                   Timestep = t,
                                   PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
                                   PredictedFiltered = "",
-                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")))
+                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")),
+                                  FilterThreshold = "")
   }
 
   # define GroundTruth (binary) raster output
@@ -279,7 +277,6 @@ for (t in seq_along(predictorRasterList)) {
 
   modelOutputDataframe <- addRow(modelOutputDataframe,
                                  model_stats)
-  # REPORT FILTERING
 }
 
 # calculate mean values for model statistics -----------------------------------

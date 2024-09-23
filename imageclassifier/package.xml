@@ -23,15 +23,17 @@
     <dataSheet name="ModelInput" displayName="Classifier options" isSingleRow="True">
         <column name="Nobs" dataType="Integer" displayName="Sample size"/>
         <column name="ApplyFiltering" dataType="Boolean" displayName="Apply filtering"/>
-        <column name="filterResolution" dataType="Double" displayName="Filter resolution"/>
-        <column name="filterPercent" dataType="Double" displayName="Filter threshold"/>
+        <column name="OptimizeFiltering" dataType="Boolean" displayName="Optimize filtering"/>
+        <column name="filterResolution" dataType="Double" displayName="Filter resolution (optional)"/>
+        <column name="filterPercent" dataType="Double" displayName="Filter threshold (optional)"/>
     </dataSheet>
 
-    <!--Model Outputs-->  
+    <!--Model Outputs-->
     <dataSheet name="RasterOutput" displayName="Rasters" hasTimestep="True" hasIteration="True">
         <column name="PredictedUnfiltered" dataType="String" displayName="Predicted" isExternalFile="True" isRaster="True"/>
         <column name="PredictedFiltered" dataType="String" displayName="Predicted filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="GroundTruth" dataType="String" displayName="Ground truth" isExternalFile="True" isRaster="True"/>
+        <column name="FilterThreshold" dataType="Double" displayName="Filter Threshold"/>
         <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True"/>
     </dataSheet>
 
@@ -48,7 +50,12 @@
         <column name="ModelSD" dataType="Double" displayName="Standard Deviation"/>
     </dataSheet>
 
-    <!--Main transformer--> 
+    <dataSheet name="FilterStatistics" displayName="Filtering">
+        <column name="filterResolutionOutput" dataType="Double" displayName="Filter Resolution"/>
+        <column name="filterThresholdOutput" dataType="Double" displayName="Filter Threshold"/>
+    </dataSheet>
+
+    <!--Main transformer-->
     <transformer name="Main" displayName="Image classifier" programName="Rscript" programArguments="model.R">
         <dataSheet name="RunControl" type="Input"/>
         <dataSheet name="TrainingData" type="Input"/>
@@ -58,11 +65,13 @@
         <dataSheet name="RasterOutput" type="Output"/>
         <dataSheet name="ConfusionMatrix" type="Output"/>
         <dataSheet name="ModelStatistics" type="Output"/>
+        <dataSheet name="FilterStatistics" type="Output"/>
     </transformer>
 
     <!--Export transformers-->
     <transformer name="ConfusionMatrixExport" dataSheet="ConfusionMatrix" isExport="True"/>
     <transformer name="ModelStatisticsExport" dataSheet="ModelStatistics" isExport="True"/>
+    <transformer name="FilterStatisticsExport" dataSheet="FilterStatistics" isExport="True"/>
     <transformer name="PredictedUnfilteredExport" dataSheet="RasterOutput" column="PredictedUnfiltered" isRasterExport="True"/>
     <transformer name="PredictedFilteredExport" dataSheet="RasterOutput" column="PredictedFiltered" isRasterExport="True"/>
     <transformer name="GroundTruthExport" dataSheet="RasterOutput" column="GroundTruth" isRasterExport="True"/>
@@ -83,6 +92,7 @@
             <item name="RasterOutput"/>
             <item name="ConfusionMatrix"/>
             <item name="ModelStatistics"/>
+            <item name="FilterStatistics"/>
         </group>
 
     </layout>
@@ -101,6 +111,8 @@
         <item name="ConfusionMatrixExport" displayName="Confusion Matrix"/>
 
         <item name="ModelStatisticsExport" displayName="Model Statistics"/>
+
+        <item name="FilterStatisticsExport" displayName="Filtering"/>
 
         <group name="MapExport" displayName="Map Outputs">
             <item name="PredictedUnfilteredExport" displayName="Unfiltered Prediction"/>
