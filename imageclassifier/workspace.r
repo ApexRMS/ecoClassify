@@ -10,6 +10,7 @@ library(reshape2)
 library(Dict)
 library(ggplot2)
 library(stats)
+library(imager)
 
 # define functions ------------------------------------------------
 
@@ -84,8 +85,7 @@ filterFun <- function(raster, resolution, percent) {
   }
 }
 
-filterRaster <- function(filterPercent,
-                         filterResolution,
+filterFit <- function(params,
                          PredictedPresence,
                          groundTruthRaster) {
 
@@ -93,8 +93,8 @@ filterRaster <- function(filterPercent,
   filteredPredictedPresence <- focal(PredictedPresence,
                                      w = matrix(1, 5, 5),
                                      fun = filterFun,
-                                     resolution = filterResolution,
-                                     percent = filterPercent)
+                                     resolution = params[1],
+                                     percent = params[2])
 
   # make a raster that is the sum of both layers
   sumRaster <- mosaic(filteredPredictedPresence,
@@ -120,5 +120,5 @@ filterRaster <- function(filterPercent,
 # 5. run the package and see if it works!
 # 6. confirm variable importance argument
 # 7. fix confusion matrix calculation
-# 8. eventually find a way to calculate average filter threshold and 
+# 8. eventually find a way to calculate average filter threshold and
 # then apply to test rasters (no ground truth)

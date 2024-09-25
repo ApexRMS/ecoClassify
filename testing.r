@@ -31,7 +31,7 @@ Nobs <- modelInputDataframe$Nobs
 filterResolution <- modelInputDataframe$filterResolution
 filterPercent <- modelInputDataframe$filterPercent
 ApplyFiltering <- TRUE
-optimizeFiltering <- TRUE
+OptimizeFiltering <- TRUE
 
 rasterTrainingDataframe <- data.frame(Timesteps = seq(1, 10),
                                       PredictorRasterFile = c("C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/train/Landsat_Predictor_1.tif",
@@ -166,22 +166,28 @@ for (t in seq_along(predictorRasterList)) {
     if (optimizeFiltering == TRUE) {
 
       # optimize the filtering threshold
+      optimizedParams <- optim(par = c(5, 0.25),
+                               fn = filterFit,
+                               PredictedPresence = PredictedPresence,
+                               groundTruthRaster = groundTruthRasterList[[t]],
+                               lower = c(0, 0),
+                               upper = c(10, 1),
+                               method = "L-BFGS-B",
+                               control = list(fnscale = -1))
 
-      optimizedThreshold <- optimize(filterRaster,
-                                     c(0, 1),
-                                     tol = 0.001,
-                                     maximum = TRUE,
-                                     filterResolution = 5,
-                                     PredictedPresence =  PredictedPresence,
-                                     groundTruthRaster = groundTruthRasterList[[t]])
-      print(t)
-      print(optimizedThreshold)
+      # optimizedThreshold <- optimize(filterFit,
+      #                                c(0, 1),
+      #                                tol = 0.001,
+      #                                maximum = TRUE,
+      #                                filterResolution = 5,
+      #                                PredictedPresence =  PredictedPresence,
+      #                                groundTruthRaster = groundTruthRasterList[[t]])
 
       filteredPredictedPresence <- focal(PredictedPresence,
                                          w = matrix(1, 5, 5),
                                          fun = filterFun,
-                                         resolution = filterResolution,
-                                         percent = optimizedThreshold$maximum)
+                                         resolution = optimizedParams$par[1],
+                                         percent = optimizedParams$par[2])
 
       # # save raster
       # writeRaster(filteredPredictedPresence,

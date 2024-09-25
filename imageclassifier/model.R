@@ -27,8 +27,9 @@ ApplyFiltering <- modelInputDataframe$ApplyFiltering
 OptimizeFiltering <- modelInputDataframe$OptimizeFiltering
 
 # assign default filter resolution = 5 if left blank
-if (is.na(filterResolution)) {
+if (is.na(filterResolution) && ApplyFiltering == TRUE && OptimizeFiltering == FALSE) {
   filterResolution <- 5
+  filterPercent <- 0.25
 }
 
 # Load raster input datasheets
@@ -56,6 +57,7 @@ rasterOutputDataframe <- data.frame(Iteration = numeric(0),
                                     PredictedUnfiltered = character(0),
                                     PredictedFiltered = character(0),
                                     GroundTruth = character(0),
+                                    FilterResolution = numeric(0),
                                     FilterThreshold = numeric(0))
 
 confusionOutputDataframe <- data.frame(Timestep = numeric(0),
@@ -109,8 +111,6 @@ rf1 <-  ranger(mainModel,
                importance = "impurity")
 
 # extract variable importance and plot -----------------------------------------
-# STILL NEED TO ADD PLOT TO OUTPUT (LOOK INTO GGPLOT OUTPUTS)
-# SHOW AS AN IMAGE?
 variableImportance <- melt(rf1$variable.importance) %>%
   rownames_to_column("variable")
 
@@ -126,7 +126,6 @@ variableImportancePlot <- ggplot(variableImportance, aes(x = reorder(variable, v
   scale_fill_gradientn(colours = c("#3f4885"), guide = "none")
 
 ## Predict for each timestep group ---------------------------------------------
-# EVENTUALLY REPLACE WITH TESTING DATA
 for (t in seq_along(predictorRasterList)) {
 
   # predict presence for each raster
@@ -141,22 +140,26 @@ for (t in seq_along(predictorRasterList)) {
     if (OptimizeFiltering == TRUE) {
 
       # optimize the filtering threshold
+      # optimizedParams <- optim(par = c(5, 0.25),
+      #                          fn = filterFit,
+      #                          PredictedPresence = PredictedPresence,
+      #                          groundTruthRaster = groundTruthRasterList[[t]],
+      #                          lower = c(0.1, 0.01),
+      #                          upper = c(10, 1),
+      #                          method = "L-BFGS-B",
+      #                          control = list(fnscale = -1))
 
-      optimizedThreshold <- optimize(filterRaster,
-                                     c(0, 1),
-                                     tol = 0.001,
-                                     maximum = TRUE,
-                                     filterResolution = 5,
-                                     PredictedPresence =  PredictedPresence,
-                                     groundTruthRaster = groundTruthRasterList[[t]])
-      print(t)
-      print(optimizedThreshold)
+      optimizedParams <- optim(par = c(5, 0.25),
+                               fn = filterFit,
+                               PredictedPresence = PredictedPresence,
+                               groundTruthRaster = groundTruthRasterList[[t]],
+                               control = list(fnscale = -1))
 
       filteredPredictedPresence <- focal(PredictedPresence,
                                          w = matrix(1, 5, 5),
                                          fun = filterFun,
-                                         resolution = filterResolution,
-                                         percent = optimizedThreshold$maximum)
+                                         resolution = optimizedParams$par[1],
+                                         percent = optimizedParams$par[2])
 
       # save raster
       writeRaster(filteredPredictedPresence,
@@ -171,7 +174,8 @@ for (t in seq_along(predictorRasterList)) {
                                     PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
                                     PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
                                     GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")),
-                                    FilterThreshold = optimizedThreshold$maximum)
+                                    FilterResolution = optimizedParams$par[1],
+                                    FilterThreshold = optimizedParams$par[2])
 
     } else {
       # filter out presence pixels surrounded by non-presence
@@ -194,6 +198,7 @@ for (t in seq_along(predictorRasterList)) {
                                     PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
                                     PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
                                     GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")),
+                                    FilterResolution = filterResolution,
                                     FilterThreshold = filterPercent)
     }
   } else {
@@ -202,6 +207,7 @@ for (t in seq_along(predictorRasterList)) {
                                   PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
                                   PredictedFiltered = "",
                                   GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")),
+                                  FilterResolution = "",
                                   FilterThreshold = "")
   }
 
@@ -281,6 +287,12 @@ if (length(timesteps) > 1) {
     drop_na(ConfusionSD)
 }
 
+# add variable importance to output datasheet
+ggsave(filename = file.path(paste0(transferDir, "/VariableImportance.png")),
+       variableImportancePlot)
+
+ImageOutputDataframe <- data.frame(VariableImportance = file.path(paste0(transferDir, "/VariableImportance.png")))
+
 # add filtering values to output datasheet
 filteringOutputDataframe <- data.frame(filterResolutionOutput = filterResolution,
                                        filterThresholdOutput = filterPercent)
@@ -301,6 +313,10 @@ saveDatasheet(myScenario,
 saveDatasheet(myScenario,
               data = filteringOutputDataframe,
               name = "imageclassifier_FilterStatistics")
+
+saveDatasheet(myScenario,
+              data = ImageOutputDataframe,
+              name = "imageclassifier_ModelOutput")
 
 # add variable importance plot to output
 # add probability raster to the output

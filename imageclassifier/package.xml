@@ -33,6 +33,7 @@
         <column name="PredictedUnfiltered" dataType="String" displayName="Predicted" isExternalFile="True" isRaster="True"/>
         <column name="PredictedFiltered" dataType="String" displayName="Predicted filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="GroundTruth" dataType="String" displayName="Ground truth" isExternalFile="True" isRaster="True"/>
+        <column name="FilterResolution" dataType="Double" displayName="Filter Resolution"/>
         <column name="FilterThreshold" dataType="Double" displayName="Filter Threshold"/>
         <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True"/>
     </dataSheet>
@@ -55,6 +56,11 @@
         <column name="filterThresholdOutput" dataType="Double" displayName="Filter Threshold"/>
     </dataSheet>
 
+    <dataSheet name="ModelOutput" displayName="Model Output">
+	    <column name="VariableImportance" dataType="String" isExternalFile="True" isImage="True"/>
+    </dataSheet>
+
+
     <!--Main transformer-->
     <transformer name="Main" displayName="Image classifier" programName="Rscript" programArguments="model.R">
         <dataSheet name="RunControl" type="Input"/>
@@ -66,6 +72,7 @@
         <dataSheet name="ConfusionMatrix" type="Output"/>
         <dataSheet name="ModelStatistics" type="Output"/>
         <dataSheet name="FilterStatistics" type="Output"/>
+        <dataSheet name="ModelOutput" type="Output"/>
     </transformer>
 
     <!--Export transformers-->
@@ -75,6 +82,7 @@
     <transformer name="PredictedUnfilteredExport" dataSheet="RasterOutput" column="PredictedUnfiltered" isRasterExport="True"/>
     <transformer name="PredictedFilteredExport" dataSheet="RasterOutput" column="PredictedFiltered" isRasterExport="True"/>
     <transformer name="GroundTruthExport" dataSheet="RasterOutput" column="GroundTruth" isRasterExport="True"/>
+    <transformer name="ModelOutputExport" dataSheet="ModelOutput" column="VariableImportance" isExport="True"/>
 
     <!--Scenario Layout-->
     <layout type="Scenario">
@@ -106,12 +114,15 @@
         <item name="RasterMap3" displayName="Ground Truth" dataSheet="RasterOutput" column="GroundTruth"/>
     </layout>
 
+    <!--Image Layout-->
+    <layout type="Image">	
+        <item name="VariableImportancePlot" displayName="Variable Importance" dataSheet="ModelOutput" column="VariableImportance"/>		
+    </layout>
+
     <!--Export Layout-->
     <layout type="Export">
         <item name="ConfusionMatrixExport" displayName="Confusion Matrix"/>
-
         <item name="ModelStatisticsExport" displayName="Model Statistics"/>
-
         <item name="FilterStatisticsExport" displayName="Filtering"/>
 
         <group name="MapExport" displayName="Map Outputs">
@@ -119,7 +130,9 @@
             <item name="PredictedFilteredExport" displayName="Filtered Prediction"/>
             <item name="GroundTruthExport" displayName="Ground Truth"/>
         </group>
-
+        <group name="ImageExport" displayName="Image Outputs">
+            <item name="ModelOutputExport" displayName="Variable Importance"/>
+        </group>
     </layout>
 
 </package>
