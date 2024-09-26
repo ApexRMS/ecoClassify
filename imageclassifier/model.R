@@ -24,13 +24,6 @@ Nobs <- modelInputDataframe$Nobs
 filterResolution <- modelInputDataframe$filterResolution
 filterPercent <- modelInputDataframe$filterPercent
 ApplyFiltering <- modelInputDataframe$ApplyFiltering
-OptimizeFiltering <- modelInputDataframe$OptimizeFiltering
-
-# assign default filter resolution = 5 if left blank
-if (is.na(filterResolution) && ApplyFiltering == TRUE && OptimizeFiltering == FALSE) {
-  filterResolution <- 5
-  filterPercent <- 0.25
-}
 
 # Load raster input datasheets
 rasterTrainingDataframe <- datasheet(myScenario,
@@ -56,9 +49,7 @@ rasterOutputDataframe <- data.frame(Iteration = numeric(0),
                                     Timestep = numeric(0),
                                     PredictedUnfiltered = character(0),
                                     PredictedFiltered = character(0),
-                                    GroundTruth = character(0),
-                                    FilterResolution = numeric(0),
-                                    FilterThreshold = numeric(0))
+                                    GroundTruth = character(0))
 
 confusionOutputDataframe <- data.frame(Timestep = numeric(0),
                                        Prediction = numeric(0),
@@ -108,22 +99,23 @@ mainModel <- formula(sprintf("%s ~ %s",
 rf1 <-  ranger(mainModel,
                data = allTrainData,
                mtry = 2,
+               # probability = TRUE,
                importance = "impurity")
 
 # extract variable importance and plot -----------------------------------------
 variableImportance <- melt(rf1$variable.importance) %>%
-  rownames_to_column("variable")
+  tibble::rownames_to_column("variable")
 
 variableImportancePlot <- ggplot(variableImportance, aes(x = reorder(variable, value),
                                                          y = value,
                                                          fill = value)) +
-  geom_bar(stat = "identity", position = "dodge") +
+  geom_bar(stat = "identity", width = 0.8) +
   coord_flip() +
   ylab("Variable Importance") +
   xlab("Variable") +
   ggtitle("Information Value Summary") +
-  theme_classic() +
-  scale_fill_gradientn(colours = c("#3f4885"), guide = "none")
+  theme_classic(base_size = 26) +
+  scale_fill_gradientn(colours = c("#232430"), guide = "none")
 
 ## Predict for each timestep group ---------------------------------------------
 for (t in seq_along(predictorRasterList)) {
@@ -137,78 +129,32 @@ for (t in seq_along(predictorRasterList)) {
 
   if (ApplyFiltering == TRUE) {
 
-    if (OptimizeFiltering == TRUE) {
+    # filter out presence pixels surrounded by non-presence
+    filteredPredictedPresence <- focal(PredictedPresence,
+                                       w = matrix(1, 5, 5),
+                                       fun = filterFun,
+                                       resolution = filterResolution,
+                                       percent = filterPercent)
 
-      # optimize the filtering threshold
-      # optimizedParams <- optim(par = c(5, 0.25),
-      #                          fn = filterFit,
-      #                          PredictedPresence = PredictedPresence,
-      #                          groundTruthRaster = groundTruthRasterList[[t]],
-      #                          lower = c(0.1, 0.01),
-      #                          upper = c(10, 1),
-      #                          method = "L-BFGS-B",
-      #                          control = list(fnscale = -1))
+    # save raster
+    writeRaster(filteredPredictedPresence,
+                filename = file.path(paste0(transferDir,
+                                            "/filteredPredictedPresence",
+                                            t,
+                                            ".tif")),
+                overwrite = TRUE)
 
-      optimizedParams <- optim(par = c(5, 0.25),
-                               fn = filterFit,
-                               PredictedPresence = PredictedPresence,
-                               groundTruthRaster = groundTruthRasterList[[t]],
-                               control = list(fnscale = -1))
-
-      filteredPredictedPresence <- focal(PredictedPresence,
-                                         w = matrix(1, 5, 5),
-                                         fun = filterFun,
-                                         resolution = optimizedParams$par[1],
-                                         percent = optimizedParams$par[2])
-
-      # save raster
-      writeRaster(filteredPredictedPresence,
-                  filename = file.path(paste0(transferDir,
-                                              "/filteredPredictedPresence",
-                                              t,
-                                              ".tif")),
-                  overwrite = TRUE)
-
-      rasterDataframe <- data.frame(Iteration = 1,
-                                    Timestep = t,
-                                    PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
-                                    PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
-                                    GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")),
-                                    FilterResolution = optimizedParams$par[1],
-                                    FilterThreshold = optimizedParams$par[2])
-
-    } else {
-      # filter out presence pixels surrounded by non-presence
-      filteredPredictedPresence <- focal(PredictedPresence,
-                                         w = matrix(1, 5, 5),
-                                         fun = filterFun,
-                                         resolution = filterResolution,
-                                         percent = filterPercent)
-
-      # save raster
-      writeRaster(filteredPredictedPresence,
-                  filename = file.path(paste0(transferDir,
-                                              "/filteredPredictedPresence",
-                                              t,
-                                              ".tif")),
-                  overwrite = TRUE)
-
-      rasterDataframe <- data.frame(Iteration = 1,
-                                    Timestep = t,
-                                    PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
-                                    PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
-                                    GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")),
-                                    FilterResolution = filterResolution,
-                                    FilterThreshold = filterPercent)
-    }
+    rasterDataframe <- data.frame(Iteration = 1,
+                                  Timestep = t,
+                                  PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
+                                  PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
+                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")))
   } else {
     rasterDataframe <- data.frame(Iteration = 1,
                                   Timestep = t,
                                   PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
                                   PredictedFiltered = "",
-                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")),
-                                  FilterResolution = "",
-                                  FilterThreshold = "")
+                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")))
   }
 
   # define GroundTruth (binary) raster output
@@ -318,5 +264,4 @@ saveDatasheet(myScenario,
               data = ImageOutputDataframe,
               name = "imageclassifier_ModelOutput")
 
-# add variable importance plot to output
 # add probability raster to the output

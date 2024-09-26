@@ -23,7 +23,6 @@
     <dataSheet name="ModelInput" displayName="Classifier options" isSingleRow="True">
         <column name="Nobs" dataType="Integer" displayName="Sample size"/>
         <column name="ApplyFiltering" dataType="Boolean" displayName="Apply filtering"/>
-        <column name="OptimizeFiltering" dataType="Boolean" displayName="Optimize filtering"/>
         <column name="filterResolution" dataType="Double" displayName="Filter resolution (optional)"/>
         <column name="filterPercent" dataType="Double" displayName="Filter threshold (optional)"/>
     </dataSheet>
@@ -33,8 +32,6 @@
         <column name="PredictedUnfiltered" dataType="String" displayName="Predicted" isExternalFile="True" isRaster="True"/>
         <column name="PredictedFiltered" dataType="String" displayName="Predicted filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="GroundTruth" dataType="String" displayName="Ground truth" isExternalFile="True" isRaster="True"/>
-        <column name="FilterResolution" dataType="Double" displayName="Filter Resolution"/>
-        <column name="FilterThreshold" dataType="Double" displayName="Filter Threshold"/>
         <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True"/>
     </dataSheet>
 
@@ -59,7 +56,6 @@
     <dataSheet name="ModelOutput" displayName="Model Output">
 	    <column name="VariableImportance" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
-
 
     <!--Main transformer-->
     <transformer name="Main" displayName="Image classifier" programName="Rscript" programArguments="model.R">
@@ -90,10 +86,10 @@
         <item name="RunControl"/>
 
         <group name="AllInputs" displayName="Input">
+            <item name="ModelInput"/>
             <item name="TrainingData"/>
             <item name="GroundTruthData"/>
             <item name="TestingData"/>
-            <item name="ModelInput"/>
         </group>
 
         <group name="AllOutputs" displayName="Output">

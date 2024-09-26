@@ -59,18 +59,42 @@ decomposedRaster <- function(predRast,
 }
 
 predictRanger <- function(raster, model) {
-  ## generate blank raster
-  predictionRaster <- raster[[1]]
-  names(predictionRaster) <- "presence"
+    ## generate blank raster
+    predictionRaster <- raster[[1]]
+    names(predictionRaster) <- "wetland"
 
-  ## predict over raster decomposition
-  rasterMatrix <- data.frame(raster)
-  rasterMatrix <- na.omit(rasterMatrix)
-  predictedValues <- data.frame(predict(model, rasterMatrix))[, 1]
-  values(predictionRaster) <- predictedValues
-
+    ## predict over raster decomposition
+    rasterMatrix <- data.frame(raster)
+    rasterMatrix <- na.omit(rasterMatrix)
+    predictedValues <- data.frame(predict(model, rasterMatrix))[, 1]
+    values(predictionRaster) <- predictedValues
+ 
   return(predictionRaster)
 }
+
+# predictRanger <- function(raster, model) {
+#   ## generate blank raster
+#   predictionRaster <- raster[[1]]
+#   probabilityRaster <- raster[[1]]
+#   names(predictionRaster) <- "presence"
+
+#   ## predict over raster decomposition
+#   rasterMatrix <- data.frame(raster)
+#   rasterMatrix <- na.omit(rasterMatrix)
+
+#   predictedOutput <- predict(model, rasterMatrix)
+
+#   predictedValues <- data.frame(predictedOutput)[, 1]
+#   values(predictionRaster) <- predictedValues
+
+#   # extract probability values
+#   probabilities <- predictedOutput$predictions
+#   values(probabilityRaster) <- probabilities
+
+#   rfOutput <- list(predictionRaster, probabilities)
+
+#   return(rfOutput)
+# }
 
 filterFun <- function(raster, resolution, percent) {
   npixels <- resolution^2

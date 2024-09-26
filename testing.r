@@ -31,7 +31,6 @@ Nobs <- modelInputDataframe$Nobs
 filterResolution <- modelInputDataframe$filterResolution
 filterPercent <- modelInputDataframe$filterPercent
 ApplyFiltering <- TRUE
-OptimizeFiltering <- TRUE
 
 rasterTrainingDataframe <- data.frame(Timesteps = seq(1, 10),
                                       PredictorRasterFile = c("C:/Users/HannahAdams/Documents/Projects/Image classifier/A300 Western University - 2023 Snowpack/SyncroSim Library Data/train/Landsat_Predictor_1.tif",
@@ -81,6 +80,7 @@ rasterOutputDataframe <- data.frame(Iteration = numeric(0),
                                     PredictedUnfiltered = character(0),
                                     PredictedFiltered = character(0),
                                     GroundTruth = character(0),
+                                    FilterResolution = numeric(0),
                                     FilterThreshold = numeric(0))
 
 confusionOutputDataframe <- data.frame(Timestep = numeric(0),
@@ -108,7 +108,7 @@ for (i in seq_along(predictorRasterList)) {
 
   modelDataSampled <- modelData %>%
     mutate(presence = as.factor(response)) %>%
-    select(-ID, -response) %>%
+    dplyr::select(-ID, -response) %>%
     mutate(kfold = sample(1:10, nrow(.), replace = TRUE)) %>%
     drop_na()
 
@@ -151,7 +151,6 @@ variableImportancePlot <- ggplot(variableImportance, aes(x = reorder(variable, v
   scale_fill_gradientn(colours = c("#3f4885"), guide = "none")
 
 ## Predict for each timestep group ---------------------------------------------
-# EVENTUALLY REPLACE WITH TESTING DATA
 for (t in seq_along(predictorRasterList)) {
 
   # predict presence for each raster
@@ -163,25 +162,23 @@ for (t in seq_along(predictorRasterList)) {
 
   if (ApplyFiltering == TRUE) {
 
-    if (optimizeFiltering == TRUE) {
+    if (OptimizeFiltering == TRUE) {
 
       # optimize the filtering threshold
+      # optimizedParams <- optim(par = c(5, 0.25),
+      #                          fn = filterFit,
+      #                          PredictedPresence = PredictedPresence,
+      #                          groundTruthRaster = groundTruthRasterList[[t]],
+      #                          lower = c(0.1, 0.01),
+      #                          upper = c(10, 1),
+      #                          method = "L-BFGS-B",
+      #                          control = list(fnscale = -1))
+
       optimizedParams <- optim(par = c(5, 0.25),
                                fn = filterFit,
                                PredictedPresence = PredictedPresence,
                                groundTruthRaster = groundTruthRasterList[[t]],
-                               lower = c(0, 0),
-                               upper = c(10, 1),
-                               method = "L-BFGS-B",
                                control = list(fnscale = -1))
-
-      # optimizedThreshold <- optimize(filterFit,
-      #                                c(0, 1),
-      #                                tol = 0.001,
-      #                                maximum = TRUE,
-      #                                filterResolution = 5,
-      #                                PredictedPresence =  PredictedPresence,
-      #                                groundTruthRaster = groundTruthRasterList[[t]])
 
       filteredPredictedPresence <- focal(PredictedPresence,
                                          w = matrix(1, 5, 5),
@@ -202,7 +199,8 @@ for (t in seq_along(predictorRasterList)) {
                                     PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
                                     PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
                                     GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")),
-                                    FilterThreshold = optimizedThreshold$maximum)
+                                    FilterResolution = optimizedParams$par[1],
+                                    FilterThreshold = optimizedParams$par[2])
 
     } else {
       # filter out presence pixels surrounded by non-presence
@@ -225,6 +223,7 @@ for (t in seq_along(predictorRasterList)) {
                                     PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
                                     PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
                                     GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")),
+                                    FilterResolution = filterResolution,
                                     FilterThreshold = filterPercent)
     }
   } else {
@@ -233,6 +232,7 @@ for (t in seq_along(predictorRasterList)) {
                                   PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
                                   PredictedFiltered = "",
                                   GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")),
+                                  FilterResolution = "",
                                   FilterThreshold = "")
   }
 
@@ -284,7 +284,6 @@ for (t in seq_along(predictorRasterList)) {
   modelOutputDataframe <- addRow(modelOutputDataframe,
                                  model_stats)
 }
-
 # calculate mean values for model statistics -----------------------------------
 if (length(timesteps) > 1) {
 
@@ -328,3 +327,8 @@ saveDatasheet(myScenario,
 # add filter threshold to output (make a separate non-RF stats output)
 # add variable importance plot to output
 # add probability raster to the output
+
+# removed from ModelInput in xml file
+# <column name="OptimizeFiltering" dataType="Boolean" displayName="Optimize filtering"/>
+
+# removed from model outputs datasheet
