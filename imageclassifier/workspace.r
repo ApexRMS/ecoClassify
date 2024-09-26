@@ -68,7 +68,7 @@ predictRanger <- function(raster, model) {
     rasterMatrix <- na.omit(rasterMatrix)
     predictedValues <- data.frame(predict(model, rasterMatrix))[, 1]
     values(predictionRaster) <- predictedValues
- 
+
   return(predictionRaster)
 }
 

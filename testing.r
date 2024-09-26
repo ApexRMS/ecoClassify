@@ -131,11 +131,17 @@ mainModel <- formula(sprintf("%s ~ %s",
 rf1 <-  ranger(mainModel,
                data = allTrainData,
                mtry = 2,
+               probability = TRUE,
                importance = "impurity")
 
+# extract random forest output
+rf1$prediction.error
+rf1$num.trees
+rf1$num.independent.variables
+rf1$mtry
+rf1$treetype
+
 # extract variable importance and plot -----------------------------------------
-# STILL NEED TO ADD PLOT TO OUTPUT (LOOK INTO GGPLOT OUTPUTS)
-# SHOW AS AN IMAGE?
 variableImportance <- melt(rf1$variable.importance) %>%
   rownames_to_column("variable")
 
@@ -156,6 +162,26 @@ for (t in seq_along(predictorRasterList)) {
   # predict presence for each raster
   PredictedPresence <- predictRanger(predictorRasterList[[t]],
                                      rf1)
+  # --------------------------------------------------------------
+  predictionRaster <- raster[[1]]
+  probabilityRaster <- raster[[1]]
+  names(predictionRaster) <- "presence"
+
+  ## predict over raster decomposition
+  rasterMatrix <- data.frame(raster)
+  rasterMatrix <- na.omit(rasterMatrix)
+
+  predictedOutput <- predict(rf1, rasterMatrix)
+
+  predictedValues <- data.frame(predictedOutput)[, 1]
+  values(predictionRaster) <- predictedValues
+
+  # extract probability values
+  probabilities <- predictedOutput$predictions
+  values(probabilityRaster) <- probabilities
+
+  rfOutput <- list(predictionRaster, probabilities)
+  # --------------------------------------------------------------
 
   # assign values
   values(PredictedPresence) <- ifelse(values(PredictedPresence) == 2, 1, 0)

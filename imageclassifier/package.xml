@@ -15,13 +15,13 @@
         <column name="GroundTruthRasterFile" dataType="String" displayName="Ground truth raster" isExternalFile="True"/>
     </dataSheet>
 
-    <dataSheet name="TestingData" displayName="Testing Rasters">
+    <dataSheet name="DataToClassify" displayName="Rasters to Classify">
         <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
-        <column name="TestingRasterFile" dataType="String" displayName="Testing raster" isExternalFile="True"/>
+        <column name="RasterFileToClassify" dataType="String" displayName="Raster to Classfiy" isExternalFile="True"/>
     </dataSheet>
 
     <dataSheet name="ModelInput" displayName="Classifier options" isSingleRow="True">
-        <column name="Nobs" dataType="Integer" displayName="Sample size"/>
+        <column name="nObs" dataType="Integer" displayName="Sample size"/>
         <column name="ApplyFiltering" dataType="Boolean" displayName="Apply filtering"/>
         <column name="filterResolution" dataType="Double" displayName="Filter resolution (optional)"/>
         <column name="filterPercent" dataType="Double" displayName="Filter threshold (optional)"/>
@@ -39,13 +39,11 @@
         <column name="Prediction" dataType="Integer" displayName="Prediction"/>
         <column name="Reference" dataType="Integer" displayName="Reference"/>
         <column name="Frequency" dataType="Double" displayName="Frequency"/>
-        <column name="ConfusionSD" dataType="Double" displayName="Standard Deviation"/>
     </dataSheet>
 
     <dataSheet name="ModelStatistics" displayName="Statistics">
         <column name="Statistic" dataType="String" displayName="Statistic"/>
         <column name="Value" dataType="Double" displayName="Value"/>
-        <column name="ModelSD" dataType="Double" displayName="Standard Deviation"/>
     </dataSheet>
 
     <dataSheet name="FilterStatistics" displayName="Filtering">
@@ -62,7 +60,7 @@
         <dataSheet name="RunControl" type="Input"/>
         <dataSheet name="TrainingData" type="Input"/>
         <dataSheet name="GroundTruthData" type="Input"/>
-        <dataSheet name="TestingData" type="Input"/>
+        <dataSheet name="DataToClassify" type="Input"/>
         <dataSheet name="ModelInput" type="Input"/>
         <dataSheet name="RasterOutput" type="Output"/>
         <dataSheet name="ConfusionMatrix" type="Output"/>
@@ -89,7 +87,7 @@
             <item name="ModelInput"/>
             <item name="TrainingData"/>
             <item name="GroundTruthData"/>
-            <item name="TestingData"/>
+            <item name="DataToClassify"/>
         </group>
 
         <group name="AllOutputs" displayName="Output">

@@ -20,7 +20,7 @@ modelInputDataframe <- datasheet(myScenario,
                                  name = "imageclassifier_ModelInput")
 
 # assign nob value from model input datasheet
-Nobs <- modelInputDataframe$Nobs
+nObs <- modelInputDataframe$nObs
 filterResolution <- modelInputDataframe$filterResolution
 filterPercent <- modelInputDataframe$filterPercent
 ApplyFiltering <- modelInputDataframe$ApplyFiltering
@@ -32,16 +32,16 @@ rasterTrainingDataframe <- datasheet(myScenario,
 rasterGroundTruthDataframe <- datasheet(myScenario,
                                         name = "imageclassifier_GroundTruthData")
 
-rasterTestingDataframe <- datasheet(myScenario,
-                                    name = "imageclassifier_TestingData")
+rasterToClassifyDataframe <- datasheet(myScenario,
+                                       name = "imageclassifier_DataToClassify")
 
 # extract list of predictor, testing, and ground truth rasters
 predictorRasterList <- extractRasters(rasterTrainingDataframe)
 
 groundTruthRasterList <- extractRasters(rasterGroundTruthDataframe)
 
-if (length(rasterTestingDataframe$TestingRasterFile) > 1) {
-  testingRasterList <- extractRasters(rasterTestingDataframe)
+if (length(rasterToClassifyDataframe$RasterFileToClassify) > 1) {
+  toClassifyRasterList <- extractRasters(rasterToClassifyDataframe)
 }
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
@@ -51,16 +51,13 @@ rasterOutputDataframe <- data.frame(Iteration = numeric(0),
                                     PredictedFiltered = character(0),
                                     GroundTruth = character(0))
 
-confusionOutputDataframe <- data.frame(Timestep = numeric(0),
-                                       Prediction = numeric(0),
+confusionOutputDataframe <- data.frame(Prediction = numeric(0),
                                        Reference = numeric(0),
-                                       Frequency = numeric(0),
-                                       ConfusionSD = numeric(0))
+                                       Frequency = numeric(0))
 
 modelOutputDataframe <- data.frame(Timestep = numeric(0),
                                    Statistic = character(0),
-                                   Value = numeric(0),
-                                   ModelSD = numeric(0))
+                                   Value = numeric(0))
 
 # create empty lists for binding data
 allTrainData <- c()
@@ -72,7 +69,7 @@ for (i in seq_along(predictorRasterList)) {
   ## Decompose satellite image raster
   modelData <- decomposedRaster(predictorRasterList[[i]],
                                 groundTruthRasterList[[i]],
-                                nobs = Nobs)
+                                nobs = nObs)
 
   modelDataSampled <- modelData %>%
     mutate(presence = as.factor(response)) %>%
@@ -115,7 +112,7 @@ variableImportancePlot <- ggplot(variableImportance, aes(x = reorder(variable, v
   xlab("Variable") +
   ggtitle("Information Value Summary") +
   theme_classic(base_size = 26) +
-  scale_fill_gradientn(colours = c("#232430"), guide = "none")
+  scale_fill_gradientn(colours = c("#424352"), guide = "none")
 
 ## Predict for each timestep group ---------------------------------------------
 for (t in seq_along(predictorRasterList)) {
@@ -160,25 +157,6 @@ for (t in seq_along(predictorRasterList)) {
   # define GroundTruth (binary) raster output
   groundTruth <- groundTruthRasterList[[t]]
 
-  # calculate statistics using the test data
-  prediction <- predict(rf1, allTestData)
-  confusionMatrix <- confusionMatrix(data.frame(prediction)[, 1], allTestData$presence)
-
-  # reformat and add to output datasheets
-  confusion_matrix <- data.frame(confusionMatrix$table) %>%
-    rename("Frequency" = "Freq") %>%
-    mutate(Timestep = t)
-
-  overall_stats <- data.frame(confusionMatrix$overall) %>%
-    rename(Value = 1) %>%
-    drop_na(Value)
-  class_stats <- data.frame(confusionMatrix$byClass) %>%
-    rename(Value = 1) %>%
-    drop_na(Value)
-  model_stats <- rbind(overall_stats, class_stats) %>%
-    tibble::rownames_to_column("Statistic") %>%
-    mutate(Timestep = t)
-
   # save raster
   writeRaster(PredictedPresence,
               filename = file.path(paste0(transferDir,
@@ -197,43 +175,33 @@ for (t in seq_along(predictorRasterList)) {
   # Store the relevant outputs from both rasters in a temporary dataframe
   rasterOutputDataframe <- addRow(rasterOutputDataframe,
                                   rasterDataframe)
-
-  # now what to do with the confusion matrix outputs? Average from all of them?
-  confusionOutputDataframe <- addRow(confusionOutputDataframe,
-                                     confusion_matrix)
-
-  modelOutputDataframe <- addRow(modelOutputDataframe,
-                                 model_stats)
 }
 
 # calculate mean values for model statistics -----------------------------------
-if (length(timesteps) > 1) {
+prediction <- predict(rf1, allTestData)
+confusionMatrix <- confusionMatrix(data.frame(prediction)[, 1], allTestData$presence)
 
-  modelOutputDataframe <- modelOutputDataframe %>%
-    select(-Timestep) %>%
-    group_by(Statistic) %>%
-    summarise(mean = mean(Value),
-              sd = sd(Value)) %>%
-    ungroup() %>%
-    select(Statistic,
-           mean,
-           sd) %>%
-    rename(Value = mean,
-           ModelSD = sd) %>%
-    drop_na(ModelSD)
+# reformat and add to output datasheets
+confusion_matrix <- data.frame(confusionMatrix$table) %>%
+  rename("Frequency" = "Freq")
 
-  confusionOutputDataframe <- confusionOutputDataframe %>%
-    select(-Timestep) %>%
-    group_by(Prediction, Reference) %>%
-    summarise(mean = mean(Frequency),
-              sd = sd(Frequency)) %>%
-    ungroup() %>%
-    rename(Frequency = mean,
-           ConfusionSD = sd) %>%
-    drop_na(ConfusionSD)
-}
+overall_stats <- data.frame(confusionMatrix$overall) %>%
+  rename(Value = 1) %>%
+  drop_na(Value)
+class_stats <- data.frame(confusionMatrix$byClass) %>%
+  rename(Value = 1) %>%
+  drop_na(Value)
+model_stats <- rbind(overall_stats, class_stats) %>%
+  tibble::rownames_to_column("Statistic")
 
-# add variable importance to output datasheet
+# now what to do with the confusion matrix outputs? Average from all of them?
+confusionOutputDataframe <- addRow(confusionOutputDataframe,
+                                   confusion_matrix)
+
+modelOutputDataframe <- addRow(modelOutputDataframe,
+                               model_stats)
+
+# add variable importance to output datasheet ---------------------------------
 ggsave(filename = file.path(paste0(transferDir, "/VariableImportance.png")),
        variableImportancePlot)
 
@@ -264,4 +232,4 @@ saveDatasheet(myScenario,
               data = ImageOutputDataframe,
               name = "imageclassifier_ModelOutput")
 
-# add probability raster to the output
+# add probability raster to output
