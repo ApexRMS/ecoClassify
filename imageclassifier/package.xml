@@ -1,26 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
-<package name="imageclassifier" displayName="Image Classifier" description="Image classifier using semantic image segmentation" version="1.0.0" url="https://apexrms.github.io/imageclassifier/">
+<package name="imageclassifier" displayName="Image Classifier" description="Image classifier using semantic image segmentation" version="1.0.2" url="https://apexrms.github.io/imageclassifier/">
        
     <!--Model Inputs-->
     <dataSheet name="RunControl" displayName="Run Control" isRunControl="True" timestepTitle="Timestep" showMinIteration="False">
 	</dataSheet>
-
-    <dataSheet name="RasterInput" displayName="Training/Testing Data">
+        
+    <dataSheet name="TrainingData" displayName="Training Rasters">
         <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
-        <column name="PredictorRasterFile" dataType="String" displayName="Predictor raster" isExternalFile="True"/>
-        <column name="ResponseRasterFile" dataType="String" displayName="Response raster" isExternalFile="True"/>
+        <column name="PredictorRasterFile" dataType="String" displayName="Training raster" isExternalFile="True"/>
+    </dataSheet>
+
+    <dataSheet name="GroundTruthData" displayName="Ground Truth Rasters">
+        <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
+        <column name="GroundTruthRasterFile" dataType="String" displayName="Ground truth raster" isExternalFile="True"/>
+    </dataSheet>
+
+    <dataSheet name="DataToClassify" displayName="Rasters to Classify">
+        <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
+        <column name="RasterFileToClassify" dataType="String" displayName="Raster to Classfiy" isExternalFile="True"/>
     </dataSheet>
 
     <dataSheet name="ModelInput" displayName="Classifier options" isSingleRow="True">
-        <column name="Nobs" dataType="Integer" displayName="Sample size"/>
-        <column name="filterResolution" dataType="Double" displayName="Filter resolution"/>
-        <column name="filterPercent" dataType="Double" displayName="Filter threshold"/>
+        <column name="nObs" dataType="Integer" displayName="Sample size"/>
+        <column name="ApplyFiltering" dataType="Boolean" displayName="Apply filtering"/>
+        <column name="filterResolution" dataType="Double" displayName="Filter resolution (optional)"/>
+        <column name="filterPercent" dataType="Double" displayName="Filter threshold (optional)"/>
     </dataSheet>
 
-    <!--Model Outputs-->  
+    <!--Model Outputs-->
     <dataSheet name="RasterOutput" displayName="Rasters" hasTimestep="True" hasIteration="True">
         <column name="PredictedUnfiltered" dataType="String" displayName="Predicted" isExternalFile="True" isRaster="True"/>
         <column name="PredictedFiltered" dataType="String" displayName="Predicted filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
+        <column name="GroundTruth" dataType="String" displayName="Ground truth" isExternalFile="True" isRaster="True"/>
         <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True"/>
     </dataSheet>
 
@@ -28,32 +39,44 @@
         <column name="Prediction" dataType="Integer" displayName="Prediction"/>
         <column name="Reference" dataType="Integer" displayName="Reference"/>
         <column name="Frequency" dataType="Double" displayName="Frequency"/>
-        <column name="ConfusionSD" dataType="Double" displayName="Standard Deviation"/>
     </dataSheet>
 
     <dataSheet name="ModelStatistics" displayName="Statistics">
         <column name="Statistic" dataType="String" displayName="Statistic"/>
         <column name="Value" dataType="Double" displayName="Value"/>
-        <column name="ModelSD" dataType="Double" displayName="Standard Deviation"/>
     </dataSheet>
 
-    <!--Main transformer--> 
+    <dataSheet name="FilterStatistics" displayName="Filtering">
+        <column name="filterResolutionOutput" dataType="Double" displayName="Filter Resolution"/>
+        <column name="filterThresholdOutput" dataType="Double" displayName="Filter Threshold"/>
+    </dataSheet>
+
+    <dataSheet name="ModelOutput" displayName="Model Output">
+	    <column name="VariableImportance" dataType="String" isExternalFile="True" isImage="True"/>
+    </dataSheet>
+
+    <!--Main transformer-->
     <transformer name="Main" displayName="Image classifier" programName="Rscript" programArguments="model.R">
         <dataSheet name="RunControl" type="Input"/>
-        <dataSheet name="RasterInput" type="Input"/>
+        <dataSheet name="TrainingData" type="Input"/>
+        <dataSheet name="GroundTruthData" type="Input"/>
+        <dataSheet name="DataToClassify" type="Input"/>
         <dataSheet name="ModelInput" type="Input"/>
         <dataSheet name="RasterOutput" type="Output"/>
         <dataSheet name="ConfusionMatrix" type="Output"/>
         <dataSheet name="ModelStatistics" type="Output"/>
+        <dataSheet name="FilterStatistics" type="Output"/>
+        <dataSheet name="ModelOutput" type="Output"/>
     </transformer>
 
     <!--Export transformers-->
     <transformer name="ConfusionMatrixExport" dataSheet="ConfusionMatrix" isExport="True"/>
-    
     <transformer name="ModelStatisticsExport" dataSheet="ModelStatistics" isExport="True"/>
-
+    <transformer name="FilterStatisticsExport" dataSheet="FilterStatistics" isExport="True"/>
     <transformer name="PredictedUnfilteredExport" dataSheet="RasterOutput" column="PredictedUnfiltered" isRasterExport="True"/>
     <transformer name="PredictedFilteredExport" dataSheet="RasterOutput" column="PredictedFiltered" isRasterExport="True"/>
+    <transformer name="GroundTruthExport" dataSheet="RasterOutput" column="GroundTruth" isRasterExport="True"/>
+    <transformer name="ModelOutputExport" dataSheet="ModelOutput" column="VariableImportance" isExport="True"/>
 
     <!--Scenario Layout-->
     <layout type="Scenario">
@@ -61,14 +84,17 @@
         <item name="RunControl"/>
 
         <group name="AllInputs" displayName="Input">
-            <item name="RasterInput"/>
             <item name="ModelInput"/>
+            <item name="TrainingData"/>
+            <item name="GroundTruthData"/>
+            <item name="DataToClassify"/>
         </group>
 
         <group name="AllOutputs" displayName="Output">
             <item name="RasterOutput"/>
             <item name="ConfusionMatrix"/>
             <item name="ModelStatistics"/>
+            <item name="FilterStatistics"/>
         </group>
 
     </layout>
@@ -79,19 +105,28 @@
 		    <item name="RasterMap1" displayName="Unfiltered" dataSheet="RasterOutput" column="PredictedUnfiltered"/>
             <item name="RasterMap2" displayName="Filtered" dataSheet="RasterOutput" column="PredictedFiltered"/>
         </group>
+        <item name="RasterMap3" displayName="Ground Truth" dataSheet="RasterOutput" column="GroundTruth"/>
+    </layout>
+
+    <!--Image Layout-->
+    <layout type="Image">	
+        <item name="VariableImportancePlot" displayName="Variable Importance" dataSheet="ModelOutput" column="VariableImportance"/>		
     </layout>
 
     <!--Export Layout-->
     <layout type="Export">
         <item name="ConfusionMatrixExport" displayName="Confusion Matrix"/>
-
         <item name="ModelStatisticsExport" displayName="Model Statistics"/>
+        <item name="FilterStatisticsExport" displayName="Filtering"/>
 
         <group name="MapExport" displayName="Map Outputs">
             <item name="PredictedUnfilteredExport" displayName="Unfiltered Prediction"/>
             <item name="PredictedFilteredExport" displayName="Filtered Prediction"/>
+            <item name="GroundTruthExport" displayName="Ground Truth"/>
         </group>
-
+        <group name="ImageExport" displayName="Image Outputs">
+            <item name="ModelOutputExport" displayName="Variable Importance"/>
+        </group>
     </layout>
 
 </package>
