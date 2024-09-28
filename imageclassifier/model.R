@@ -19,11 +19,11 @@ timesteps <- seq(runSettings$MinimumTimestep, runSettings$MaximumTimestep)
 modelInputDataframe <- datasheet(myScenario,
                                  name = "imageclassifier_ModelInput")
 
-# assign nob value from model input datasheet
+# Extract model input values from model input datasheet
 nObs <- modelInputDataframe$nObs
 filterResolution <- modelInputDataframe$filterResolution
 filterPercent <- modelInputDataframe$filterPercent
-ApplyFiltering <- modelInputDataframe$ApplyFiltering
+applyFiltering <- modelInputDataframe$applyFiltering
 
 # Load raster input datasheets
 rasterTrainingDataframe <- datasheet(myScenario,
@@ -36,7 +36,7 @@ rasterToClassifyDataframe <- datasheet(myScenario,
                                        name = "imageclassifier_DataToClassify")
 
 # extract list of predictor, testing, and ground truth rasters
-predictorRasterList <- extractRasters(rasterTrainingDataframe)
+trainingRasterList <- extractRasters(rasterTrainingDataframe)
 
 groundTruthRasterList <- extractRasters(rasterGroundTruthDataframe)
 
@@ -49,7 +49,8 @@ rasterOutputDataframe <- data.frame(Iteration = numeric(0),
                                     Timestep = numeric(0),
                                     PredictedUnfiltered = character(0),
                                     PredictedFiltered = character(0),
-                                    GroundTruth = character(0))
+                                    GroundTruth = character(0),
+                                    Probability = character(0))
 
 confusionOutputDataframe <- data.frame(Prediction = numeric(0),
                                        Reference = numeric(0),
@@ -59,15 +60,19 @@ modelOutputDataframe <- data.frame(Timestep = numeric(0),
                                    Statistic = character(0),
                                    Value = numeric(0))
 
+imageOutputDataframe <- data.frame(Iteration = numeric(0),
+                                   Timestep = numeric(0),
+                                   RGBImage = character(0))
+
 # create empty lists for binding data
 allTrainData <- c()
 allTestData <- c()
 
 # For loop through each raster pair
-for (i in seq_along(predictorRasterList)) {
+for (i in seq_along(trainingRasterList)) {
 
   ## Decompose satellite image raster
-  modelData <- decomposedRaster(predictorRasterList[[i]],
+  modelData <- decomposedRaster(trainingRasterList[[i]],
                                 groundTruthRasterList[[i]],
                                 nobs = nObs)
 
@@ -90,13 +95,18 @@ for (i in seq_along(predictorRasterList)) {
 ## Train model
 mainModel <- formula(sprintf("%s ~ %s",
                              "presence",
-                             paste(names(predictorRasterList[[1]]),
+                             paste(names(trainingRasterList[[1]]),
                                    collapse = " + ")))
 
 rf1 <-  ranger(mainModel,
                data = allTrainData,
                mtry = 2,
-               # probability = TRUE,
+               importance = "impurity")
+
+rf2 <-  ranger(mainModel,
+               data = allTrainData,
+               mtry = 2,
+               probability = TRUE,
                importance = "impurity")
 
 # extract variable importance and plot -----------------------------------------
@@ -115,19 +125,23 @@ variableImportancePlot <- ggplot(variableImportance, aes(x = reorder(variable, v
   scale_fill_gradientn(colours = c("#424352"), guide = "none")
 
 ## Predict for each timestep group ---------------------------------------------
-for (t in seq_along(predictorRasterList)) {
+for (t in seq_along(trainingRasterList)) {
+
+  # generate probabilities for each raster
+  probabilityRaster <- 1 - (predictRanger(trainingRasterList[[t]],
+                                          rf2))
 
   # predict presence for each raster
-  PredictedPresence <- predictRanger(predictorRasterList[[t]],
+  predictedPresence <- predictRanger(trainingRasterList[[t]],
                                      rf1)
 
   # assign values
-  values(PredictedPresence) <- ifelse(values(PredictedPresence) == 2, 1, 0)
+  values(predictedPresence) <- ifelse(values(predictedPresence) == 2, 1, 0)
 
-  if (ApplyFiltering == TRUE) {
+  if (applyFiltering == TRUE) {
 
     # filter out presence pixels surrounded by non-presence
-    filteredPredictedPresence <- focal(PredictedPresence,
+    filteredPredictedPresence <- focal(predictedPresence,
                                        w = matrix(1, 5, 5),
                                        fun = filterFun,
                                        resolution = filterResolution,
@@ -145,20 +159,33 @@ for (t in seq_along(predictorRasterList)) {
                                   Timestep = t,
                                   PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
                                   PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
-                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")))
+                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")),
+                                  Probability = file.path(paste0(transferDir, "/Probability", t, ".tif")))
   } else {
     rasterDataframe <- data.frame(Iteration = 1,
                                   Timestep = t,
                                   PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
                                   PredictedFiltered = "",
-                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")))
+                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")),
+                                  Probability = file.path(paste0(transferDir, "/Probability", t, ".tif")))
   }
 
   # define GroundTruth (binary) raster output
   groundTruth <- groundTruthRasterList[[t]]
 
+  # define RGB image
+  # rgbImage <- plotRGB(trainingRasterList[[t]],
+  #                     r = 3,
+  #                     g = 2,
+  #                     b = 1,
+  #                     stretch = "lin")
+
+  rgbDataframe <- data.frame(Iteration = 1,
+                             Timestep = t,
+                             RGBImage = file.path(paste0(transferDir, "/RGBImage", t, ".png")))
+
   # save raster
-  writeRaster(PredictedPresence,
+  writeRaster(predictedPresence,
               filename = file.path(paste0(transferDir,
                                           "/PredictedPresence",
                                           t,
@@ -172,9 +199,57 @@ for (t in seq_along(predictorRasterList)) {
                                           ".tif")),
               overwrite = TRUE)
 
+  writeRaster(probabilityRaster,
+              filename = file.path(paste0(transferDir,
+                                          "/Probability",
+                                          t,
+                                          ".tif")),
+              overwrite = TRUE)
+
+  # save RBG Image
+  # Step 1: Call the pdf command to start the plot
+  # pdf(file = file.path(paste0(transferDir,
+  #                             "/RGBImage",
+  #                             t,
+  #                             ".pdf")),
+  #   width = 4,
+  #   height = 4)
+
+  # # Step 2: Create the plot with R code
+  # plotRGB(trainingRasterList[[t]],
+  #                     r = 3,
+  #                     g = 2,
+  #                     b = 1,
+  #                     stretch = "lin")
+
+  # # Step 3: Run dev.off() to create the file!
+  # dev.off()
+
+  # transferDir <- "C:/Users/HannahAdams/Documents"
+  # ggsave(filename = file.path(paste0(transferDir,
+  #                                    "/RGBImage",
+  #                                    1,
+  #                                    ".png")),
+  #        rgbImage)
+
+  # save image
+  png(file = file.path(paste0(transferDir,
+                              "/RGBImage",
+                              t,
+                              ".png")))
+  plotRGB(trainingRasterList[[t]],
+          r = 3,
+          g = 2,
+          b = 1,
+          stretch = "lin")
+  dev.off()
+
   # Store the relevant outputs from both rasters in a temporary dataframe
   rasterOutputDataframe <- addRow(rasterOutputDataframe,
                                   rasterDataframe)
+
+  imageOutputDataframe <- addRow(imageOutputDataframe,
+                                 rgbDataframe)
 }
 
 # calculate mean values for model statistics -----------------------------------
@@ -205,7 +280,7 @@ modelOutputDataframe <- addRow(modelOutputDataframe,
 ggsave(filename = file.path(paste0(transferDir, "/VariableImportance.png")),
        variableImportancePlot)
 
-ImageOutputDataframe <- data.frame(VariableImportance = file.path(paste0(transferDir, "/VariableImportance.png")))
+varImportanceOutputDataframe <- data.frame(VariableImportance = file.path(paste0(transferDir, "/VariableImportance.png")))
 
 # add filtering values to output datasheet
 filteringOutputDataframe <- data.frame(filterResolutionOutput = filterResolution,
@@ -229,7 +304,12 @@ saveDatasheet(myScenario,
               name = "imageclassifier_FilterStatistics")
 
 saveDatasheet(myScenario,
-              data = ImageOutputDataframe,
+              data = varImportanceOutputDataframe,
               name = "imageclassifier_ModelOutput")
 
-# add probability raster to output
+saveDatasheet(myScenario,
+              data = imageOutputDataframe,
+              name = "imageclassifier_ImageOutput")
+
+# remove excess code
+# troubleshoot timesteps for image outputs

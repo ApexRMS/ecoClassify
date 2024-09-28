@@ -66,7 +66,7 @@ rasterTestingDataframe <- data.frame(Timesteps = numeric(0),
 
 
 # extract list of predictor, testing, and ground truth rasters
-predictorRasterList <- extractRasters(rasterTrainingDataframe)
+trainingRasterList <- extractRasters(rasterTrainingDataframe)
 
 groundTruthRasterList <- extractRasters(rasterGroundTruthDataframe)
 
@@ -131,15 +131,30 @@ mainModel <- formula(sprintf("%s ~ %s",
 rf1 <-  ranger(mainModel,
                data = allTrainData,
                mtry = 2,
+               importance = "impurity")
+
+rf2 <-  ranger(mainModel,
+               data = allTrainData,
+               mtry = 2,
                probability = TRUE,
                importance = "impurity")
 
-# extract random forest output
+# generate probabilities for each raster
+probabilityRaster <- 1- (predictRanger(trainingRasterList[[1]],
+                                       rf2))
+
+testRast <- 1- probabilityRaster
+plot(probabilityRaster)
+
+ # extract random forest output
 rf1$prediction.error
 rf1$num.trees
 rf1$num.independent.variables
 rf1$mtry
 rf1$treetype
+rf1$forest
+rf1$predictions
+
 
 # extract variable importance and plot -----------------------------------------
 variableImportance <- melt(rf1$variable.importance) %>%

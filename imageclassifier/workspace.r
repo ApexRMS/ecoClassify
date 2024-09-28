@@ -11,6 +11,7 @@ library(Dict)
 library(ggplot2)
 library(stats)
 library(imager)
+library(terrainr)
 
 # define functions ------------------------------------------------
 
@@ -61,7 +62,7 @@ decomposedRaster <- function(predRast,
 predictRanger <- function(raster, model) {
     ## generate blank raster
     predictionRaster <- raster[[1]]
-    names(predictionRaster) <- "wetland"
+    names(predictionRaster) <- "present"
 
     ## predict over raster decomposition
     rasterMatrix <- data.frame(raster)
