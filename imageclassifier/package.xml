@@ -56,7 +56,7 @@
 	    <column name="VariableImportance" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
 
-    <dataSheet name="ImageOutput" displayName="RGB Images">
+    <dataSheet name="ImageOutput" displayName="RGB Images" hasTimestep="True" hasIteration="True">
 	    <column name="RGBImage" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
 
