@@ -7,7 +7,7 @@
         
     <dataSheet name="TrainingData" displayName="Training Rasters">
         <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
-        <column name="PredictorRasterFile" dataType="String" displayName="Training raster" isExternalFile="True"/>
+        <column name="TrainingRasterFile" dataType="String" displayName="Training raster" isExternalFile="True"/>
     </dataSheet>
 
     <dataSheet name="GroundTruthData" displayName="Ground Truth Rasters">
@@ -56,7 +56,7 @@
 	    <column name="VariableImportance" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
 
-    <dataSheet name="ImageOutput" displayName="RGB Images" hasTimestep="True" hasIteration="True">
+    <dataSheet name="RgbOutput" displayName="RGB Images" hasTimestep="True" hasIteration="True">
 	    <column name="RGBImage" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
 
@@ -72,7 +72,7 @@
         <dataSheet name="ModelStatistics" type="Output"/>
         <dataSheet name="FilterStatistics" type="Output"/>
         <dataSheet name="ModelOutput" type="Output"/>
-        <dataSheet name="ImageOutput" type="Output"/>
+        <dataSheet name="RgbOutput" type="Output"/>
     </transformer>
 
     <!--Export transformers-->
@@ -118,7 +118,7 @@
     <!--Image Layout-->
     <layout type="Image">	
         <item name="VariableImportancePlot" displayName="Variable Importance" dataSheet="ModelOutput" column="VariableImportance"/>
-        <item name="RGBImagePlots" displayName="RGB Images" dataSheet="ImageOutput" column="RGBImage"/>
+        <item name="RGBImagePlots" displayName="RGB Images" dataSheet="RgbOutput" column="RGBImage"/>
     </layout>
 
     <!--Export Layout-->
