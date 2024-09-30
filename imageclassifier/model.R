@@ -1,29 +1,21 @@
-# set up workspace --------------------------------------------------------
+# set up workspace ---------------------------------------------------------
 packageDir <- (Sys.getenv("ssim_package_directory"))
 source(file.path(packageDir, "workspace.r"))
 
-# Load files --------------------------------------------------------------
+# Set up -------------------------------------------------------------------
 myScenario <- scenario()  # Get the SyncroSim Scenario that is currently running
 
 # Retrieve the transfer directory for storing output rasters
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
-# Load RunControl datasheet to set timesteps
-runSettings <- datasheet(myScenario, name = "imageclassifier_RunControl")
-
-# Set timesteps - can set to different frequencies if desired
-timesteps <- seq(runSettings$MinimumTimestep, runSettings$MaximumTimestep)
-
-# Load input Datasheets
-modelInputDataframe <- datasheet(myScenario,
-                                 name = "imageclassifier_ModelInput")
-
-# assign nob value from model input datasheet
-nObs <- modelInputDataframe$nObs
-filterResolution <- modelInputDataframe$filterResolution
-filterPercent <- modelInputDataframe$filterPercent
-ApplyFiltering <- modelInputDataframe$ApplyFiltering
+# Assign variables ----------------------------------------------------------
+inputVariables <- assignVariables(myScenario)
+timesteps <- inputVariables[[1]]
+nObs <- inputVariables[[2]]
+filterResolution <- inputVariables[[3]]
+filterPercent <- inputVariables[[4]]
+applyFiltering <- inputVariables[[5]]
 
 # Load raster input datasheets
 rasterTrainingDataframe <- datasheet(myScenario,
@@ -35,181 +27,112 @@ rasterGroundTruthDataframe <- datasheet(myScenario,
 rasterToClassifyDataframe <- datasheet(myScenario,
                                        name = "imageclassifier_DataToClassify")
 
-# extract list of predictor, testing, and ground truth rasters
-predictorRasterList <- extractRasters(rasterTrainingDataframe)
+# extract list of training, testing, and ground truth rasters ----------------
+extractedRasters <- extractAllRasters(rasterTrainingDataframe,
+                                      rasterGroundTruthDataframe,
+                                      rasterToClassifyDataframe)
 
-groundTruthRasterList <- extractRasters(rasterGroundTruthDataframe)
-
-if (length(rasterToClassifyDataframe$RasterFileToClassify) > 1) {
-  toClassifyRasterList <- extractRasters(rasterToClassifyDataframe)
-}
+trainingRasterList <- extractedRasters[[1]]
+groundTruthRasterList <- extractedRasters[[2]]
+toClassifyRasterList <- extractedRasters[[3]]
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(Iteration = numeric(0),
                                     Timestep = numeric(0),
                                     PredictedUnfiltered = character(0),
                                     PredictedFiltered = character(0),
-                                    GroundTruth = character(0))
+                                    GroundTruth = character(0),
+                                    Probability = character(0))
 
 confusionOutputDataframe <- data.frame(Prediction = numeric(0),
                                        Reference = numeric(0),
                                        Frequency = numeric(0))
 
-modelOutputDataframe <- data.frame(Timestep = numeric(0),
-                                   Statistic = character(0),
+modelOutputDataframe <- data.frame(Statistic = character(0),
                                    Value = numeric(0))
 
-# create empty lists for binding data
-allTrainData <- c()
-allTestData <- c()
+rgbOutputDataframe <- data.frame(Iteration = numeric(0),
+                                 Timestep = numeric(0),
+                                 RGBImage = character(0))
 
-# For loop through each raster pair
-for (i in seq_along(predictorRasterList)) {
+filterOutputDataframe <- data.frame(filterResolutionOutput = filterResolution,
+                                    filterThresholdOutput = filterPercent)
 
-  ## Decompose satellite image raster
-  modelData <- decomposedRaster(predictorRasterList[[i]],
-                                groundTruthRasterList[[i]],
-                                nobs = nObs)
+# separate training and testing data -------------------------------------------
+splitData <- splitTrainTest(trainingRasterList,
+                            groundTruthRasterList,
+                            nObs)
+allTrainData <- splitData[[1]]
+allTestData <- splitData[[2]]
 
-  modelDataSampled <- modelData %>%
-    mutate(presence = as.factor(response)) %>%
-    select(-ID, -response) %>%
-    mutate(kfold = sample(1:10, nrow(.), replace = TRUE)) %>%
-    drop_na()
-
-  # split into training and testing data
-  train <- modelDataSampled %>% filter(kfold != 1)
-  test <- modelDataSampled %>% filter(kfold == 1)
-
-  # bind to list
-  allTrainData <- rbind(allTrainData, train)
-  allTestData <- rbind(allTestData, test)
-
-}
-
-## Train model
+## Train model -----------------------------------------------------------------
 mainModel <- formula(sprintf("%s ~ %s",
                              "presence",
-                             paste(names(predictorRasterList[[1]]),
+                             paste(names(trainingRasterList[[1]]),
                                    collapse = " + ")))
 
 rf1 <-  ranger(mainModel,
                data = allTrainData,
                mtry = 2,
-               # probability = TRUE,
                importance = "impurity")
 
-# extract variable importance and plot -----------------------------------------
-variableImportance <- melt(rf1$variable.importance) %>%
-  tibble::rownames_to_column("variable")
+rf2 <-  ranger(mainModel,
+               data = allTrainData,
+               mtry = 2,
+               probability = TRUE,
+               importance = "impurity")
 
-variableImportancePlot <- ggplot(variableImportance, aes(x = reorder(variable, value),
-                                                         y = value,
-                                                         fill = value)) +
-  geom_bar(stat = "identity", width = 0.8) +
-  coord_flip() +
-  ylab("Variable Importance") +
-  xlab("Variable") +
-  ggtitle("Information Value Summary") +
-  theme_classic(base_size = 26) +
-  scale_fill_gradientn(colours = c("#424352"), guide = "none")
+# extract variable importance plot ---------------------------------------------
+variableImportanceOutput <- plotVariableImportance(rf1,
+                                                   transferDir)
 
-## Predict for each timestep group ---------------------------------------------
-for (t in seq_along(predictorRasterList)) {
+variableImportancePlot <- variableImportanceOutput[[1]]
+varImportanceOutputDataframe <- variableImportanceOutput[[2]]
 
-  # predict presence for each raster
-  PredictedPresence <- predictRanger(predictorRasterList[[t]],
-                                     rf1)
+## Predict presence for each timestep group ------------------------------------
+for (t in seq_along(trainingRasterList)) {
 
-  # assign values
-  values(PredictedPresence) <- ifelse(values(PredictedPresence) == 2, 1, 0)
-
-  if (ApplyFiltering == TRUE) {
-
-    # filter out presence pixels surrounded by non-presence
-    filteredPredictedPresence <- focal(PredictedPresence,
-                                       w = matrix(1, 5, 5),
-                                       fun = filterFun,
-                                       resolution = filterResolution,
-                                       percent = filterPercent)
-
-    # save raster
-    writeRaster(filteredPredictedPresence,
-                filename = file.path(paste0(transferDir,
-                                            "/filteredPredictedPresence",
+  predictionRasters <- getPredictionRasters(trainingRasterList,
                                             t,
-                                            ".tif")),
-                overwrite = TRUE)
+                                            rf1,
+                                            rf2)
+  predictedPresence <- predictionRasters[[1]]
+  probabilityRaster <- predictionRasters[[2]]
 
-    rasterDataframe <- data.frame(Iteration = 1,
-                                  Timestep = t,
-                                  PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
-                                  PredictedFiltered = file.path(paste0(transferDir, "/filteredPredictedPresence", t, ".tif")),
-                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")))
-  } else {
-    rasterDataframe <- data.frame(Iteration = 1,
-                                  Timestep = t,
-                                  PredictedUnfiltered = file.path(paste0(transferDir, "/PredictedPresence", t, ".tif")),
-                                  PredictedFiltered = "",
-                                  GroundTruth = file.path(paste0(transferDir, "/GroundTruth", t, ".tif")))
-  }
+  # generate rasterDataframe based on filtering argument
+  rasterOutputDataframe <- generateRasterDataframe(applyFiltering,
+                                                   predictedPresence,
+                                                   filterResolution,
+                                                   filterPercent,
+                                                   t,
+                                                   transferDir)
 
-  # define GroundTruth (binary) raster output
+  # define GroundTruth raster
   groundTruth <- groundTruthRasterList[[t]]
 
-  # save raster
-  writeRaster(PredictedPresence,
-              filename = file.path(paste0(transferDir,
-                                          "/PredictedPresence",
-                                          t,
-                                          ".tif")),
-              overwrite = TRUE)
+  # define RGB data frame
+  rgbOutputDataframe <- getRgbDataframe(rgbOutputDataframe,
+                                        t,
+                                        transferDir)
 
-  writeRaster(groundTruth,
-              filename = file.path(paste0(transferDir,
-                                          "/GroundTruth",
-                                          t,
-                                          ".tif")),
-              overwrite = TRUE)
-
-  # Store the relevant outputs from both rasters in a temporary dataframe
-  rasterOutputDataframe <- addRow(rasterOutputDataframe,
-                                  rasterDataframe)
+  # save files
+  saveFiles(predictedPresence,
+            groundTruth,
+            probabilityRaster,
+            trainingRasterList,
+            variableImportancePlot,
+            t,
+            transferDir)
 }
 
 # calculate mean values for model statistics -----------------------------------
-prediction <- predict(rf1, allTestData)
-confusionMatrix <- confusionMatrix(data.frame(prediction)[, 1], allTestData$presence)
+outputDataframes <- calculateStatistics(rf1,
+                                        allTestData,
+                                        confusionOutputDataframe,
+                                        modelOutputDataframe)
 
-# reformat and add to output datasheets
-confusion_matrix <- data.frame(confusionMatrix$table) %>%
-  rename("Frequency" = "Freq")
-
-overall_stats <- data.frame(confusionMatrix$overall) %>%
-  rename(Value = 1) %>%
-  drop_na(Value)
-class_stats <- data.frame(confusionMatrix$byClass) %>%
-  rename(Value = 1) %>%
-  drop_na(Value)
-model_stats <- rbind(overall_stats, class_stats) %>%
-  tibble::rownames_to_column("Statistic")
-
-# now what to do with the confusion matrix outputs? Average from all of them?
-confusionOutputDataframe <- addRow(confusionOutputDataframe,
-                                   confusion_matrix)
-
-modelOutputDataframe <- addRow(modelOutputDataframe,
-                               model_stats)
-
-# add variable importance to output datasheet ---------------------------------
-ggsave(filename = file.path(paste0(transferDir, "/VariableImportance.png")),
-       variableImportancePlot)
-
-ImageOutputDataframe <- data.frame(VariableImportance = file.path(paste0(transferDir, "/VariableImportance.png")))
-
-# add filtering values to output datasheet
-filteringOutputDataframe <- data.frame(filterResolutionOutput = filterResolution,
-                                       filterThresholdOutput = filterPercent)
+confusionOutputDataframe <- outputDataframes[[1]]
+modelOutputDataframe <- outputDataframes[[2]]
 
 # Save dataframes back to SyncroSim library's output datasheets ----------------
 saveDatasheet(myScenario,
@@ -225,11 +148,13 @@ saveDatasheet(myScenario,
               name = "imageclassifier_ModelStatistics")
 
 saveDatasheet(myScenario,
-              data = filteringOutputDataframe,
+              data = filterOutputDataframe,
               name = "imageclassifier_FilterStatistics")
 
 saveDatasheet(myScenario,
-              data = ImageOutputDataframe,
+              data = varImportanceOutputDataframe,
               name = "imageclassifier_ModelOutput")
 
-# add probability raster to output
+saveDatasheet(myScenario,
+              data = rgbOutputDataframe,
+              name = "imageclassifier_RgbOutput")

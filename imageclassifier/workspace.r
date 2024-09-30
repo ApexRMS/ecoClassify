@@ -11,14 +11,40 @@ library(Dict)
 library(ggplot2)
 library(stats)
 library(imager)
+library(terrainr)
 
 # define functions ------------------------------------------------
+
+assignVariables <- function(myScenario) {
+
+  # Load RunControl datasheet to set timesteps
+  runSettings <- datasheet(myScenario, name = "imageclassifier_RunControl")
+
+  # Set timesteps - can set to different frequencies if desired
+  timesteps <- seq(runSettings$MinimumTimestep, runSettings$MaximumTimestep)
+
+  # Load input Datasheets
+  modelInputDataframe <- datasheet(myScenario,
+                                   name = "imageclassifier_ModelInput")
+
+  # Extract model input values from model input datasheet
+  nObs <- modelInputDataframe$nObs
+  filterResolution <- modelInputDataframe$filterResolution
+  filterPercent <- modelInputDataframe$filterPercent
+  applyFiltering <- modelInputDataframe$applyFiltering
+
+  return(list(timesteps,
+              nObs,
+              filterResolution,
+              filterPercent,
+              applyFiltering))
+}
 
 # updated function that combines multiple raster types from each timestep
 extractRasters <- function(dataframe) {
 
   # define timesteps
-  timesteps <- unique(dataframe[,1])
+  timesteps <- unique(dataframe[, 1])
 
   # create an empty list
   rasterList <- c()
@@ -28,18 +54,34 @@ extractRasters <- function(dataframe) {
 
     # subset based on timestep
     subsetData <- dataframe %>% filter(Timesteps == t)
-
     # list all files
     allFiles <- as.vector(subsetData[, 2])
-
     # read in all files as a single raster
     subsetRaster <- rast(allFiles)
-
     # add to main raster list
     rasterList <- c(rasterList, subsetRaster)
   }
 
   return(rasterList)
+}
+
+extractAllRasters <- function(rasterTrainingDataframe,
+                              rasterGroundTruthDataframe,
+                              rasterToClassifyDataframe) {
+
+  trainingRasterList <- extractRasters(rasterTrainingDataframe)
+
+  groundTruthRasterList <- extractRasters(rasterGroundTruthDataframe)
+
+  if (length(rasterToClassifyDataframe$RasterFileToClassify) > 1) {
+    toClassifyRasterList <- extractRasters(rasterToClassifyDataframe)
+  } else {
+    toClassifyRasterList <- ""
+  }
+
+  return(list(trainingRasterList,
+              groundTruthRasterList,
+              toClassifyRasterList))
 }
 
 decomposedRaster <- function(predRast,
@@ -58,43 +100,98 @@ decomposedRaster <- function(predRast,
   return(trainData)
 }
 
-predictRanger <- function(raster, model) {
-    ## generate blank raster
-    predictionRaster <- raster[[1]]
-    names(predictionRaster) <- "wetland"
+plotVariableImportance <- function(model,
+                                   transferDir) {
+  # make a variable importance plot for specified model
+  variableImportance <- melt(model$variable.importance) %>%
+    tibble::rownames_to_column("variable")
 
-    ## predict over raster decomposition
-    rasterMatrix <- data.frame(raster)
-    rasterMatrix <- na.omit(rasterMatrix)
-    predictedValues <- data.frame(predict(model, rasterMatrix))[, 1]
-    values(predictionRaster) <- predictedValues
+  variableImportancePlot <- ggplot(variableImportance,
+                                   aes(x = reorder(variable, value),
+                                       y = value,
+                                       fill = value)) +
+    geom_bar(stat = "identity", width = 0.8) +
+    coord_flip() +
+    ylab("Variable Importance") +
+    xlab("Variable") +
+    ggtitle("Information Value Summary") +
+    theme_classic(base_size = 26) +
+    scale_fill_gradientn(colours = c("#424352"), guide = "none")
+
+  # save variable importance plot
+  ggsave(filename = file.path(paste0(transferDir, "/VariableImportance.png")),
+         variableImportancePlot)
+
+  # Generate dataframe
+  varImportanceOutputDataframe <- data.frame(VariableImportance = file.path(paste0(transferDir, "/VariableImportance.png")))
+
+  return(list(variableImportancePlot, varImportanceOutputDataframe))
+}
+
+splitTrainTest <- function(trainingRasterList,
+                           groundTruthRasterList,
+                           nObs) {
+  # create empty lists for binding data
+  allTrainData <- c()
+  allTestData <- c()
+
+  # For loop through each raster pair
+  for (i in seq_along(trainingRasterList)) {
+
+    ## Decompose satellite image raster
+    modelData <- decomposedRaster(trainingRasterList[[i]],
+                                  groundTruthRasterList[[i]],
+                                  nobs = nObs)
+
+    modelDataSampled <- modelData %>%
+      mutate(presence = as.factor(response)) %>%
+      select(-ID, -response) %>%
+      mutate(kfold = sample(1:10, nrow(.), replace = TRUE)) %>%
+      drop_na()
+
+    # split into training and testing data
+    train <- modelDataSampled %>% filter(kfold != 1)
+    test <- modelDataSampled %>% filter(kfold == 1)
+
+    # bind to list
+    allTrainData <- rbind(allTrainData, train)
+    allTestData <- rbind(allTestData, test)
+  }
+
+  return(list(allTrainData, allTestData))
+}
+
+predictRanger <- function(raster, model) {
+  ## generate blank raster
+  predictionRaster <- raster[[1]]
+  names(predictionRaster) <- "present"
+
+  ## predict over raster decomposition
+  rasterMatrix <- data.frame(raster)
+  rasterMatrix <- na.omit(rasterMatrix)
+  predictedValues <- data.frame(predict(model, rasterMatrix))[, 1]
+  values(predictionRaster) <- predictedValues
 
   return(predictionRaster)
 }
 
-# predictRanger <- function(raster, model) {
-#   ## generate blank raster
-#   predictionRaster <- raster[[1]]
-#   probabilityRaster <- raster[[1]]
-#   names(predictionRaster) <- "presence"
+getPredictionRasters <- function(trainingRasterList,
+                                 t,
+                                 model1,
+                                 model2) {
+  # predict presence for each raster
+  predictedPresence <- predictRanger(trainingRasterList[[t]],
+                                     model1)
 
-#   ## predict over raster decomposition
-#   rasterMatrix <- data.frame(raster)
-#   rasterMatrix <- na.omit(rasterMatrix)
+  # generate probabilities for each raster
+  probabilityRaster <- 1 - (predictRanger(trainingRasterList[[t]],
+                                          model2))
+  # assign values
+  values(predictedPresence) <- ifelse(values(predictedPresence) == 2, 1, 0)
 
-#   predictedOutput <- predict(model, rasterMatrix)
-
-#   predictedValues <- data.frame(predictedOutput)[, 1]
-#   values(predictionRaster) <- predictedValues
-
-#   # extract probability values
-#   probabilities <- predictedOutput$predictions
-#   values(probabilityRaster) <- probabilities
-
-#   rfOutput <- list(predictionRaster, probabilities)
-
-#   return(rfOutput)
-# }
+  return(list(predictedPresence,
+              probabilityRaster))
+}
 
 filterFun <- function(raster, resolution, percent) {
   npixels <- resolution^2
@@ -109,40 +206,169 @@ filterFun <- function(raster, resolution, percent) {
   }
 }
 
-filterFit <- function(params,
-                         PredictedPresence,
-                         groundTruthRaster) {
+generateRasterDataframe <- function(applyFiltering,
+                                    predictedPresence,
+                                    filterResolution,
+                                    filterPercent,
+                                    t,
+                                    transferDir) {
 
-  # filter out presence pixels surrounded by non-presence
-  filteredPredictedPresence <- focal(PredictedPresence,
-                                     w = matrix(1, 5, 5),
-                                     fun = filterFun,
-                                     resolution = params[1],
-                                     percent = params[2])
+  if (applyFiltering == TRUE) {
 
-  # make a raster that is the sum of both layers
-  sumRaster <- mosaic(filteredPredictedPresence,
-                      groundTruthRaster,
-                      fun = "sum")
+    # filter out presence pixels surrounded by non-presence
+    filteredPredictedPresence <- focal(predictedPresence,
+                                       w = matrix(1, 5, 5),
+                                       fun = filterFun,
+                                       resolution = filterResolution,
+                                       percent = filterPercent)
 
-  # calculate the max value
-  maxVal <- minmax(sumRaster)[2]
+    # save raster
+    writeRaster(filteredPredictedPresence,
+                filename = file.path(paste0(transferDir,
+                                            "/filteredPredictedPresence",
+                                            t,
+                                            ".tif")),
+                overwrite = TRUE)
 
-  # count the number of pixels with the max value
-  numPixels <- freq(sumRaster, value = maxVal)[, "count"]
+    rasterDataframe <- data.frame(
+      Iteration = 1,
+      Timestep = t,
+      PredictedUnfiltered = file.path(paste0(transferDir,
+                                             "/PredictedPresence",
+                                             t,
+                                             ".tif")),
+      PredictedFiltered = file.path(paste0(transferDir,
+                                           "/filteredPredictedPresence",
+                                           t,
+                                           ".tif")),
+      GroundTruth = file.path(paste0(transferDir,
+                                     "/GroundTruth",
+                                     t,
+                                     ".tif")),
+      Probability = file.path(paste0(transferDir,
+                                     "/Probability",
+                                     t,
+                                     ".tif"))
+    )
+  } else {
+    rasterDataframe <- data.frame(
+      Iteration = 1,
+      Timestep = t,
+      PredictedUnfiltered = file.path(paste0(transferDir,
+                                             "/PredictedPresence",
+                                             t,
+                                             ".tif")),
+      PredictedFiltered = "",
+      GroundTruth = file.path(paste0(transferDir,
+                                     "/GroundTruth",
+                                     t,
+                                     ".tif")),
+      Probability = file.path(paste0(transferDir,
+                                     "/Probability",
+                                     t,
+                                     ".tif"))
+    )
+  }
 
-  return(numPixels)
+  # add to output dataframe
+  rasterOutputDataframe <- addRow(rasterOutputDataframe,
+                                  rasterDataframe)
+
+  return(rasterOutputDataframe)
 }
 
+getRgbDataframe <- function(rgbOutputDataframe,
+                            t,
+                            transferDir) {
 
-# next steps
-# 1. finish filterAccuracy function
-# 2. add to model script
-# 3. add optimize wrapper
+  rgbDataframe <- data.frame(Iteration = 1,
+                             Timestep = t,
+                             RGBImage = file.path(paste0(transferDir,
+                                                         "/RGBImage",
+                                                         t,
+                                                         ".png")))
 
-# 4. do some testing
-# 5. run the package and see if it works!
-# 6. confirm variable importance argument
-# 7. fix confusion matrix calculation
-# 8. eventually find a way to calculate average filter threshold and
-# then apply to test rasters (no ground truth)
+  rgbOutputDataframe <- addRow(rgbOutputDataframe,
+                               rgbDataframe)
+
+  return(rgbOutputDataframe)
+
+}
+
+saveFiles <- function(predictedPresence,
+                      groundTruth,
+                      probabilityRaster,
+                      trainingRasterList,
+                      variableImportancePlot,
+                      t,
+                      transferDir) {
+
+  # save rasters
+  writeRaster(predictedPresence,
+              filename = file.path(paste0(transferDir,
+                                          "/PredictedPresence",
+                                          t,
+                                          ".tif")),
+              overwrite = TRUE)
+
+  writeRaster(groundTruth,
+              filename = file.path(paste0(transferDir,
+                                          "/GroundTruth",
+                                          t,
+                                          ".tif")),
+              overwrite = TRUE)
+
+  writeRaster(probabilityRaster,
+              filename = file.path(paste0(transferDir,
+                                          "/Probability",
+                                          t,
+                                          ".tif")),
+              overwrite = TRUE)
+
+  # save RBG Image
+  png(file = file.path(paste0(transferDir,
+                              "/RGBImage",
+                              t,
+                              ".png")))
+  plotRGB(trainingRasterList[[t]],
+          r = 3,
+          g = 2,
+          b = 1,
+          stretch = "lin")
+  dev.off()
+
+}
+
+calculateStatistics <- function(model,
+                                testData,
+                                confusionOutputDataframe,
+                                modelOutputDataframe) {
+
+  prediction <- predict(model, testData)
+  confusionMatrix <- confusionMatrix(data.frame(prediction)[, 1],
+                                     testData$presence)
+
+  # reformat and add to output datasheets
+  confusion_matrix <- data.frame(confusionMatrix$table) %>%
+    rename("Frequency" = "Freq")
+
+  overall_stats <- data.frame(confusionMatrix$overall) %>%
+    rename(Value = 1) %>%
+    drop_na(Value)
+
+  class_stats <- data.frame(confusionMatrix$byClass) %>%
+    rename(Value = 1) %>%
+    drop_na(Value)
+
+  model_stats <- rbind(overall_stats, class_stats) %>%
+    tibble::rownames_to_column("Statistic")
+
+  # add confusion matrix and model statistics to dataframe
+  confusionOutputDataframe <- addRow(confusionOutputDataframe,
+                                     confusion_matrix)
+
+  modelOutputDataframe <- addRow(modelOutputDataframe,
+                                 model_stats)
+
+  return(list(confusionOutputDataframe, modelOutputDataframe))
+}

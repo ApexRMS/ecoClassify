@@ -7,7 +7,7 @@
         
     <dataSheet name="TrainingData" displayName="Training Rasters">
         <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
-        <column name="PredictorRasterFile" dataType="String" displayName="Training raster" isExternalFile="True"/>
+        <column name="TrainingRasterFile" dataType="String" displayName="Training raster" isExternalFile="True"/>
     </dataSheet>
 
     <dataSheet name="GroundTruthData" displayName="Ground Truth Rasters">
@@ -22,7 +22,7 @@
 
     <dataSheet name="ModelInput" displayName="Classifier options" isSingleRow="True">
         <column name="nObs" dataType="Integer" displayName="Sample size"/>
-        <column name="ApplyFiltering" dataType="Boolean" displayName="Apply filtering"/>
+        <column name="applyFiltering" dataType="Boolean" displayName="Apply filtering"/>
         <column name="filterResolution" dataType="Double" displayName="Filter resolution (optional)"/>
         <column name="filterPercent" dataType="Double" displayName="Filter threshold (optional)"/>
     </dataSheet>
@@ -32,6 +32,7 @@
         <column name="PredictedUnfiltered" dataType="String" displayName="Predicted" isExternalFile="True" isRaster="True"/>
         <column name="PredictedFiltered" dataType="String" displayName="Predicted filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="GroundTruth" dataType="String" displayName="Ground truth" isExternalFile="True" isRaster="True"/>
+        <column name="Probability" dataType="String" displayName="Probability" isExternalFile="True" isRaster="True"/>
         <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True"/>
     </dataSheet>
 
@@ -55,6 +56,10 @@
 	    <column name="VariableImportance" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
 
+    <dataSheet name="RgbOutput" displayName="RGB Images" hasTimestep="True" hasIteration="True">
+	    <column name="RGBImage" dataType="String" isExternalFile="True" isImage="True"/>
+    </dataSheet>
+
     <!--Main transformer-->
     <transformer name="Main" displayName="Image classifier" programName="Rscript" programArguments="model.R">
         <dataSheet name="RunControl" type="Input"/>
@@ -67,6 +72,7 @@
         <dataSheet name="ModelStatistics" type="Output"/>
         <dataSheet name="FilterStatistics" type="Output"/>
         <dataSheet name="ModelOutput" type="Output"/>
+        <dataSheet name="RgbOutput" type="Output"/>
     </transformer>
 
     <!--Export transformers-->
@@ -106,11 +112,13 @@
             <item name="RasterMap2" displayName="Filtered" dataSheet="RasterOutput" column="PredictedFiltered"/>
         </group>
         <item name="RasterMap3" displayName="Ground Truth" dataSheet="RasterOutput" column="GroundTruth"/>
+        <item name="RasterMap4" displayName="Probability" dataSheet="RasterOutput" column="Probability"/>
     </layout>
 
     <!--Image Layout-->
     <layout type="Image">	
-        <item name="VariableImportancePlot" displayName="Variable Importance" dataSheet="ModelOutput" column="VariableImportance"/>		
+        <item name="VariableImportancePlot" displayName="Variable Importance" dataSheet="ModelOutput" column="VariableImportance"/>
+        <item name="RGBImagePlots" displayName="RGB Images" dataSheet="RgbOutput" column="RGBImage"/>
     </layout>
 
     <!--Export Layout-->
