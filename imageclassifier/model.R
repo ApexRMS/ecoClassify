@@ -1,30 +1,21 @@
-# set up workspace --------------------------------------------------------
+# set up workspace ---------------------------------------------------------
 packageDir <- (Sys.getenv("ssim_package_directory"))
 source(file.path(packageDir, "workspace.r"))
 
-# Set up ------------------------------------------------------------------
+# Set up -------------------------------------------------------------------
 myScenario <- scenario()  # Get the SyncroSim Scenario that is currently running
 
 # Retrieve the transfer directory for storing output rasters
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
-# Load files --------------------------------------------------------------
-# Load RunControl datasheet to set timesteps
-runSettings <- datasheet(myScenario, name = "imageclassifier_RunControl")
-
-# Set timesteps - can set to different frequencies if desired
-timesteps <- seq(runSettings$MinimumTimestep, runSettings$MaximumTimestep)
-
-# Load input Datasheets
-modelInputDataframe <- datasheet(myScenario,
-                                 name = "imageclassifier_ModelInput")
-
-# Extract model input values from model input datasheet
-nObs <- modelInputDataframe$nObs
-filterResolution <- modelInputDataframe$filterResolution
-filterPercent <- modelInputDataframe$filterPercent
-applyFiltering <- modelInputDataframe$applyFiltering
+# Assign variables ----------------------------------------------------------
+inputVariables <- assignVariables(myScenario)
+timesteps <- inputVariables[1]
+nObs <- inputVariables[2]
+filterResolution <- inputVariables[3]
+filterPercent <- inputVariables[4]
+applyFiltering <- inputVariables[5]
 
 # Load raster input datasheets
 rasterTrainingDataframe <- datasheet(myScenario,
@@ -102,23 +93,20 @@ varImportanceOutputDataframe <- variableImportanceOutput[2]
 ## Predict presence for each timestep group ------------------------------------
 for (t in seq_along(trainingRasterList)) {
 
-  # predict presence for each raster
-  predictedPresence <- predictRanger(trainingRasterList[[t]],
-                                     rf1)
-
-  # generate probabilities for each raster
-  probabilityRaster <- 1 - (predictRanger(trainingRasterList[[t]],
-                                          rf2))
-  # assign values
-  values(predictedPresence) <- ifelse(values(predictedPresence) == 2, 1, 0)
+  predictionRasters <- getPredictionRasters(trainingRasterList,
+                                            t,
+                                            rf1,
+                                            rf2)
+  predictedPresence <- predictionRasters[1]
+  probabilityRaster <- predictionRasters[2]
 
   # generate rasterDataframe based on filtering argument
-  rasterOutputDataframe <- generateRasterOutput(applyFiltering,
-                                                predictedPresence,
-                                                filterResolution,
-                                                filterPercent,
-                                                t,
-                                                transferDir)
+  rasterOutputDataframe <- generateRasterDataframe(applyFiltering,
+                                                   predictedPresence,
+                                                   filterResolution,
+                                                   filterPercent,
+                                                   t,
+                                                   transferDir)
 
   # define GroundTruth raster
   groundTruth <- groundTruthRasterList[[t]]

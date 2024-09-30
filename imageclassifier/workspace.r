@@ -15,6 +15,31 @@ library(terrainr)
 
 # define functions ------------------------------------------------
 
+assignVariables <- function(myScenario) {
+
+  # Load RunControl datasheet to set timesteps
+  runSettings <- datasheet(myScenario, name = "imageclassifier_RunControl")
+
+  # Set timesteps - can set to different frequencies if desired
+  timesteps <- seq(runSettings$MinimumTimestep, runSettings$MaximumTimestep)
+
+  # Load input Datasheets
+  modelInputDataframe <- datasheet(myScenario,
+                                   name = "imageclassifier_ModelInput")
+
+  # Extract model input values from model input datasheet
+  nObs <- modelInputDataframe$nObs
+  filterResolution <- modelInputDataframe$filterResolution
+  filterPercent <- modelInputDataframe$filterPercent
+  applyFiltering <- modelInputDataframe$applyFiltering
+
+  return(list(timesteps,
+              nObs,
+              filterResolution,
+              filterPercent,
+              applyFiltering))
+}
+
 # updated function that combines multiple raster types from each timestep
 extractRasters <- function(dataframe) {
 
@@ -29,13 +54,10 @@ extractRasters <- function(dataframe) {
 
     # subset based on timestep
     subsetData <- dataframe %>% filter(Timesteps == t)
-
     # list all files
     allFiles <- as.vector(subsetData[, 2])
-
     # read in all files as a single raster
     subsetRaster <- rast(allFiles)
-
     # add to main raster list
     rasterList <- c(rasterList, subsetRaster)
   }
@@ -153,6 +175,24 @@ predictRanger <- function(raster, model) {
   return(predictionRaster)
 }
 
+getPredictionRasters <- function(trainingRasterList,
+                                 t,
+                                 model1,
+                                 model2) {
+  # predict presence for each raster
+  predictedPresence <- predictRanger(trainingRasterList[[t]],
+                                     model1)
+
+  # generate probabilities for each raster
+  probabilityRaster <- 1 - (predictRanger(trainingRasterList[[t]],
+                                          model2))
+  # assign values
+  values(predictedPresence) <- ifelse(values(predictedPresence) == 2, 1, 0)
+
+  return(list(predictedPresence,
+              probabilityRaster))
+}
+
 filterFun <- function(raster, resolution, percent) {
   npixels <- resolution^2
   midPixel <- (npixels + 1) / 2
@@ -166,12 +206,12 @@ filterFun <- function(raster, resolution, percent) {
   }
 }
 
-generateRasterOutput <- function(applyFiltering,
-                                 predictedPresence,
-                                 filterResolution,
-                                 filterPercent,
-                                 t,
-                                 transferDir) {
+generateRasterDataframe <- function(applyFiltering,
+                                    predictedPresence,
+                                    filterResolution,
+                                    filterPercent,
+                                    t,
+                                    transferDir) {
 
   if (applyFiltering == TRUE) {
 
@@ -262,7 +302,7 @@ saveFiles <- function(predictedPresence,
                       variableImportancePlot,
                       t,
                       transferDir) {
-  
+
   # save rasters
   writeRaster(predictedPresence,
               filename = file.path(paste0(transferDir,
@@ -332,28 +372,3 @@ calculateStatistics <- function(model,
 
   return(list(confusionOutputDataframe, modelOutputDataframe))
 }
-
-# filterFit <- function(params,
-#                       predictedPresence,
-#                       groundTruthRaster) {
-
-#   # filter out presence pixels surrounded by non-presence
-#   filteredPredictedPresence <- focal(predictedPresence,
-#                                      w = matrix(1, 5, 5),
-#                                      fun = filterFun,
-#                                      resolution = params[1],
-#                                      percent = params[2])
-
-#   # make a raster that is the sum of both layers
-#   sumRaster <- mosaic(filteredPredictedPresence,
-#                       groundTruthRaster,
-#                       fun = "sum")
-
-#   # calculate the max value
-#   maxVal <- minmax(sumRaster)[2]
-
-#   # count the number of pixels with the max value
-#   numPixels <- freq(sumRaster, value = maxVal)[, "count"]
-
-#   return(numPixels)
-# }
