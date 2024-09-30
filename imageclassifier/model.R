@@ -11,11 +11,11 @@ transferDir <- e$TransferDirectory
 
 # Assign variables ----------------------------------------------------------
 inputVariables <- assignVariables(myScenario)
-timesteps <- inputVariables[1]
-nObs <- inputVariables[2]
-filterResolution <- inputVariables[3]
-filterPercent <- inputVariables[4]
-applyFiltering <- inputVariables[5]
+timesteps <- inputVariables[[1]]
+nObs <- inputVariables[[2]]
+filterResolution <- inputVariables[[3]]
+filterPercent <- inputVariables[[4]]
+applyFiltering <- inputVariables[[5]]
 
 # Load raster input datasheets
 rasterTrainingDataframe <- datasheet(myScenario,
@@ -32,9 +32,9 @@ extractedRasters <- extractAllRasters(rasterTrainingDataframe,
                                       rasterGroundTruthDataframe,
                                       rasterToClassifyDataframe)
 
-trainingRasterList <- extractedRasters[1]
-groundTruthRasterList <- extractedRasters[2]
-toClassifyRasterList <- extractedRasters[3]
+trainingRasterList <- extractedRasters[[1]]
+groundTruthRasterList <- extractedRasters[[2]]
+toClassifyRasterList <- extractedRasters[[3]]
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(Iteration = numeric(0),
@@ -48,8 +48,7 @@ confusionOutputDataframe <- data.frame(Prediction = numeric(0),
                                        Reference = numeric(0),
                                        Frequency = numeric(0))
 
-modelOutputDataframe <- data.frame(Timestep = numeric(0),
-                                   Statistic = character(0),
+modelOutputDataframe <- data.frame(Statistic = character(0),
                                    Value = numeric(0))
 
 rgbOutputDataframe <- data.frame(Iteration = numeric(0),
@@ -63,8 +62,8 @@ filterOutputDataframe <- data.frame(filterResolutionOutput = filterResolution,
 splitData <- splitTrainTest(trainingRasterList,
                             groundTruthRasterList,
                             nObs)
-allTrainData <- splitData[1]
-allTestData <- splitData[2]
+allTrainData <- splitData[[1]]
+allTestData <- splitData[[2]]
 
 ## Train model -----------------------------------------------------------------
 mainModel <- formula(sprintf("%s ~ %s",
@@ -87,8 +86,8 @@ rf2 <-  ranger(mainModel,
 variableImportanceOutput <- plotVariableImportance(rf1,
                                                    transferDir)
 
-variableImportancePlot <- variableImportanceOutput[1]
-varImportanceOutputDataframe <- variableImportanceOutput[2]
+variableImportancePlot <- variableImportanceOutput[[1]]
+varImportanceOutputDataframe <- variableImportanceOutput[[2]]
 
 ## Predict presence for each timestep group ------------------------------------
 for (t in seq_along(trainingRasterList)) {
@@ -97,8 +96,8 @@ for (t in seq_along(trainingRasterList)) {
                                             t,
                                             rf1,
                                             rf2)
-  predictedPresence <- predictionRasters[1]
-  probabilityRaster <- predictionRasters[2]
+  predictedPresence <- predictionRasters[[1]]
+  probabilityRaster <- predictionRasters[[2]]
 
   # generate rasterDataframe based on filtering argument
   rasterOutputDataframe <- generateRasterDataframe(applyFiltering,
@@ -132,8 +131,8 @@ outputDataframes <- calculateStatistics(rf1,
                                         confusionOutputDataframe,
                                         modelOutputDataframe)
 
-confusionOutputDataframe <- outputDataframes[1]
-modelOutputDataframe <- outputDataframes[2]
+confusionOutputDataframe <- outputDataframes[[1]]
+modelOutputDataframe <- outputDataframes[[2]]
 
 # Save dataframes back to SyncroSim library's output datasheets ----------------
 saveDatasheet(myScenario,
