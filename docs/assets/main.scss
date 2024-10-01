@@ -1,158 +1,158 @@
 ---
 ---
 
-@import "minima";
-
 /* Color of links and other bits an bolts of the website set as the same than on SyncroSim website */
 :root {
-    --apexOrange: #175cb6;
+  --apexOrange: #175cb6;
 }
 
 /* Links */
 a {
-    color: var(--apexOrange);
+  color: var(--apexOrange);
 }
 
 // Add logo to masthead
 .site-title::before {
-    content: url("images/logo/geofetch-logo.png");
-    display: inline-block;
-    position: relative;
-    padding-right: 10px;
-    padding-top: 17px;
-    vertical-align: middle;
+  content: url("images/logo/geofetch-logo.png");
+  display: inline-block;
+  position: relative;
+  padding-right: 10px;
+  padding-top: 17px;
+  vertical-align: middle;
 }
 
 // Background pf site header
 .site-header {
-    background-color: #F0F0F0;
-    padding-right: 15%;
-    padding-left: 10%;
+  background-color: #f0f0f0;
+  padding-right: 15%;
+  padding-left: 10%;
 }
 
 // Nav buttons
 .site-nav {
-    padding-top: 12px;
+  padding-top: 12px;
 }
 
 // Button text
 .site-nav .page-link {
-    color: --apexOrange;
-    font-size: larger;
+  color: --apexOrange;
+  font-size: larger;
 }
 
 // Avoid wrapping of email address
-.contact-list .u-email { font-size: 95%; }
+.contact-list .u-email {
+  font-size: 95%;
+}
 
 // size of wrapper
 .wrapper {
-    max-width: calc(1000px - (30px * 2));
-    padding-right: 15%;
-    padding-left: 10%;
+  max-width: calc(1000px - (30px * 2));
+  padding-right: 15%;
+  padding-left: 10%;
 }
-
 
 // Size of page content (text within page)
 .page-content {
-    padding-right: 15%;
-    padding-left: 10%;
+  padding-right: 15%;
+  padding-left: 10%;
 }
 
 // Alignment of footer
-.site-footer{
-    padding-right: 15%;
-    padding-left: 10%;
+.site-footer {
+  padding-right: 15%;
+  padding-left: 10%;
 }
 
 // Change footer col sizes
 .footer-col-1 {
-    width: calc(35% - (30px / 2));
-    margin-left: 0%;
-    margin-right: 0%;
+  width: calc(35% - (30px / 2));
+  margin-left: 0%;
+  margin-right: 0%;
 }
 .footer-col-2 {
-    width: calc(40% - (30px / 2));
+  width: calc(40% - (30px / 2));
 }
 .footer-col-3 {
-    width: calc(25% - (30px / 2));
-    text-align: right;
+  width: calc(25% - (30px / 2));
+  text-align: right;
 }
 
 // Change footer col sizes
 .footer-col-1 {
-    width: calc(50% - (30px / 2));
+  width: calc(50% - (30px / 2));
 }
 .footer-col-2 {
-    width: calc(0% - (30px / 2));
+  width: calc(0% - (30px / 2));
 }
 .footer-col-3 {
-    width: calc(50% - (30px / 2));
+  width: calc(50% - (30px / 2));
 }
 
 // Sidebar box
 .sidenav {
-    width: 18%;
-    position: fixed;
-    top: 125px;
-    right: 0px;
-    background: #f1f1f1;
-    padding: 12px 12px;
-    display: inline-block;
+  width: 18%;
+  position: fixed;
+  top: 125px;
+  right: 0px;
+  background: #f1f1f1;
+  padding: 12px 12px;
+  display: inline-block;
 }
 /* Link */
 .sidenav a {
-    padding: 6px 6px 6px 12px;
-    text-decoration: none;
-    font-size: 12px;
-    color: #000;
-    display: block;
+  padding: 6px 6px 6px 12px;
+  text-decoration: none;
+  font-size: 12px;
+  color: #000;
+  display: block;
 }
 /* Link on focus */
 .sidenav a:focus {
-    font-weight: 700;
-    background-color:#fff;
-    color: #000;
+  font-weight: 700;
+  background-color: #fff;
+  color: #000;
 }
 /* Link on hover */
 .sidenav a:hover {
-    background-color:#fff;
-    color: #000;
+  background-color: #fff;
+  color: #000;
 }
 /* Link when selected (active page) */
 .selected {
-    font-weight: 700;
-    background-color:#fff;
-    color: #000;
+  font-weight: 700;
+  background-color: #fff;
+  color: #000;
 }
 /* Remove sidebar on small screens */
 @media screen and (max-width: 1130px) {
-    .sidenav {display: none;}
+  .sidenav {
+    display: none;
+  }
 }
 /* Lists */
 .sidenav li {
-    padding: 6px 6px 6px 12px;
-    text-decoration: none;
-    font-size: 12px;
-    font-weight: 700;
-    color: #000;
-    display: block;
+  padding: 6px 6px 6px 12px;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 700;
+  color: #000;
+  display: block;
 }
-
 
 // Indented text
 .indentation {
- margin-left: 2rem;
- margin-bottom: 1rem; 
+  margin-left: 2rem;
+  margin-bottom: 1rem;
 }
 
 // List with no bullet icon
 .no-bullets {
-    list-style-type: none;
-    padding: 0;
-    margin: 0;
+  list-style-type: none;
+  padding: 0;
+  margin: 0;
 }
 
 // Spacer smaller than <br>
 .spacer {
-    height: 12px;
+  height: 12px;
 }
