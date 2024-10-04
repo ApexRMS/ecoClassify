@@ -61,7 +61,7 @@
     </dataSheet>
 
     <!--Main transformer-->
-    <transformer name="Main" displayName="Image classifier" programName="Rscript" programArguments="model.R" condaEnv="watchtower-2.yml" condaEnvVersion="8">
+    <transformer name="Main" displayName="Image classifier" programName="Rscript" programArguments="model.R" condaEnv="watchtower-conda.yml" condaEnvVersion="1">
         <dataSheet name="RunControl" type="Input"/>
         <dataSheet name="TrainingData" type="Input"/>
         <dataSheet name="GroundTruthData" type="Input"/>

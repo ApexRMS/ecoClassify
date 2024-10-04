@@ -1,4 +1,4 @@
-name: watchtower-2
+name: watchtower-conda
 channels:
   - r
   - conda-forge
@@ -63,6 +63,10 @@ dependencies:
   - pcre2=10.44=h3d7b363_2
   - pixman=0.43.4=h63175ca_0
   - r-base=4.4.1=h26a5cb4_15
+  - r-class=7.3_22=r44h11b023d_2
+  - r-codetools=0.2_20=r44hc72bb7e_1
+  - r-kernsmooth=2.23_24=r44h22763d4_1
+  - r-mass=7.3_60.0.1=r44h11b023d_1
   - tbb=2021.7.0=h91493d7_0
   - tk=8.6.13=h5226925_1
   - tktable=2.10=h7e9e0db_6

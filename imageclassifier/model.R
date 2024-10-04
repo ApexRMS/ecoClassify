@@ -2,17 +2,6 @@
 packageDir <- (Sys.getenv("ssim_package_directory"))
 source(file.path(packageDir, "workspace.r"))
 
-# install required packages
-packageCheck("terra")
-packageCheck("rsyncrosim")
-packageCheck("tidyverse")
-packageCheck("terra")
-packageCheck("sf")
-packageCheck("ranger")
-packageCheck("caret")
-packageCheck("gtools")
-packageCheck("reshape2")
-
 # Set up -------------------------------------------------------------------
 myScenario <- scenario()  # Get the SyncroSim Scenario that is currently running
 

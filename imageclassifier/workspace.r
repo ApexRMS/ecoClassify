@@ -1,15 +1,6 @@
-# load packages
-library(rsyncrosim)
-library(tidyverse)
-library(terra)
-library(sf)
-library(ranger)
-library(caret)
-library(gtools)
-library(reshape2)
-library(roxygen2)
+# load packages ---------------------------------------------------
 
-# define functions ------------------------------------------------
+# define packagecheck function
 packageCheck <- function(package) {
   options(repos = c(CRAN = "https://cran.r-project.org"))
   if (!require(package, character.only = TRUE)) {
@@ -20,6 +11,19 @@ packageCheck <- function(package) {
   }
 }
 
+# load and/or install packages
+packageCheck("rsyncrosim")
+packageCheck("tidyverse")
+packageCheck("terra")
+packageCheck("sf")
+packageCheck("ranger")
+packageCheck("caret")
+packageCheck("gtools")
+packageCheck("reshape2")
+packageCheck("roxygen2")
+packageCheck("codetools")
+
+# define functions ------------------------------------------------
 assignVariables <- function(myScenario) {
 
   #' @description
