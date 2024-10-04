@@ -1,38 +1,61 @@
-# load packages
-library(rsyncrosim)
-library(tidyverse)
-library(terra)
-library(sf)
-library(ranger)
-library(caret)
-library(gtools)
-library(reshape2)
-library(Dict)
-library(ggplot2)
-library(stats)
-library(imager)
-library(terrainr)
+# load packages ---------------------------------------------------
+
+# define packagecheck function
+packageCheck <- function(package) {
+  options(repos = c(CRAN = "https://cran.r-project.org"))
+  if (!require(package, character.only = TRUE)) {
+    install.packages(package, dependencies = TRUE)
+    if (!require(package, character.only = TRUE)) {
+      stop("Could not install or find package")
+    }
+  }
+}
+
+# load and/or install packages
+packageCheck("rsyncrosim")
+packageCheck("tidyverse")
+packageCheck("terra")
+packageCheck("sf")
+packageCheck("ranger")
+packageCheck("caret")
+packageCheck("gtools")
+packageCheck("reshape2")
+packageCheck("roxygen2")
+packageCheck("codetools")
 
 # define functions ------------------------------------------------
-
 assignVariables <- function(myScenario) {
 
-  # Load RunControl datasheet to set timesteps
+  #' @description
+  #' 'assignVariables' extracts variables from datashseets in the specified
+  #' syncrosim scenario and assigns them to an object.
+  #'
+  #' @param myScenario syncrosim scenario object
+  #' @return list of objects (timesteps = numeric, nObs = numeric,
+  #' filterresolution = numeric, filterPercent = numeric,
+  #' applyFiltering = boolean) that have been extracted from the syncrosim
+  #' datasheet
+  #'
+  #' @details
+  #' This function is specifically designed for the the watchtower package
+
+  # Load RunControl datasheet
   runSettings <- datasheet(myScenario, name = "imageclassifier_RunControl")
 
-  # Set timesteps - can set to different frequencies if desired
+  # Extract timesteps based on min and max input values
   timesteps <- seq(runSettings$MinimumTimestep, runSettings$MaximumTimestep)
 
-  # Load input Datasheets
+  # Load model input datasheet
   modelInputDataframe <- datasheet(myScenario,
                                    name = "imageclassifier_ModelInput")
 
-  # Extract model input values from model input datasheet
+  # Extract model input values
   nObs <- modelInputDataframe$nObs
   filterResolution <- modelInputDataframe$filterResolution
   filterPercent <- modelInputDataframe$filterPercent
   applyFiltering <- modelInputDataframe$applyFiltering
 
+  # return as a list
   return(list(timesteps,
               nObs,
               filterResolution,
@@ -40,8 +63,18 @@ assignVariables <- function(myScenario) {
               applyFiltering))
 }
 
-# updated function that combines multiple raster types from each timestep
 extractRasters <- function(dataframe) {
+
+  #' @description
+  #' extractRasters takes a dataframe of raster filepaths and combines
+  #' them into a list of rasters for each timestep
+  #'
+  #' @param dataframe dataframe with a column for timestep and a column
+  #' with raster filepath
+  #' @return list of rasters from the same timestep
+  #'
+  #' @details
+  #'
 
   # define timesteps
   timesteps <- unique(dataframe[, 1])
