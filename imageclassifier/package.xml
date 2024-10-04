@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<package name="imageclassifier" displayName="Image Classifier" description="Image classifier using semantic image segmentation" version="1.0.2" url="https://apexrms.github.io/imageclassifier/">
+<package name="imageclassifier" displayName="Image Classifier" description="Image classifier using semantic image segmentation" version="1.0.3" url="https://apexrms.github.io/imageclassifier/">
        
     <!--Model Inputs-->
     <dataSheet name="RunControl" displayName="Run Control" isRunControl="True" timestepTitle="Timestep" showMinIteration="False">
@@ -61,7 +61,7 @@
     </dataSheet>
 
     <!--Main transformer-->
-    <transformer name="Main" displayName="Image classifier" programName="Rscript" programArguments="model.R">
+    <transformer name="Main" displayName="Image classifier" programName="Rscript" programArguments="model.R" condaEnv="watchtower-2.yml" condaEnvVersion="8">
         <dataSheet name="RunControl" type="Input"/>
         <dataSheet name="TrainingData" type="Input"/>
         <dataSheet name="GroundTruthData" type="Input"/>
