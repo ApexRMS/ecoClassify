@@ -1,27 +1,37 @@
 # load packages ---------------------------------------------------
+library(rsyncrosim)
+library(tidyverse)
+library(terra)
+library(sf)
+library(ranger)
+library(caret)
+library(gtools)
+library(reshape2)
+library(roxygen2)
+library(codetools)
 
 # define packagecheck function
-packageCheck <- function(package) {
-  options(repos = c(CRAN = "https://cran.r-project.org"))
-  if (!require(package, character.only = TRUE)) {
-    install.packages(package, dependencies = TRUE)
-    if (!require(package, character.only = TRUE)) {
-      stop("Could not install or find package")
-    }
-  }
-}
+# packageCheck <- function(package) {
+#   options(repos = c(CRAN = "https://cran.r-project.org"))
+#   if (!require(package, character.only = TRUE)) {
+#     install.packages(package, dependencies = TRUE)
+#     if (!require(package, character.only = TRUE)) {
+#       stop("Could not install or find package")
+#     }
+#   }
+# }
 
 # load and/or install packages
-packageCheck("rsyncrosim")
-packageCheck("tidyverse")
-packageCheck("terra")
-packageCheck("sf")
-packageCheck("ranger")
-packageCheck("caret")
-packageCheck("gtools")
-packageCheck("reshape2")
-packageCheck("roxygen2")
-packageCheck("codetools")
+# packageCheck("rsyncrosim")
+# packageCheck("tidyverse")
+# packageCheck("terra")
+# packageCheck("sf")
+# packageCheck("ranger")
+# packageCheck("caret")
+# packageCheck("gtools")
+# packageCheck("reshape2")
+# packageCheck("roxygen2")
+# packageCheck("codetools")
 
 # define functions ------------------------------------------------
 assignVariables <- function(myScenario) {
