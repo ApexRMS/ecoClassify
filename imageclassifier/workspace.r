@@ -53,19 +53,41 @@ assignVariables <- function(myScenario) {
               applyFiltering))
 }
 
+checkTimesteps <- function(timesteps,
+                           rasterTrainingDataframe,
+                           rasterGroundTruthDataframe) {
+
+  # check if all timesteps are included in both dataframes
+  trainingTimesteps <- rasterTrainingDataframe %>%
+    pull(Timesteps) %>%
+    unique()
+
+  groundTruthTimesteps <- rasterGroundTruthDataframe %>%
+    pull(Timesteps) %>%
+    unique()
+
+  # convert timesteps to numeric
+  timestepsNumeric <- as.numeric(timesteps)
+
+  if (!identical(trainingTimesteps, groundTruthTimesteps)) stop("must have same timesteps for training and ground truth raster input datasheets")
+  if (!identical(timestepsNumeric, trainingTimesteps)) warning('timestep range does not match training raster input datasheet')
+  if (!identical(timestepsNumeric, groundTruthTimesteps)) warning('timestep range does not match ground truth raster input datasheet')
+
+}
+
 #' Extract rasters from filepaths in a dataframe
 #'
 #' @description
 #' 'extractRasters' takes a dataframe of raster filepaths and creates
 #' a list with one raster for each timestep
 #'
-#' @param dataframe dataframe containing timesteps in column 1 and
-#' raster filepaths in column 2
+#' @param dataframe column 1 = timestep, column 2 = filepath (dataframe)
 #' @return list of rasters (spatRaster), one for each timestep
 #'
 #' @details
-#' The dataframe is first subset based on timestep. Rasters from the same timestep
-#' are combined into one raster using the terra package, and added to a list.
+#' The dataframe is first subset based on timestep. Rasters from the same
+#' timestep are combined into one raster using the terra package, and added
+#' to a list.
 #' @noRd
 extractRasters <- function(dataframe) {
 
@@ -118,6 +140,9 @@ extractAllRasters <- function(rasterTrainingDataframe,
 
   # extract ground truth rasters
   groundTruthRasterList <- extractRasters(rasterGroundTruthDataframe)
+
+  # warning if training and ground truth rasters are different lengths
+  if(length(rasterTrainingDataframe) != length(rasterGroundTruthDataframe)) stop('must have equal number of training and ground truth rasters')
 
   # extract rasters to classify
   if (length(rasterToClassifyDataframe$RasterFileToClassify) > 1) {
@@ -471,4 +496,32 @@ calculateStatistics <- function(model,
                                  model_stats)
 
   return(list(confusionOutputDataframe, modelOutputDataframe))
+}
+
+checkOutputDataframes <- function(rasterOutputDataframe,
+                                  confusionOutputDataframe,
+                                  modelOutputDataframe,
+                                  rgbOutputDataframe) {
+
+  # check that rasterOutputDataframe has the correct data types
+  if (!is.numeric(rasterOutputDataframe$Iteration)) warning('Incorrect data type for Iteration in raster output datasheet')
+  if (!is.numeric(rasterOutputDataframe$Timestep)) warning('Incorrect data type for Timestep in raster output datasheet')
+  if (!is.character(rasterOutputDataframe$PredictedUnfiltered)) warning('Incorrect data type for unfiltered prediction filepath in raster output datasheet')
+  if (!is.character(rasterOutputDataframe$PredictedFiltered)) warning('Incorrect data type for filtered prediction filepath in raster output datasheet')
+  if (!is.character(rasterOutputDataframe$GroundTruth)) warning('Incorrect data type for ground truth filepath in raster output datasheet')
+  if (!is.character(rasterOutputDataframe$Probability)) warning('Incorrect data type for probability filepath in raster output datasheet')
+
+  # check that confusionOutputDatafram has the correct data types
+  if (!is.numeric(confusionOutputDataframe$Prediction)) warning('Incorrect data type for Prediction in confusion matrix output')
+  if (!is.numeric(confusionOutputDataframe$Reference)) warning('Incorrect data type for Reference in confusion matrix output')
+  if (!is.numeric(confusionOutputDataframe$Frequency)) warning('Incorrect data type for Frequency in confusion matrix output')
+
+  # check that modelOutputDataframe has the correct data types
+  if (!is.character(modelOutputDataframe$Statistic)) warning('Incorrect data type for Statistic in model statistics output')
+  if (!is.numeric(modelOutputDataframe$Value)) warning('Incorrect data type for Value in model statistics output')
+
+  # check that rgbOutputDataframe has the correct data types
+  if (!is.numeric(rgbOutputDataframe$Iteration)) warning('Incorrect data type for Iteration in RBG raster output')
+  if (!is.numeric(rgbOutputDataframe$Timestep)) warning('Incorrect data type for Timestep in RBG raster output')
+  if (!is.character(rgbOutputDataframe$RGBImage)) warning('Incorrect data type for RGBImage in RBG raster output')
 }

@@ -1,3 +1,22 @@
+# set up library (remove after testing) -----------------------------------
+# library(rsyncrosim)
+# mySession <- session("C:/Program Files/SyncroSim Studio")
+# libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image_classifier_testing.ssim"
+
+# myLibrary <- ssimLibrary(name = libPath,
+#                          session = mySession)
+
+# # define project
+# myProject <- rsyncrosim::project(myLibrary, project = 1)
+
+# # define scenario
+# scenario(myProject)
+# myScenario <- scenario(myProject, scenario = 89)
+
+# # view datasheets
+# datasheet(myScenario)
+# source("imageclassifier/workspace.r")
+
 # set up workspace ---------------------------------------------------------
 packageDir <- (Sys.getenv("ssim_package_directory"))
 source(file.path(packageDir, "workspace.r"))
@@ -26,6 +45,11 @@ rasterGroundTruthDataframe <- datasheet(myScenario,
 
 rasterToClassifyDataframe <- datasheet(myScenario,
                                        name = "imageclassifier_DataToClassify")
+
+# check timesteps were input correctly ---------------------------------------
+checkTimesteps(timesteps,
+               rasterTrainingDataframe,
+               rasterGroundTruthDataframe)
 
 # extract list of training, testing, and ground truth rasters ----------------
 extractedRasters <- extractAllRasters(rasterTrainingDataframe,
@@ -133,6 +157,12 @@ outputDataframes <- calculateStatistics(rf1,
 
 confusionOutputDataframe <- outputDataframes[[1]]
 modelOutputDataframe <- outputDataframes[[2]]
+
+# check data type for output dataframes before saving --------------------------
+checkOutputDataframes(rasterOutputDataframe,
+                      confusionOutputDataframe,
+                      modelOutputDataframe,
+                      rgbOutputDataframe)
 
 # Save dataframes back to SyncroSim library's output datasheets ----------------
 saveDatasheet(myScenario,
