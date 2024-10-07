@@ -1,43 +1,33 @@
 # load packages ---------------------------------------------------
-
-# define packagecheck function
-packageCheck <- function(package) {
-  options(repos = c(CRAN = "https://cran.r-project.org"))
-  if (!require(package, character.only = TRUE)) {
-    install.packages(package, dependencies = TRUE)
-    if (!require(package, character.only = TRUE)) {
-      stop("Could not install or find package")
-    }
-  }
-}
-
-# load and/or install packages
-packageCheck("rsyncrosim")
-packageCheck("tidyverse")
-packageCheck("terra")
-packageCheck("sf")
-packageCheck("ranger")
-packageCheck("caret")
-packageCheck("gtools")
-packageCheck("reshape2")
-packageCheck("roxygen2")
-packageCheck("codetools")
+library(rsyncrosim)
+library(tidyverse)
+library(terra)
+library(sf)
+library(ranger)
+library(caret)
+library(gtools)
+library(reshape2)
+library(roxygen2)
+library(codetools)
 
 # define functions ------------------------------------------------
-assignVariables <- function(myScenario) {
 
-  #' @description
-  #' 'assignVariables' extracts variables from datashseets in the specified
-  #' syncrosim scenario and assigns them to an object.
-  #'
-  #' @param myScenario syncrosim scenario object
-  #' @return list of objects (timesteps = numeric, nObs = numeric,
-  #' filterresolution = numeric, filterPercent = numeric,
-  #' applyFiltering = boolean) that have been extracted from the syncrosim
-  #' datasheet
-  #'
-  #' @details
-  #' This function is specifically designed for the the watchtower package
+#' Assign objects froma a datasheet of variables
+#'
+#' @description
+#' 'assignVariables' extracts variables from datashseets in the specified
+#' syncrosim scenario and assigns them to an object.
+#'
+#' @param myScenario syncrosim scenario object
+#' @return list of objects (timesteps = numeric, nObs = numeric,
+#' filterresolution = numeric, filterPercent = numeric,
+#' applyFiltering = boolean) that have been extracted from the syncrosim
+#' datasheet
+#'
+#' @details
+#' This function is specifically designed for the the watchtower package
+#' @noRd
+assignVariables <- function(myScenario) {
 
   # Load RunControl datasheet
   runSettings <- datasheet(myScenario, name = "imageclassifier_RunControl")
@@ -63,18 +53,21 @@ assignVariables <- function(myScenario) {
               applyFiltering))
 }
 
+#' Extract rasters from filepaths in a dataframe
+#'
+#' @description
+#' 'extractRasters' takes a dataframe of raster filepaths and creates
+#' a list with one raster for each timestep
+#'
+#' @param dataframe dataframe containing timesteps in column 1 and
+#' raster filepaths in column 2
+#' @return list of rasters (spatRaster), one for each timestep
+#'
+#' @details
+#' The dataframe is first subset based on timestep. Rasters from the same timestep
+#' are combined into one raster using the terra package, and added to a list.
+#' @noRd
 extractRasters <- function(dataframe) {
-
-  #' @description
-  #' extractRasters takes a dataframe of raster filepaths and combines
-  #' them into a list of rasters for each timestep
-  #'
-  #' @param dataframe dataframe with a column for timestep and a column
-  #' with raster filepath
-  #' @return list of rasters from the same timestep
-  #'
-  #' @details
-  #'
 
   # define timesteps
   timesteps <- unique(dataframe[, 1])
@@ -98,14 +91,35 @@ extractRasters <- function(dataframe) {
   return(rasterList)
 }
 
+#' Extract all rasters from the syncrosim library
+#'
+#' @description
+#' 'extractAllRasters' is a wrapper function to extract rasters from
+#' all input datasheets using the extractRasters function
+#'
+#' @param rasterTrainingDataframe dataframe of timesteps and filepaths
+#' for training data
+#' @param rasterGroundTruthDataframe dataframe of timesteps and filepaths
+#' for ground truth data
+#' @param rasterToClassifyDataframe dataframe of timesteps and filepaths
+#' for rasters to classify
+#' @return list of raster lists for each input dataframe (spatRasters)
+#'
+#' @details
+#' rasterToClassifyDataframe can be an empty dataframe and will return
+#' an empty list
+#' @noRd
 extractAllRasters <- function(rasterTrainingDataframe,
                               rasterGroundTruthDataframe,
                               rasterToClassifyDataframe) {
 
+  # extract training rasters
   trainingRasterList <- extractRasters(rasterTrainingDataframe)
 
+  # extract ground truth rasters
   groundTruthRasterList <- extractRasters(rasterGroundTruthDataframe)
 
+  # extract rasters to classify
   if (length(rasterToClassifyDataframe$RasterFileToClassify) > 1) {
     toClassifyRasterList <- extractRasters(rasterToClassifyDataframe)
   } else {
@@ -117,28 +131,65 @@ extractAllRasters <- function(rasterTrainingDataframe,
               toClassifyRasterList))
 }
 
+#' Decompose rasters for image classification
+#'
+#' @description
+#' 'decomposedRaster' samples data from a training and ground truth raster,
+#' returning a dataframe for training the image classifier model
+#'
+#' @param predRast training raster (spatRaster)
+#' @param responseRast ground truth raster (spatRaster)
+#' @param nobs number of observations to sample (integer)
+#' @return dataframe of data sampled from the rasters
+#'
+#' @details
+#' Returned dataframe will be split into training and testing data.
+#' @noRd
 decomposedRaster <- function(predRast,
                              responseRast,
                              nobs) {
+
+  # randomly sample points in the training raster
   randomPoints <- spatSample(responseRast,
                              size = nobs,
                              na.rm = TRUE,
                              as.points = TRUE,
                              replace = FALSE,
                              method = "stratified")
+
+  # extract values from the training and ground truth rasters
   randomPoints <- unique(randomPoints)
   responseValues <- terra::extract(responseRast, randomPoints)
-  predValues <- terra::extract(predRast, randomPoints) # RGB-NIR
+  predValues <- terra::extract(predRast, randomPoints)
+
+  # bind into single dataframe
   trainData <- cbind(predValues, response = responseValues[, 2])
+
   return(trainData)
 }
 
+#' Plot variable importance from random forest model
+#'
+#' @description
+#' 'plotVariableImportance' creates and writes variable importance plot
+#' from the random forest model
+#'
+#' @param model random forest model (output from ranger)
+#' @param transferDir filepath for exporting the plot
+#' @return variable importance plot (ggplot) and dataframe with filepath
+#' to where the plot was written
+#'
+#' @details
+#' transferDir is defined based on the ssim session.
+#' @noRd
 plotVariableImportance <- function(model,
                                    transferDir) {
-  # make a variable importance plot for specified model
+
+  # extract variable importance
   variableImportance <- melt(model$variable.importance) %>%
     tibble::rownames_to_column("variable")
 
+  # make a variable importance plot for specified model
   variableImportancePlot <- ggplot(variableImportance,
                                    aes(x = reorder(variable, value),
                                        y = value,
@@ -161,9 +212,24 @@ plotVariableImportance <- function(model,
   return(list(variableImportancePlot, varImportanceOutputDataframe))
 }
 
+#' Split image data for training and testing
+#'
+#' @description
+#' 'splitTrainTest' is a wrapper for the decomposeRaster function,
+#' splitting the output into testing and training data.
+#'
+#' @param trainingRasterList list of training rasters (spatRasters)
+#' @param groundTruthRasterList list of ground truth rasters (spatRasters)
+#' @param nObs number of observations to sample from the training raster
+#' @return separate dataframes from testing and training data
+#'
+#' @details
+#' Both input rasters lists must be the same length.
+#' @noRd
 splitTrainTest <- function(trainingRasterList,
                            groundTruthRasterList,
                            nObs) {
+
   # create empty lists for binding data
   allTrainData <- c()
   allTestData <- c()
@@ -176,6 +242,7 @@ splitTrainTest <- function(trainingRasterList,
                                   groundTruthRasterList[[i]],
                                   nobs = nObs)
 
+    # format sampled data
     modelDataSampled <- modelData %>%
       mutate(presence = as.factor(response)) %>%
       select(-ID, -response) %>%
