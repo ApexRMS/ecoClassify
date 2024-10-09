@@ -116,8 +116,7 @@ varImportanceOutputDataframe <- variableImportanceOutput[[2]]
 ## Predict presence for each timestep group ------------------------------------
 for (t in seq_along(trainingRasterList)) {
 
-  predictionRasters <- getPredictionRasters(trainingRasterList,
-                                            t,
+  predictionRasters <- getPredictionRasters(trainingRasterList[[t]],
                                             rf1,
                                             rf2)
   predictedPresence <- predictionRasters[[1]]
