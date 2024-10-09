@@ -380,7 +380,8 @@ generateRasterDataframe <- function(applyFiltering,
                                     filterResolution,
                                     filterPercent,
                                     t,
-                                    transferDir) {
+                                    transferDir,
+                                    rasterOutputDataframe) {
 
   if (applyFiltering == TRUE) {
 
@@ -448,6 +449,73 @@ generateRasterDataframe <- function(applyFiltering,
   return(rasterOutputDataframe)
 }
 
+# eventually combine with generateRasterDataframe
+generateClassifiedRasterDataframe <- function(applyFiltering,
+                                              predictedPresence,
+                                              filterResolution,
+                                              filterPercent,
+                                              t,
+                                              transferDir,
+                                              classifiedRasterOutputDataframe) {
+
+  if (applyFiltering == TRUE) {
+
+    # filter out presence pixels surrounded by non-presence
+    filteredPredictedPresence <- focal(predictedPresence,
+                                       w = matrix(1, 5, 5),
+                                       fun = filterFun,
+                                       resolution = filterResolution,
+                                       percent = filterPercent)
+
+    # save raster
+    writeRaster(filteredPredictedPresence,
+                filename = file.path(paste0(transferDir,
+                                            "/filteredClassifiedPresence",
+                                            t,
+                                            ".tif")),
+                overwrite = TRUE)
+
+    # build dataframe
+    rasterDataframe <- data.frame(
+      Iteration = 1,
+      Timestep = t,
+      ClassifiedUnfiltered = file.path(paste0(transferDir,
+                                              "/ClassifiedPresence",
+                                              t,
+                                              ".tif")),
+      ClassifiedFiltered = file.path(paste0(transferDir,
+                                            "/filteredClassifiedPresence",
+                                            t,
+                                            ".tif")),
+      ClassifiedProbability = file.path(paste0(transferDir,
+                                               "/ClassifiedProbability",
+                                               t,
+                                               ".tif"))
+    )
+  } else {
+    # build dataframe
+    rasterDataframe <- data.frame(
+      Iteration = 1,
+      Timestep = t,
+      ClassifiedUnfiltered = file.path(paste0(transferDir,
+                                              "/ClassifiedPresence",
+                                              t,
+                                              ".tif")),
+      ClassifiedFiltered = "",
+      ClassifiedProbability = file.path(paste0(transferDir,
+                                               "/ClassifiedProbability",
+                                               t,
+                                               ".tif"))
+    )
+  }
+
+  # add to output dataframe
+  classifiedRasterOutputDataframe <- addRow(classifiedRasterOutputDataframe,
+                                            rasterDataframe)
+
+  return(classifiedRasterOutputDataframe)
+}
+
 #' Generate RGB output dataframe
 #'
 #' @description
@@ -459,7 +527,7 @@ generateRasterDataframe <- function(applyFiltering,
 #' @return filtered raster (spatRaster)
 #'
 #' @details
-#' 
+#'
 #' @noRd
 getRgbDataframe <- function(rgbOutputDataframe,
                             t,
@@ -489,17 +557,16 @@ getRgbDataframe <- function(rgbOutputDataframe,
 #' @param groundTruth ground truth raster (spatRaster)
 #' @param probabilityRaster probability raster (spatRaster)
 #' @param trainingRasterList list of training rasters for generating RGB image ( list of spatRasters)
-#' @param variableImportancePlot variable importance plot (ggplot)
 #' @param t iteration (integer)
 #' @param trandferDir directory for saving files (character)
 #'
 #' @noRd
 saveFiles <- function(predictedPresence,
-                      groundTruth,
+                      groundTruth = NULL,
                       probabilityRaster,
                       trainingRasterList,
-                      variableImportancePlot,
                       t,
+                      i,
                       transferDir) {
 
   # save rasters
@@ -510,13 +577,14 @@ saveFiles <- function(predictedPresence,
                                           ".tif")),
               overwrite = TRUE)
 
-  writeRaster(groundTruth,
-              filename = file.path(paste0(transferDir,
-                                          "/GroundTruth",
-                                          t,
-                                          ".tif")),
-              overwrite = TRUE)
-
+  if (!is.null(groundTruth)) {
+    writeRaster(groundTruth,
+                filename = file.path(paste0(transferDir,
+                                            "/GroundTruth",
+                                            t,
+                                            ".tif")),
+                overwrite = TRUE)
+  }
   writeRaster(probabilityRaster,
               filename = file.path(paste0(transferDir,
                                           "/Probability",
@@ -529,13 +597,12 @@ saveFiles <- function(predictedPresence,
                               "/RGBImage",
                               t,
                               ".png")))
-  plotRGB(trainingRasterList[[t]],
+  plotRGB(trainingRasterList[[i]],
           r = 3,
           g = 2,
           b = 1,
           stretch = "lin")
   dev.off()
-
 }
 
 #' Calculate statistics from random forest model predictions
