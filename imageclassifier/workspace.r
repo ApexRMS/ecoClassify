@@ -59,13 +59,13 @@ assignVariables <- function(myScenario) {
 #' 'extractRasters' takes a dataframe of raster filepaths and creates
 #' a list with one raster for each timestep
 #'
-#' @param dataframe dataframe containing timesteps in column 1 and
-#' raster filepaths in column 2
+#' @param dataframe column 1 = timestep, column 2 = filepath (dataframe)
 #' @return list of rasters (spatRaster), one for each timestep
 #'
 #' @details
-#' The dataframe is first subset based on timestep. Rasters from the same timestep
-#' are combined into one raster using the terra package, and added to a list.
+#' The dataframe is first subset based on timestep. Rasters from the same
+#' timestep are combined into one raster using the terra package, and added
+#' to a list.
 #' @noRd
 extractRasters <- function(dataframe) {
 
@@ -118,6 +118,9 @@ extractAllRasters <- function(rasterTrainingDataframe,
 
   # extract ground truth rasters
   groundTruthRasterList <- extractRasters(rasterGroundTruthDataframe)
+
+  # warning if training and ground truth rasters are different lengths
+  if(length(rasterTrainingDataframe) != length(rasterGroundTruthDataframe)) stop('must have equal number of training and ground truth rasters')
 
   # extract rasters to classify
   if (length(rasterToClassifyDataframe$RasterFileToClassify) > 1) {
@@ -258,10 +261,25 @@ splitTrainTest <- function(trainingRasterList,
     allTestData <- rbind(allTestData, test)
   }
 
-  return(list(allTrainData, allTestData))
+  return(list(allTrainData,
+              allTestData))
 }
 
-predictRanger <- function(raster, model) {
+#' Predict presence over area
+#'
+#' @description
+#' 'predictRanger' uses a random forest model to predict presence
+#' accross the full extent of the training rasters
+#'
+#' @param raster training raster (spatRaster)
+#' @param model random forest model (random forest object)
+#' @return raster of predicted presence (spatRaster)
+#'
+#' @details
+#' Used inside getPredictionRasters wrapper function
+#' @noRd
+predictRanger <- function(raster,
+                          model) {
   ## generate blank raster
   predictionRaster <- raster[[1]]
   names(predictionRaster) <- "present"
@@ -275,16 +293,30 @@ predictRanger <- function(raster, model) {
   return(predictionRaster)
 }
 
-getPredictionRasters <- function(trainingRasterList,
-                                 t,
+#' Predict presence and generate probability values over area
+#'
+#' @description
+#' 'getPredictionRasters' is a wrapper function for predictRanger,
+#' generating a raster of predicted presence and a raster
+#' of probabilities
+#'
+#' @param trainingRaster training raster for predictRanger (spatRaster)
+#' @param model1 random forest model for predicting presence (random forest object)
+#' @param model2 random forest model for generating probability values (random forest object)
+#' @return raster of predicted presence and probability values (spatRaster)
+#'
+#' @details
+#' 
+#' @noRd
+getPredictionRasters <- function(trainingRaster,
                                  model1,
                                  model2) {
   # predict presence for each raster
-  predictedPresence <- predictRanger(trainingRasterList[[t]],
+  predictedPresence <- predictRanger(trainingRaster,
                                      model1)
 
   # generate probabilities for each raster
-  probabilityRaster <- 1 - (predictRanger(trainingRasterList[[t]],
+  probabilityRaster <- 1 - (predictRanger(trainingRaster,
                                           model2))
   # assign values
   values(predictedPresence) <- ifelse(values(predictedPresence) == 2, 1, 0)
@@ -293,10 +325,29 @@ getPredictionRasters <- function(trainingRasterList,
               probabilityRaster))
 }
 
-filterFun <- function(raster, resolution, percent) {
+#' Filter prediction raster
+#'
+#' @description
+#' 'filterFun' filters out presence cells in input raster based on the classification
+#' of surrounding cells.
+#'
+#' @param raster prediction raster to filter (spatRaster)
+#' @param resolution resolution to apply filtering (numeric)
+#' @param percent threshold for filtering (numeric)
+#' @return filtered raster (spatRaster)
+#'
+#' @details
+#' Used in generateRasterDataframe wrapper function if filtering is selected.
+#' @noRd
+filterFun <- function(raster,
+                      resolution,
+                      percent) {
+  # define parameters
   npixels <- resolution^2
   midPixel <- (npixels + 1) / 2
   threshold <- round(npixels * percent, 0)
+  
+  # filter
   if (is.na(raster[midPixel])) {
     return(NA)
   } else if (raster[midPixel] == 1 && sum(raster[-midPixel] == 0, na.rm = TRUE) > threshold) {
@@ -306,6 +357,24 @@ filterFun <- function(raster, resolution, percent) {
   }
 }
 
+#' Generate raster output dataframe
+#'
+#' @description
+#' 'generateRasterDataframe' saves output raster files and generates output dataframe
+#' for rasterOutput syncrosim datasheet.
+#'
+#' @param applyFiltering determines whether filtering is to be applied (boolean)
+#' @param predictedPresence raster of predicted presence from predictRanger (spatRaster)
+#' @param filterResolution resolution to apply filtering (numeric)
+#' @param filterResolution threshold for filtering (numeric)
+#' @param t iteration (integer)
+#' @param trandferDir directory for saving files (character)
+#' @return filtered raster (spatRaster)
+#'
+#' @details
+#' Uses filterFun if applyFiltering is TRUE. If filtering is not applied the filtered output 
+#' raster cell in the dataframe is left empty
+#' @noRd
 generateRasterDataframe <- function(applyFiltering,
                                     predictedPresence,
                                     filterResolution,
@@ -330,6 +399,7 @@ generateRasterDataframe <- function(applyFiltering,
                                             ".tif")),
                 overwrite = TRUE)
 
+    # build dataframe
     rasterDataframe <- data.frame(
       Iteration = 1,
       Timestep = t,
@@ -351,6 +421,7 @@ generateRasterDataframe <- function(applyFiltering,
                                      ".tif"))
     )
   } else {
+    # build dataframe
     rasterDataframe <- data.frame(
       Iteration = 1,
       Timestep = t,
@@ -377,6 +448,19 @@ generateRasterDataframe <- function(applyFiltering,
   return(rasterOutputDataframe)
 }
 
+#' Generate RGB output dataframe
+#'
+#' @description
+#' 'getRgbDataframe' generates output dataframe for RgbOutput syncrosim datasheet.
+#'
+#' @param rgbOutputDataframe RGB dataframe to be added to (dataframe)
+#' @param t iteration (integer)
+#' @param trandferDir directory for saving files (character)
+#' @return filtered raster (spatRaster)
+#'
+#' @details
+#' 
+#' @noRd
 getRgbDataframe <- function(rgbOutputDataframe,
                             t,
                             transferDir) {
@@ -395,6 +479,21 @@ getRgbDataframe <- function(rgbOutputDataframe,
 
 }
 
+#' Save raster and image files
+#'
+#' @description
+#' 'saveFiles' saves raster and images files to transfer directory so they can be
+#' referenced in the syncrosim datasheets.
+#'
+#' @param predictedPresence predicted presence raster (spatRaster)
+#' @param groundTruth ground truth raster (spatRaster)
+#' @param probabilityRaster probability raster (spatRaster)
+#' @param trainingRasterList list of training rasters for generating RGB image ( list of spatRasters)
+#' @param variableImportancePlot variable importance plot (ggplot)
+#' @param t iteration (integer)
+#' @param trandferDir directory for saving files (character)
+#'
+#' @noRd
 saveFiles <- function(predictedPresence,
                       groundTruth,
                       probabilityRaster,
@@ -439,6 +538,21 @@ saveFiles <- function(predictedPresence,
 
 }
 
+#' Calculate statistics from random forest model predictions
+#'
+#' @description
+#' 'calculateStatistics' predicts presence based on all test data and 
+#' calculates a confusion matrix and other key statistics
+#'
+#' @param model random forest model (random forest object)
+#' @param testData test data to make prediction with (dataframe)
+#' @param confusionOutputDataframe empty dataframe for confusion matrix results (dataframe)
+#' @param modelOutputDataframe empty dataframe for model statistics (dataframe)
+#' @return data frames with confusion matrix results and model statistics
+#'
+#' @details
+#' Output dataframes are saved to ConfusionMatrix and modelStatistics output datasheets
+#' @noRd
 calculateStatistics <- function(model,
                                 testData,
                                 confusionOutputDataframe,
@@ -471,4 +585,55 @@ calculateStatistics <- function(model,
                                  model_stats)
 
   return(list(confusionOutputDataframe, modelOutputDataframe))
+}
+
+# check for issues with data structure ----------------------------- 
+checkTimesteps <- function(timesteps,
+                           rasterTrainingDataframe,
+                           rasterGroundTruthDataframe) {
+
+  # check if all timesteps are included in both dataframes
+  trainingTimesteps <- rasterTrainingDataframe %>%
+    pull(Timesteps) %>%
+    unique()
+
+  groundTruthTimesteps <- rasterGroundTruthDataframe %>%
+    pull(Timesteps) %>%
+    unique()
+
+  # convert timesteps to numeric
+  timestepsNumeric <- as.numeric(timesteps)
+
+  if (!identical(trainingTimesteps, groundTruthTimesteps)) stop("must have same timesteps for training and ground truth raster input datasheets")
+  if (!identical(timestepsNumeric, trainingTimesteps)) warning('timestep range does not match training raster input datasheet')
+  if (!identical(timestepsNumeric, groundTruthTimesteps)) warning('timestep range does not match ground truth raster input datasheet')
+
+}
+
+checkOutputDataframes <- function(rasterOutputDataframe,
+                                  confusionOutputDataframe,
+                                  modelOutputDataframe,
+                                  rgbOutputDataframe) {
+
+  # check that rasterOutputDataframe has the correct data types
+  if (!is.numeric(rasterOutputDataframe$Iteration)) warning('Incorrect data type for Iteration in raster output datasheet')
+  if (!is.numeric(rasterOutputDataframe$Timestep)) warning('Incorrect data type for Timestep in raster output datasheet')
+  if (!is.character(rasterOutputDataframe$PredictedUnfiltered)) warning('Incorrect data type for unfiltered prediction filepath in raster output datasheet')
+  if (!is.character(rasterOutputDataframe$PredictedFiltered)) warning('Incorrect data type for filtered prediction filepath in raster output datasheet')
+  if (!is.character(rasterOutputDataframe$GroundTruth)) warning('Incorrect data type for ground truth filepath in raster output datasheet')
+  if (!is.character(rasterOutputDataframe$Probability)) warning('Incorrect data type for probability filepath in raster output datasheet')
+
+  # check that confusionOutputDatafram has the correct data types
+  if (!is.numeric(confusionOutputDataframe$Prediction)) warning('Incorrect data type for Prediction in confusion matrix output')
+  if (!is.numeric(confusionOutputDataframe$Reference)) warning('Incorrect data type for Reference in confusion matrix output')
+  if (!is.numeric(confusionOutputDataframe$Frequency)) warning('Incorrect data type for Frequency in confusion matrix output')
+
+  # check that modelOutputDataframe has the correct data types
+  if (!is.character(modelOutputDataframe$Statistic)) warning('Incorrect data type for Statistic in model statistics output')
+  if (!is.numeric(modelOutputDataframe$Value)) warning('Incorrect data type for Value in model statistics output')
+
+  # check that rgbOutputDataframe has the correct data types
+  if (!is.numeric(rgbOutputDataframe$Iteration)) warning('Incorrect data type for Iteration in RBG raster output')
+  if (!is.numeric(rgbOutputDataframe$Timestep)) warning('Incorrect data type for Timestep in RBG raster output')
+  if (!is.character(rgbOutputDataframe$RGBImage)) warning('Incorrect data type for RGBImage in RBG raster output')
 }
