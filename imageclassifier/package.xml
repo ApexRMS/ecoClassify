@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <package name="imageclassifier" displayName="Image Classifier" description="Image classifier using semantic image segmentation" version="1.0.3" url="https://apexrms.github.io/imageclassifier/">
-       
+
     <!--Model Inputs-->
     <dataSheet name="RunControl" displayName="Run Control" isRunControl="True" timestepTitle="Timestep" showMinIteration="False">
 	</dataSheet>
@@ -29,7 +29,7 @@
 
     <!--Model Outputs-->
     <dataSheet name="RasterOutput" displayName="Training Rasters" hasTimestep="True" hasIteration="True">
-        <column name="PredictedUnfiltered" dataType="String" displayName="Predicted" isExternalFile="True" isRaster="True"/>
+        <column name="PredictedUnfiltered" dataType="String" displayName="Predicted" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="PredictedFiltered" dataType="String" displayName="Predicted filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="GroundTruth" dataType="String" displayName="Ground truth" isExternalFile="True" isRaster="True"/>
         <column name="Probability" dataType="String" displayName="Probability" isExternalFile="True" isRaster="True"/>
@@ -37,9 +37,10 @@
     </dataSheet>
 
     <dataSheet name="ClassifiedRasterOutput" displayName="Classified Rasters" hasTimestep="True" hasIteration="True">
-        <column name="ClassifiedUnfiltered" dataType="String" displayName="Classified" isExternalFile="True" isRaster="True"/>
-        <column name="ClassifiedFiltered" dataType="String" displayName="Classified filtered" isExternalFile="True" isRaster="True"/>
+        <column name="ClassifiedUnfiltered" dataType="String" displayName="Classified" isExternalFile="True" isRaster="True" bandColumn="Band"/>
+        <column name="ClassifiedFiltered" dataType="String" displayName="Classified filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="ClassifiedProbability" dataType="String" displayName="Probability" isExternalFile="True" isRaster="True"/>
+        <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True"/>
     </dataSheet>
 
     <dataSheet name="ConfusionMatrix" displayName="Confusion matrix">
@@ -58,7 +59,7 @@
         <column name="filterThresholdOutput" dataType="Double" displayName="Filter Threshold"/>
     </dataSheet>
 
-    <dataSheet name="ModelOutput" displayName="Model Output">
+    <dataSheet name="ModelOutput" displayName="Model Output" hasTimestep="True" hasIteration="True">
 	    <column name="VariableImportance" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
 
@@ -134,7 +135,7 @@
     </layout>
 
     <!--Image Layout-->
-    <layout type="Image">	
+    <layout type="Image" configurationSheet="RunControl">	
         <item name="VariableImportancePlot" displayName="Variable Importance" dataSheet="ModelOutput" column="VariableImportance"/>
         <group name="RGBImagePlots" displayName="RGB Images">
             <item name="TrainingRGBImagePlots" displayName="Training" dataSheet="RgbOutput" column="RGBImage"/>

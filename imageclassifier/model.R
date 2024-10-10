@@ -1,22 +1,22 @@
-# set up library (remove after testing) -----------------------------------
-library(rsyncrosim)
-mySession <- session("C:/Program Files/SyncroSim Studio")
-libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image_classifier_testing.ssim"
+# # set up library (remove after testing) -----------------------------------
+# library(rsyncrosim)
+# mySession <- session("C:/Program Files/SyncroSim Studio")
+# libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image_classifier_testing.ssim"
 
-myLibrary <- ssimLibrary(name = libPath,
-                         session = mySession)
+# myLibrary <- ssimLibrary(name = libPath,
+#                          session = mySession)
 
-# define project
-myProject <- project(myLibrary, project = 1)
+# # define project
+# myProject <- project(myLibrary, project = 1)
 
-# define scenario
-scenario(myProject)
-myScenario <- scenario(myProject, scenario = 89)
+# # define scenario
+# scenario(myProject)
+# myScenario <- scenario(myProject, scenario = 89)
 
-# view datasheets
-datasheet(myScenario)
-source("imageclassifier/workspace.r")
-transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
+# # view datasheets
+# datasheet(myScenario)
+# source("imageclassifier/workspace.r")
+# transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
 
 # set up workspace ---------------------------------------------------------
 packageDir <- (Sys.getenv("ssim_package_directory"))
@@ -138,15 +138,18 @@ for (t in seq_along(trainingRasterList)) {
                                                    predictedPresence,
                                                    filterResolution,
                                                    filterPercent,
+                                                   iteration = 1,
                                                    t,
                                                    transferDir,
-                                                   rasterOutputDataframe)
+                                                   rasterOutputDataframe,
+                                                   hasGroundTruth = TRUE)
 
   # define GroundTruth raster
   groundTruth <- groundTruthRasterList[[t]]
 
   # define RGB data frame
   rgbOutputDataframe <- getRgbDataframe(rgbOutputDataframe,
+                                        iteration = 1,
                                         t,
                                         transferDir)
 
@@ -155,7 +158,7 @@ for (t in seq_along(trainingRasterList)) {
             groundTruth,
             probabilityRaster,
             trainingRasterList,
-            t,
+            iteration = 1,
             t,
             transferDir)
 }
@@ -170,17 +173,20 @@ for (t in seq_along(toClassifyRasterList)) {
   classifiedProbability <- classifiedRasters[[2]]
 
   # generate rasterDataframe based on filtering argument
-  classifiedRasterOutputDataframe <- generateClassifiedRasterDataframe(applyFiltering,
-                                                                       classifiedPresence,
-                                                                       filterResolution,
-                                                                       filterPercent,
-                                                                       t + max(timesteps),
-                                                                       transferDir,
-                                                                       classifiedRasterOutputDataframe)
+  classifiedRasterOutputDataframe <- generateRasterDataframe(applyFiltering,
+                                                             classifiedPresence,
+                                                             filterResolution,
+                                                             filterPercent,
+                                                             iteration = 2,
+                                                             t,
+                                                             transferDir,
+                                                             classifiedRasterOutputDataframe,
+                                                             hasGroundTruth = FALSE)
 
   # define RGB data frame
   classifiedRgbOutputDataframe <- getRgbDataframe(classifiedRgbOutputDataframe,
-                                                  t + max(timesteps),
+                                                  iteration = 2,
+                                                  t,
                                                   transferDir)
 
   # save files
@@ -188,7 +194,7 @@ for (t in seq_along(toClassifyRasterList)) {
             groundTruth = NULL,
             probabilityRaster,
             toClassifyRasterList,
-            t + max(timesteps),
+            iteration = 2,
             t,
             transferDir)
 }
