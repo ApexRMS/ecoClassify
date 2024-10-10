@@ -1,22 +1,23 @@
-# # set up library (remove after testing) -----------------------------------
-# library(rsyncrosim)
-# mySession <- session("C:/Program Files/SyncroSim Studio")
-# libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image_classifier_testing.ssim"
+# set up library (remove after testing) -----------------------------------
+library(rsyncrosim)
+mySession <- session("C:/Program Files/SyncroSim Studio")
+libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image_classifier_testing.ssim"
 
-# myLibrary <- ssimLibrary(name = libPath,
-#                          session = mySession)
+myLibrary <- ssimLibrary(name = libPath,
+                         session = mySession)
 
-# # define project
-# myProject <- project(myLibrary, project = 1)
+# define project
+myProject <- project(myLibrary, project = 1)
 
-# # define scenario
-# scenario(myProject)
-# myScenario <- scenario(myProject, scenario = 89)
+# define scenario
+scenario(myProject)
+myScenario <- scenario(myProject, scenario = 89)
 
-# # view datasheets
-# datasheet(myScenario)
-# source("imageclassifier/workspace.r")
-# transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
+# view datasheets
+datasheet(myScenario)
+source("imageclassifier/workspace.r")
+transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
+applyContextualization <- TRUE
 
 # set up workspace ---------------------------------------------------------
 packageDir <- (Sys.getenv("ssim_package_directory"))
@@ -36,6 +37,7 @@ nObs <- inputVariables[[2]]
 filterResolution <- inputVariables[[3]]
 filterPercent <- inputVariables[[4]]
 applyFiltering <- inputVariables[[5]]
+applyContextualization <- inputVariables[[6]]
 
 # Load raster input datasheets
 rasterTrainingDataframe <- datasheet(myScenario,
@@ -92,6 +94,24 @@ classifiedRgbOutputDataframe <- data.frame(Iteration = numeric(0),
 
 filterOutputDataframe <- data.frame(filterResolutionOutput = filterResolution,
                                     filterThresholdOutput = filterPercent)
+
+# add contextualization if selected --------------------------------------------
+if (applyContextualization == TRUE) {
+
+  contextualizedTrainingRasterList <- c()
+
+  for (raster in seq_along(trainingRasterList)) {
+    trainingRaster <- trainingRasterList[[raster]]
+    adjacentRaster <- addRasterAdjacencyValues(trainingRaster)
+    combinedRaster <- c(trainingRaster, adjacentRaster)
+
+    contextualizedTrainingRasterList <- c(contextualizedTrainingRasterList,
+                                          combinedRaster)
+  }
+
+  trainingRasterList <- contextualizedTrainingRasterList # change naming to avoid this
+
+}
 
 # separate training and testing data -------------------------------------------
 splitData <- splitTrainTest(trainingRasterList,
@@ -161,6 +181,13 @@ for (t in seq_along(trainingRasterList)) {
             iteration = 1,
             t,
             transferDir)
+}
+
+# add contextualization for toclassify rasters if selected ---------------------
+if (applyContextualization == TRUE) {
+
+  toClassifyRasterList <- contextualizeRaster(toClassifyRasterList) # change naming to avoid this
+
 }
 
 ## Predict presence for rasters to classify ------------------------------------

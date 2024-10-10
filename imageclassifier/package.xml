@@ -22,6 +22,7 @@
 
     <dataSheet name="ModelInput" displayName="Classifier options" isSingleRow="True">
         <column name="nObs" dataType="Integer" displayName="Sample size"/>
+        <column name="applyContextualization" dataType="Boolean" displayName="Apply contextualization"/>
         <column name="applyFiltering" dataType="Boolean" displayName="Apply filtering"/>
         <column name="filterResolution" dataType="Double" displayName="Filter resolution (optional)"/>
         <column name="filterPercent" dataType="Double" displayName="Filter threshold (optional)"/>

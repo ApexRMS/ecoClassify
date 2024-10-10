@@ -44,13 +44,15 @@ assignVariables <- function(myScenario) {
   filterResolution <- modelInputDataframe$filterResolution
   filterPercent <- modelInputDataframe$filterPercent
   applyFiltering <- modelInputDataframe$applyFiltering
+  applyContextualization <- modelInputDataframe$applyContextualization
 
   # return as a list
   return(list(timesteps,
               nObs,
               filterResolution,
               filterPercent,
-              applyFiltering))
+              applyFiltering,
+              applyContextualization))
 }
 
 #' Extract rasters from filepaths in a dataframe
@@ -733,4 +735,45 @@ checkOutputDataframes <- function(rasterOutputDataframe,
   if (!is.numeric(rgbOutputDataframe$Iteration)) warning('Incorrect data type for Iteration in RBG raster output')
   if (!is.numeric(rgbOutputDataframe$Timestep)) warning('Incorrect data type for Timestep in RBG raster output')
   if (!is.character(rgbOutputDataframe$RGBImage)) warning('Incorrect data type for RGBImage in RBG raster output')
+}
+
+# context functions ------------------------------
+getRasterAdjacencyValues <- function(rasterIn) {
+    adjacentPixels <- adjacent(rasterIn, 1:ncell(rasterIn), directions = 8)
+    contextColourData <- data.frame()
+  for (i in 1:nrow(adjacentPixels)) {
+    adjacentPixelMeans <- colMeans(rasterIn[adjacentPixels[i,]], na.rm=T)
+    adjacentPixelMeansDF <- data.frame(t(adjacentPixelMeans))
+    adjacentPixelMeansDF[, "ID"] <- i
+    contextColourData <- rbind(contextColourData, adjacentPixelMeansDF)
+  }
+names(contextColourData)[1:4] <- paste0(names(contextColourData)[1:4], "_adjacent")
+return(contextColourData)
+}
+
+addRasterAdjacencyValues <- function(rasterIn) {
+  contextColourData <- getRasterAdjacencyValues(rasterIn)
+  extendedRaster <- rasterIn
+  for (i in 1:nlyr(rasterIn)) {
+    values(extendedRaster[[i]]) <- contextColourData[, i]
+  }
+  names(extendedRaster) <- paste0(names(extendedRaster), "_adjacent")
+  return(extendedRaster)
+}
+
+contextualizeRaster <- function(rasterList) {
+
+  contextualizedRasterList <- c()
+
+  for (r in seq_along(rasterList)) {
+    raster <- rasterList[[r]]
+    adjacentRaster <- addRasterAdjacencyValues(raster)
+    combinedRaster <- c(raster, adjacentRaster)
+
+    contextualizedRasterList <- c(contextualizedRasterList,
+                                  combinedRaster)
+  }
+
+  return(contextualizedRasterList)
+
 }
