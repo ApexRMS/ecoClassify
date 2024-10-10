@@ -60,7 +60,7 @@
         <column name="filterThresholdOutput" dataType="Double" displayName="Filter Threshold"/>
     </dataSheet>
 
-    <dataSheet name="ModelOutput" displayName="Model Output" hasTimestep="True" hasIteration="True">
+    <dataSheet name="ModelOutput" displayName="Model Output">
 	    <column name="VariableImportance" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
 

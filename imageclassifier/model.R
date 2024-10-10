@@ -1,23 +1,23 @@
-# set up library (remove after testing) -----------------------------------
-library(rsyncrosim)
-mySession <- session("C:/Program Files/SyncroSim Studio")
-libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image_classifier_testing.ssim"
+# # set up library (remove after testing) -----------------------------------
+# library(rsyncrosim)
+# mySession <- session("C:/Program Files/SyncroSim Studio")
+# libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image_classifier_testing.ssim"
 
-myLibrary <- ssimLibrary(name = libPath,
-                         session = mySession)
+# myLibrary <- ssimLibrary(name = libPath,
+#                          session = mySession)
 
-# define project
-myProject <- project(myLibrary, project = 1)
+# # define project
+# myProject <- project(myLibrary, project = 1)
 
-# define scenario
-scenario(myProject)
-myScenario <- scenario(myProject, scenario = 89)
+# # define scenario
+# scenario(myProject)
+# myScenario <- scenario(myProject, scenario = 89)
 
-# view datasheets
-datasheet(myScenario)
-source("imageclassifier/workspace.r")
-transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
-applyContextualization <- TRUE
+# # view datasheets
+# datasheet(myScenario)
+# source("imageclassifier/workspace.r")
+# transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
+# applyContextualization <- FALSE
 
 # set up workspace ---------------------------------------------------------
 packageDir <- (Sys.getenv("ssim_package_directory"))
@@ -96,22 +96,29 @@ filterOutputDataframe <- data.frame(filterResolutionOutput = filterResolution,
                                     filterThresholdOutput = filterPercent)
 
 # add contextualization if selected --------------------------------------------
+
 if (applyContextualization == TRUE) {
 
-  contextualizedTrainingRasterList <- c()
-
-  for (raster in seq_along(trainingRasterList)) {
-    trainingRaster <- trainingRasterList[[raster]]
-    adjacentRaster <- addRasterAdjacencyValues(trainingRaster)
-    combinedRaster <- c(trainingRaster, adjacentRaster)
-
-    contextualizedTrainingRasterList <- c(contextualizedTrainingRasterList,
-                                          combinedRaster)
-  }
-
-  trainingRasterList <- contextualizedTrainingRasterList # change naming to avoid this
+  trainingRasterList <- contextualizeRaster(trainingRasterList) # change naming to avoid this
 
 }
+
+# if (applyContextualization == TRUE) {
+
+#   contextualizedTrainingRasterList <- c()
+
+#   for (raster in seq_along(trainingRasterList)) {
+#     trainingRaster <- trainingRasterList[[raster]]
+#     adjacentRaster <- addRasterAdjacencyValues(trainingRaster)
+#     combinedRaster <- c(trainingRaster, adjacentRaster)
+
+#     contextualizedTrainingRasterList <- c(contextualizedTrainingRasterList,
+#                                           combinedRaster)
+#   }
+
+#   trainingRasterList <- contextualizedTrainingRasterList # change naming to avoid this
+
+# }
 
 # separate training and testing data -------------------------------------------
 splitData <- splitTrainTest(trainingRasterList,
@@ -217,9 +224,9 @@ for (t in seq_along(toClassifyRasterList)) {
                                                   transferDir)
 
   # save files
-  saveFiles(predictedPresence,
+  saveFiles(classifiedPresence,
             groundTruth = NULL,
-            probabilityRaster,
+            classifiedProbability,
             toClassifyRasterList,
             iteration = 2,
             t,
