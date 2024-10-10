@@ -1,4 +1,4 @@
-# set up library (remove after testing) -----------------------------------
+# # set up library (remove after testing) -----------------------------------
 # library(rsyncrosim)
 # mySession <- session("C:/Program Files/SyncroSim Studio")
 # libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image_classifier_testing.ssim"
@@ -7,7 +7,7 @@
 #                          session = mySession)
 
 # # define project
-# myProject <- rsyncrosim::project(myLibrary, project = 1)
+# myProject <- project(myLibrary, project = 1)
 
 # # define scenario
 # scenario(myProject)
@@ -16,6 +16,7 @@
 # # view datasheets
 # datasheet(myScenario)
 # source("imageclassifier/workspace.r")
+# transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
 
 # set up workspace ---------------------------------------------------------
 packageDir <- (Sys.getenv("ssim_package_directory"))
@@ -68,6 +69,12 @@ rasterOutputDataframe <- data.frame(Iteration = numeric(0),
                                     GroundTruth = character(0),
                                     Probability = character(0))
 
+classifiedRasterOutputDataframe <- data.frame(Iteration = numeric(0),
+                                              Timestep = numeric(0),
+                                              ClassifiedUnfiltered = character(0),
+                                              ClassifiedFiltered = character(0),
+                                              ClassifiedProbability = character(0))
+
 confusionOutputDataframe <- data.frame(Prediction = numeric(0),
                                        Reference = numeric(0),
                                        Frequency = numeric(0))
@@ -78,6 +85,10 @@ modelOutputDataframe <- data.frame(Statistic = character(0),
 rgbOutputDataframe <- data.frame(Iteration = numeric(0),
                                  Timestep = numeric(0),
                                  RGBImage = character(0))
+
+classifiedRgbOutputDataframe <- data.frame(Iteration = numeric(0),
+                                           Timestep = numeric(0),
+                                           RGBImage = character(0))
 
 filterOutputDataframe <- data.frame(filterResolutionOutput = filterResolution,
                                     filterThresholdOutput = filterPercent)
@@ -113,7 +124,7 @@ variableImportanceOutput <- plotVariableImportance(rf1,
 variableImportancePlot <- variableImportanceOutput[[1]]
 varImportanceOutputDataframe <- variableImportanceOutput[[2]]
 
-## Predict presence for each timestep group ------------------------------------
+## Predict presence for training rasters in each timestep group ----------------
 for (t in seq_along(trainingRasterList)) {
 
   predictionRasters <- getPredictionRasters(trainingRasterList[[t]],
@@ -127,14 +138,18 @@ for (t in seq_along(trainingRasterList)) {
                                                    predictedPresence,
                                                    filterResolution,
                                                    filterPercent,
+                                                   iteration = 1,
                                                    t,
-                                                   transferDir)
+                                                   transferDir,
+                                                   rasterOutputDataframe,
+                                                   hasGroundTruth = TRUE)
 
   # define GroundTruth raster
   groundTruth <- groundTruthRasterList[[t]]
 
   # define RGB data frame
   rgbOutputDataframe <- getRgbDataframe(rgbOutputDataframe,
+                                        iteration = 1,
                                         t,
                                         transferDir)
 
@@ -143,7 +158,43 @@ for (t in seq_along(trainingRasterList)) {
             groundTruth,
             probabilityRaster,
             trainingRasterList,
-            variableImportancePlot,
+            iteration = 1,
+            t,
+            transferDir)
+}
+
+## Predict presence for rasters to classify ------------------------------------
+for (t in seq_along(toClassifyRasterList)) {
+
+  classifiedRasters <- getPredictionRasters(toClassifyRasterList[[t]],
+                                            rf1,
+                                            rf2)
+  classifiedPresence <- classifiedRasters[[1]]
+  classifiedProbability <- classifiedRasters[[2]]
+
+  # generate rasterDataframe based on filtering argument
+  classifiedRasterOutputDataframe <- generateRasterDataframe(applyFiltering,
+                                                             classifiedPresence,
+                                                             filterResolution,
+                                                             filterPercent,
+                                                             iteration = 2,
+                                                             t,
+                                                             transferDir,
+                                                             classifiedRasterOutputDataframe,
+                                                             hasGroundTruth = FALSE)
+
+  # define RGB data frame
+  classifiedRgbOutputDataframe <- getRgbDataframe(classifiedRgbOutputDataframe,
+                                                  iteration = 2,
+                                                  t,
+                                                  transferDir)
+
+  # save files
+  saveFiles(predictedPresence,
+            groundTruth = NULL,
+            probabilityRaster,
+            toClassifyRasterList,
+            iteration = 2,
             t,
             transferDir)
 }
@@ -169,6 +220,10 @@ saveDatasheet(myScenario,
               name = "imageclassifier_RasterOutput")
 
 saveDatasheet(myScenario,
+              data = classifiedRasterOutputDataframe,
+              name = "imageclassifier_ClassifiedRasterOutput")
+
+saveDatasheet(myScenario,
               data = confusionOutputDataframe,
               name = "imageclassifier_ConfusionMatrix")
 
@@ -187,3 +242,7 @@ saveDatasheet(myScenario,
 saveDatasheet(myScenario,
               data = rgbOutputDataframe,
               name = "imageclassifier_RgbOutput")
+
+saveDatasheet(myScenario,
+              data = classifiedRgbOutputDataframe,
+              name = "imageclassifier_ClassifiedRgbOutput")

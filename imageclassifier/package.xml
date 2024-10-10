@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <package name="imageclassifier" displayName="Image Classifier" description="Image classifier using semantic image segmentation" version="1.0.3" url="https://apexrms.github.io/imageclassifier/">
-       
+
     <!--Model Inputs-->
     <dataSheet name="RunControl" displayName="Run Control" isRunControl="True" timestepTitle="Timestep" showMinIteration="False">
 	</dataSheet>
@@ -28,11 +28,18 @@
     </dataSheet>
 
     <!--Model Outputs-->
-    <dataSheet name="RasterOutput" displayName="Rasters" hasTimestep="True" hasIteration="True">
-        <column name="PredictedUnfiltered" dataType="String" displayName="Predicted" isExternalFile="True" isRaster="True"/>
+    <dataSheet name="RasterOutput" displayName="Training Rasters" hasTimestep="True" hasIteration="True">
+        <column name="PredictedUnfiltered" dataType="String" displayName="Predicted" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="PredictedFiltered" dataType="String" displayName="Predicted filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="GroundTruth" dataType="String" displayName="Ground truth" isExternalFile="True" isRaster="True"/>
         <column name="Probability" dataType="String" displayName="Probability" isExternalFile="True" isRaster="True"/>
+        <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True"/>
+    </dataSheet>
+
+    <dataSheet name="ClassifiedRasterOutput" displayName="Classified Rasters" hasTimestep="True" hasIteration="True">
+        <column name="ClassifiedUnfiltered" dataType="String" displayName="Classified" isExternalFile="True" isRaster="True" bandColumn="Band"/>
+        <column name="ClassifiedFiltered" dataType="String" displayName="Classified filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
+        <column name="ClassifiedProbability" dataType="String" displayName="Probability" isExternalFile="True" isRaster="True"/>
         <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True"/>
     </dataSheet>
 
@@ -52,12 +59,16 @@
         <column name="filterThresholdOutput" dataType="Double" displayName="Filter Threshold"/>
     </dataSheet>
 
-    <dataSheet name="ModelOutput" displayName="Model Output">
+    <dataSheet name="ModelOutput" displayName="Model Output" hasTimestep="True" hasIteration="True">
 	    <column name="VariableImportance" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
 
     <dataSheet name="RgbOutput" displayName="RGB Images" hasTimestep="True" hasIteration="True">
 	    <column name="RGBImage" dataType="String" isExternalFile="True" isImage="True"/>
+    </dataSheet>
+
+    <dataSheet name="ClassifiedRgbOutput" displayName="RGB Images" hasTimestep="True" hasIteration="True">
+	    <column name="ClassifiedRGBImage" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
 
     <!--Main transformer-->
@@ -68,11 +79,13 @@
         <dataSheet name="DataToClassify" type="Input"/>
         <dataSheet name="ModelInput" type="Input"/>
         <dataSheet name="RasterOutput" type="Output"/>
+        <dataSheet name="ClassifiedRasterOutput" type="Output"/>
         <dataSheet name="ConfusionMatrix" type="Output"/>
         <dataSheet name="ModelStatistics" type="Output"/>
         <dataSheet name="FilterStatistics" type="Output"/>
         <dataSheet name="ModelOutput" type="Output"/>
         <dataSheet name="RgbOutput" type="Output"/>
+        <dataSheet name="ClassifiedRgbOutput" type="Output"/>
     </transformer>
 
     <!--Export transformers-->
@@ -98,6 +111,7 @@
 
         <group name="AllOutputs" displayName="Output">
             <item name="RasterOutput"/>
+            <item name="ClassifiedRasterOutput"/>
             <item name="ConfusionMatrix"/>
             <item name="ModelStatistics"/>
             <item name="FilterStatistics"/>
@@ -107,18 +121,26 @@
 
     <!--Map Layout-->
 	<layout type="Map" configurationSheet="RunControl">
-        <group name="PredictionMaps" displayName="Predictions">
-		    <item name="RasterMap1" displayName="Unfiltered" dataSheet="RasterOutput" column="PredictedUnfiltered"/>
-            <item name="RasterMap2" displayName="Filtered" dataSheet="RasterOutput" column="PredictedFiltered"/>
+        <group name="PredictionMaps" displayName="Training Predictions">
+		    <item name="PredictedUnfilteredMap" displayName="Unfiltered" dataSheet="RasterOutput" column="PredictedUnfiltered"/>
+            <item name="PredictedFilteredMap" displayName="Filtered" dataSheet="RasterOutput" column="PredictedFiltered"/>
+            <item name="ProbabilityMap" displayName="Probability" dataSheet="RasterOutput" column="Probability"/>
+            <item name="GroundTruthMap" displayName="Ground Truth" dataSheet="RasterOutput" column="GroundTruth"/>
         </group>
-        <item name="RasterMap3" displayName="Ground Truth" dataSheet="RasterOutput" column="GroundTruth"/>
-        <item name="RasterMap4" displayName="Probability" dataSheet="RasterOutput" column="Probability"/>
+        <group name="ClassifiedPredictionMaps" displayName="Classified Predictions">
+		    <item name="ClassifiedUnfilteredMap" displayName="Unfiltered" dataSheet="ClassifiedRasterOutput" column="ClassifiedUnfiltered"/>
+            <item name="ClassifiedFilteredMap" displayName="Filtered" dataSheet="ClassifiedRasterOutput" column="ClassifiedFiltered"/>
+            <item name="ClassifiedProbabilityMap" displayName="Probability" dataSheet="ClassifiedRasterOutput" column="ClassifiedProbability"/>
+        </group>
     </layout>
 
     <!--Image Layout-->
-    <layout type="Image">	
+    <layout type="Image" configurationSheet="RunControl">	
         <item name="VariableImportancePlot" displayName="Variable Importance" dataSheet="ModelOutput" column="VariableImportance"/>
-        <item name="RGBImagePlots" displayName="RGB Images" dataSheet="RgbOutput" column="RGBImage"/>
+        <group name="RGBImagePlots" displayName="RGB Images">
+            <item name="TrainingRGBImagePlots" displayName="Training" dataSheet="RgbOutput" column="RGBImage"/>
+            <item name="ClassifiedRGBImagePlots" displayName="Classified" dataSheet="ClassifiedRgbOutput" column="ClassifiedRGBImage"/>
+        </group>
     </layout>
 
     <!--Export Layout-->
