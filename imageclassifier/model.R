@@ -1,23 +1,27 @@
-# # set up library (remove after testing) -----------------------------------
-# library(rsyncrosim)
-# mySession <- session("C:/Program Files/SyncroSim Studio")
-# libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image_classifier_testing.ssim"
+# set up library (remove after testing) -----------------------------------
+library(rsyncrosim)
+mySession <- session("C:/Program Files/SyncroSim Studio")
+libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image_classifier_testing.ssim"
 
-# myLibrary <- ssimLibrary(name = libPath,
-#                          session = mySession)
+myLibrary <- ssimLibrary(name = libPath,
+                         session = mySession)
 
-# # define project
-# myProject <- project(myLibrary, project = 1)
+# define project
+myProject <- project(myLibrary, project = 1)
 
-# # define scenario
-# scenario(myProject)
-# myScenario <- scenario(myProject, scenario = 89)
+# define scenario
+scenario(myProject)
+myScenario <- scenario(myProject, scenario = 89)
 
-# # view datasheets
-# datasheet(myScenario)
-# source("imageclassifier/workspace.r")
-# transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
-# applyContextualization <- FALSE
+# view datasheets
+datasheet(myScenario)
+source("imageclassifier/workspace.r")
+transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
+applyContextualization <- TRUE
+
+groundTruthRasterList <- list(rast("C:/Users/HannahAdams/Documents/Projects/Image classifier/multiple-class-ground-truth.tif"))
+plot(groundTruthRasterList[[1]])
+trainingRasterList <- trainingRasterList[1]
 
 # set up workspace ---------------------------------------------------------
 packageDir <- (Sys.getenv("ssim_package_directory"))
@@ -102,23 +106,6 @@ if (applyContextualization == TRUE) {
   trainingRasterList <- contextualizeRaster(trainingRasterList) # change naming to avoid this
 
 }
-
-# if (applyContextualization == TRUE) {
-
-#   contextualizedTrainingRasterList <- c()
-
-#   for (raster in seq_along(trainingRasterList)) {
-#     trainingRaster <- trainingRasterList[[raster]]
-#     adjacentRaster <- addRasterAdjacencyValues(trainingRaster)
-#     combinedRaster <- c(trainingRaster, adjacentRaster)
-
-#     contextualizedTrainingRasterList <- c(contextualizedTrainingRasterList,
-#                                           combinedRaster)
-#   }
-
-#   trainingRasterList <- contextualizedTrainingRasterList # change naming to avoid this
-
-# }
 
 # separate training and testing data -------------------------------------------
 splitData <- splitTrainTest(trainingRasterList,

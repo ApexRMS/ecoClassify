@@ -321,7 +321,7 @@ getPredictionRasters <- function(trainingRaster,
   probabilityRaster <- 1 - (predictRanger(trainingRaster,
                                           model2))
   # assign values
-  values(predictedPresence) <- ifelse(values(predictedPresence) == 2, 1, 0)
+  # values(predictedPresence) <- ifelse(values(predictedPresence) == 2, 1, 0)
 
   return(list(predictedPresence,
               probabilityRaster))
