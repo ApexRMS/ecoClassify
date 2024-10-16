@@ -795,11 +795,11 @@ getSensSpec <- function(probs, actual, threshold) {
 }
 
 ## find optimal threshold between sensitivity and specificity
-getOptimalThreshold <- function(prob_predictions, testingObservations) {
-  thresholds <- seq(0, 1, by = 0.01)
+getOptimalThreshold <- function(testingPredictions, testingObservations) {
+  thresholds <- seq(0.01, 0.99, by = 0.01)
   
   # Calculate sensitivity and specificity for each threshold
-  metrics <- t(sapply(thresholds, getSensSpec, probs = prob_predictions, actual = as.numeric(testingObservations)))
+  metrics <- t(sapply(thresholds, getSensSpec, probs = testingPredictions, actual = testingObservations))
   youdenIndex  <- metrics[,1] + metrics[,2] - 1
   optimalYouden <- thresholds[which.max(youdenIndex)]
   
