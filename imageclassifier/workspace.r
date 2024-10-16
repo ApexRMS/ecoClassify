@@ -777,3 +777,31 @@ contextualizeRaster <- function(rasterList) {
   return(contextualizedRasterList)
 
 }
+
+
+
+
+### Random forest training
+
+## find sensitivity and specificity values
+getSensSpec <- function(probs, actual, threshold) {
+  predicted <- ifelse(probs >= threshold, 1, 0)
+  confMatrix <- confusionMatrix(as.factor(predicted), as.factor(actual))
+  
+  sensitivity <- confMatrix$byClass['Sensitivity']
+  specificity <- confMatrix$byClass['Specificity']
+  
+  return(c(sensitivity, specificity))
+}
+
+## find optimal threshold between sensitivity and specificity
+getOptimalThreshold <- function(prob_predictions, testingObservations) {
+  thresholds <- seq(0, 1, by = 0.01)
+  
+  # Calculate sensitivity and specificity for each threshold
+  metrics <- t(sapply(thresholds, getSensSpec, probs = prob_predictions, actual = as.numeric(testingObservations)))
+  youdenIndex  <- metrics[,1] + metrics[,2] - 1
+  optimalYouden <- thresholds[which.max(youdenIndex)]
+  
+  return(optimalYouden)
+}
