@@ -180,7 +180,7 @@ decomposedRaster <- function(predRast,
 #' 'plotVariableImportance' creates and writes variable importance plot
 #' from the random forest model
 #'
-#' @param model random forest model (output from ranger)
+#' @param importanceData vector of importance values (numeric) with names attribute
 #' @param transferDir filepath for exporting the plot
 #' @return variable importance plot (ggplot) and dataframe with filepath
 #' to where the plot was written
@@ -188,11 +188,11 @@ decomposedRaster <- function(predRast,
 #' @details
 #' transferDir is defined based on the ssim session.
 #' @noRd
-plotVariableImportance <- function(model,
+plotVariableImportance <- function(importanceData,
                                    transferDir) {
 
   # extract variable importance
-  variableImportance <- melt(model$variable.importance) %>%
+  variableImportance <- melt(importanceData) %>%
     tibble::rownames_to_column("variable")
 
   # make a variable importance plot for specified model
@@ -798,11 +798,10 @@ varImp <- max1@variable.importance[bestMax] %>% data.frame()
 names(varImp) <- c("variable","percent.contribution","permutation.importance")
 
 getMaxentImportance <- function(varImp) {
-  flippedImportance <- t(varImp)
-  flippedImportance <- data.frame(flippedImportance)
-  names(flippedImportance) <- flippedImportance[1,]
-  maxentImportance <- flippedImportance[-c(1,3),]
+  maxentImportance <- as.numeric(varImp$percent.contribution)
+  attr(maxentImportance, "names") <- varImp$variable
   return(maxentImportance)
+
 }
 
 getMaxentImportance(varImp)
