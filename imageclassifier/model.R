@@ -1,7 +1,7 @@
 # set up library (remove after testing) -----------------------------------
 library(rsyncrosim)
 mySession <- session("C:/Program Files/SyncroSim Studio")
-libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image_classifier_testing.ssim"
+libPath <- "library/image_classifier_testing.ssim"
 
 myLibrary <- ssimLibrary(name = libPath,
                          session = mySession)
@@ -16,13 +16,18 @@ myScenario <- scenario(myProject, scenario = 89)
 # view datasheets
 datasheet(myScenario)
 source("imageclassifier/workspace.r")
-transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
-applyContextualization <- TRUE
+transferDir <- ""
 
-groundTruthRasterList <- list(rast("C:/Users/HannahAdams/Documents/Projects/Image classifier/multiple-class-ground-truth.tif"))
-plot(groundTruthRasterList[[1]])
-trainingRasterList <- trainingRasterList[1]
+# set transferDir filepath if exporting
+# transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
 
+# testing ground truth raster with multiple classes
+# groundTruthRasterList <- list(rast("C:/Users/HannahAdams/Documents/Projects/Image classifier/multiple-class-ground-truth.tif"))
+# plot(groundTruthRasterList[[1]])
+# trainingRasterList <- trainingRasterList[1]
+# plot(trainingRasterList[[1]])
+
+# START OF MODEL SCRIPT:
 # set up workspace ---------------------------------------------------------
 packageDir <- (Sys.getenv("ssim_package_directory"))
 source(file.path(packageDir, "workspace.r"))
