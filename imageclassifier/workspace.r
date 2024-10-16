@@ -795,9 +795,14 @@ getSensSpec <- function(probs, actual, threshold) {
 }
 
 ## find optimal threshold between sensitivity and specificity
-getOptimalThreshold <- function(testingPredictions, testingObservations) {
+getOptimalThreshold <- function(model, testingData, modelType="randomForest") {
   thresholds <- seq(0.01, 0.99, by = 0.01)
-  
+  testingObservations <- as.numeric(testingData$presence)-1
+
+  ## predicting data
+  if(modelType == "randomForest"){
+  testingPredictions <- predict(rf2, testingData)$predictions[,2]
+  }
   # Calculate sensitivity and specificity for each threshold
   metrics <- t(sapply(thresholds, getSensSpec, probs = testingPredictions, actual = testingObservations))
   youdenIndex  <- metrics[,1] + metrics[,2] - 1
