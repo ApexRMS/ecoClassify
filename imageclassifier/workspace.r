@@ -9,6 +9,7 @@ library(gtools)
 library(reshape2)
 library(roxygen2)
 library(codetools)
+library(ENMeval) ## add to Conda
 
 # define functions ------------------------------------------------
 
@@ -778,7 +779,37 @@ contextualizeRaster <- function(rasterList) {
 
 }
 
+## MaxEnt model and training
+tuneArgs <- list(fc = c("LQHP"), 
+                  rm = seq(0.5,1, 0.5))
 
+absenceTrainData <- allTrainData[allTrainData$presence == 1,grep("presence|kfold", colnames(allTrainData), invert=T)]
+presenceTrainData <- allTrainData[allTrainData$presence == 2,grep("presence|kfold", colnames(allTrainData), invert=T)]
+max1 <- ENMevaluate(occ = absenceTrainData,
+                    bg.coords = presenceTrainData,
+                    tune.args = tuneArgs, 
+                    progbar = F, 
+                    partitions = "randomkfold",
+                    quiet = T, ## silence messages but not errors
+                    algorithm = 'maxent.jar')
+
+bestMax <- which.max(max1@results$cbi.val.avg)
+varImp <- max1@variable.importance[bestMax] %>% data.frame()
+names(varImp) <- c("variable","percent.contribution","permutation.importance")
+
+getMaxentImportance <- function(varImp) {
+  flippedImportance <- t(varImp)
+  flippedImportance <- data.frame(flippedImportance)
+  names(flippedImportance) <- flippedImportance[1,]
+  maxentImportance <- flippedImportance[-c(1,3),]
+  return(maxentImportance)
+}
+
+getMaxentImportance(varImp)
+
+
+model <- max1@models[[bestMax]]
+modelOut <- max1@results[bestMax,]
 
 
 ### Random forest training
@@ -801,7 +832,9 @@ getOptimalThreshold <- function(model, testingData, modelType="randomForest") {
 
   ## predicting data
   if(modelType == "randomForest"){
-  testingPredictions <- predict(rf2, testingData)$predictions[,2]
+  testingPredictions <- predict(model, testingData)$predictions[,2]
+  } else {
+    testingPredictions <- predict(model, testingData, type="logistic")
   }
   # Calculate sensitivity and specificity for each threshold
   metrics <- t(sapply(thresholds, getSensSpec, probs = testingPredictions, actual = testingObservations))
