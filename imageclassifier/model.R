@@ -132,12 +132,13 @@ if(modelType == "MaxEnt") {
 } else {
   stop("Model type not recognized")
 }
-
+model <- modelOut[[1]]
+variableImportance <- modelOut[[2]]
 
  
  
 # extract variable importance plot ---------------------------------------------
-variableImportanceOutput <- plotVariableImportance(modelOut[[2]],
+variableImportanceOutput <- plotVariableImportance(variableImportance,
                                                    transferDir)
 
 variableImportancePlot <- variableImportanceOutput[[1]]
@@ -148,7 +149,7 @@ varImportanceOutputDataframe <- variableImportanceOutput[[2]]
 for (t in seq_along(trainingRasterList)) {
 
   predictionRasters <- getPredictionRasters(trainingRasterList[[t]],
-                                            modelOut[[1]],
+                                            model,
                                             optimalThreshold,
                                             modelType)
   predictedPresence <- predictionRasters[[1]]
@@ -194,9 +195,10 @@ if (applyContextualization == TRUE) {
 ## Predict presence for rasters to classify ------------------------------------
 for (t in seq_along(toClassifyRasterList)) {
 
-  classifiedRasters <- getPredictionRasters(toClassifyRasterList[[t]],
-                                            rf1,
-                                            rf2)
+  classifiedRasters <- getPredictionRasters(trainingRasterList[[t]],
+                                            model,
+                                            optimalThreshold,
+                                            modelType)  
   classifiedPresence <- classifiedRasters[[1]]
   classifiedProbability <- classifiedRasters[[2]]
 
@@ -228,8 +230,9 @@ for (t in seq_along(toClassifyRasterList)) {
 }
 
 # calculate mean values for model statistics -----------------------------------
-outputDataframes <- calculateStatistics(rf1,
+outputDataframes <- calculateStatistics(model,
                                         allTestData,
+                                        optimalThreshold,
                                         confusionOutputDataframe,
                                         modelOutputDataframe)
 

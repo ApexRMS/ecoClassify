@@ -655,6 +655,7 @@ saveFiles <- function(predictedPresence,
 #'
 #' @param model random forest model (random forest object)
 #' @param testData test data to make prediction with (dataframe)
+#' @param threshold threshold for converted results into binary outcomes (numeric)
 #' @param confusionOutputDataframe empty dataframe for confusion matrix results (dataframe)
 #' @param modelOutputDataframe empty dataframe for model statistics (dataframe)
 #' @return data frames with confusion matrix results and model statistics
@@ -664,11 +665,16 @@ saveFiles <- function(predictedPresence,
 #' @noRd
 calculateStatistics <- function(model,
                                 testData,
+                                threshold,
                                 confusionOutputDataframe,
                                 modelOutputDataframe) {
-
-  prediction <- predict(model, testData)
-  confusionMatrix <- confusionMatrix(data.frame(prediction)[, 1],
+  if(inherits(model, "ranger")) {
+    prediction <- predict(model, testData)$predictions[,2]
+  } else {
+    prediction <- predict(model, testData, type="logistic")
+  }
+  prediction <- as.factor(ifelse(prediction >= threshold, 2, 1))
+  confusionMatrix <- confusionMatrix(prediction,
                                      testData$presence)
 
   # reformat and add to output datasheets
