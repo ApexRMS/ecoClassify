@@ -122,7 +122,6 @@ allTrainData <- splitData[[1]]
 allTestData <- splitData[[2]]
 
 ## Train model -----------------------------------------------------------------
-modelType = "randomForest"
 if(modelType == "MaxEnt") {
   modelOut <- getMaxentModel(allTrainData)
   optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "MaxEnt")
