@@ -780,7 +780,11 @@ contextualizeRaster <- function(rasterList) {
 }
 
 ## MaxEnt model and training
-tuneArgs <- list(fc = c("LQHP"), 
+
+getMaxentModel <- function(allTrainData) {
+
+## TO DO: add full range of tuning parameters in parallel
+tuneArgs <- list(fc = c("LQHP"),  
                   rm = seq(0.5,1, 0.5))
 
 absenceTrainData <- allTrainData[allTrainData$presence == 1,grep("presence|kfold", colnames(allTrainData), invert=T)]
@@ -796,6 +800,14 @@ max1 <- ENMevaluate(occ = absenceTrainData,
 bestMax <- which.max(max1@results$cbi.val.avg)
 varImp <- max1@variable.importance[bestMax] %>% data.frame()
 names(varImp) <- c("variable","percent.contribution","permutation.importance")
+maxentImportance <- getMaxentImportance(varImp)
+
+
+model <- max1@models[[bestMax]]
+modelOut <- max1@results[bestMax,]
+return(list(model, maxentImportance))
+
+}
 
 getMaxentImportance <- function(varImp) {
   maxentImportance <- as.numeric(varImp$percent.contribution)
@@ -803,13 +815,6 @@ getMaxentImportance <- function(varImp) {
   return(maxentImportance)
 
 }
-
-getMaxentImportance(varImp)
-
-
-model <- max1@models[[bestMax]]
-modelOut <- max1@results[bestMax,]
-
 
 ### Random forest training
 
@@ -841,4 +846,21 @@ getOptimalThreshold <- function(model, testingData, modelType="randomForest") {
   optimalYouden <- thresholds[which.max(youdenIndex)]
   
   return(optimalYouden)
+}
+
+getRandomForestModel <- function(allTrainData) {
+trainingVariables <-  grep("presence|kfold", colnames(allTrainData), invert=T, value=T)
+
+mainModel <- formula(sprintf("%s ~ %s",
+                             "presence",
+                             paste(trainingVariables,
+                                   collapse = " + ")))
+
+rf1 <-  ranger(mainModel,
+               data = allTrainData,
+               mtry = 2,
+               probability = TRUE,
+               importance = "impurity")
+
+return(list(rf1, rf1$variable.importance))
 }

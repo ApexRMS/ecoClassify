@@ -28,6 +28,7 @@ transferDir <- ""
 # plot(trainingRasterList[[1]])
 
 # START OF MODEL SCRIPT:
+## SKIP OUTSIDE GUI
 # set up workspace ---------------------------------------------------------
 packageDir <- (Sys.getenv("ssim_package_directory"))
 source(file.path(packageDir, "workspace.r"))
@@ -36,6 +37,7 @@ source(file.path(packageDir, "workspace.r"))
 myScenario <- scenario()  # Get the SyncroSim Scenario that is currently running
 
 # Retrieve the transfer directory for storing output rasters
+## CONTINUE HERE
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
@@ -120,28 +122,26 @@ allTrainData <- splitData[[1]]
 allTestData <- splitData[[2]]
 
 ## Train model -----------------------------------------------------------------
-mainModel <- formula(sprintf("%s ~ %s",
-                             "presence",
-                             paste(names(trainingRasterList[[1]]),
-                                   collapse = " + ")))
+if(modelType = "MaxEnt") {
+  modelOut <- getMaxentModel(allTrainData)
+  optimalThreshold <-  getOptimalThreshold(model, allTestData, "MaxEnt")
+} else if(modelType = "RandomForest") {
+  modelOut <- getRandomForestModel(allTrainData)
+  optimalThreshold <-  getOptimalThreshold(rf2, allTestData, "randomForest")
+} else {
+  stop("Model type not recognized")
+}
 
-rf1 <-  ranger(mainModel,
-               data = allTrainData,
-               mtry = 2,
-               importance = "impurity")
 
-rf2 <-  ranger(mainModel,
-               data = allTrainData,
-               mtry = 2,
-               probability = TRUE,
-               importance = "impurity")
-
+ 
+ 
 # extract variable importance plot ---------------------------------------------
-variableImportanceOutput <- plotVariableImportance(rf1,
+variableImportanceOutput <- plotVariableImportance(modelOut[[2]],
                                                    transferDir)
 
 variableImportancePlot <- variableImportanceOutput[[1]]
 varImportanceOutputDataframe <- variableImportanceOutput[[2]]
+
 
 ## Predict presence for training rasters in each timestep group ----------------
 for (t in seq_along(trainingRasterList)) {
