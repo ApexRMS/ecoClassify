@@ -49,6 +49,7 @@ filterResolution <- inputVariables[[3]]
 filterPercent <- inputVariables[[4]]
 applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
+modelType <- inputVariables[[7]]
 
 # Load raster input datasheets
 rasterTrainingDataframe <- datasheet(myScenario,
@@ -133,8 +134,6 @@ if(modelType == "MaxEnt") {
 }
 model <- modelOut[[1]]
 variableImportance <- modelOut[[2]]
-
- 
  
 # extract variable importance plot ---------------------------------------------
 variableImportanceOutput <- plotVariableImportance(variableImportance,

@@ -26,6 +26,12 @@
         <column name="applyFiltering" dataType="Boolean" displayName="Apply filtering"/>
         <column name="filterResolution" dataType="Double" displayName="Filter resolution (optional)"/>
         <column name="filterPercent" dataType="Double" displayName="Filter threshold (optional)"/>
+        <column name="modelType" dataType="String" displayName="Model type">
+        <select>
+            <option value="MaxEnt">MaxEnt</option>
+            <option value="randomForest">Random Forest</option>
+        </select>
+    </column>
     </dataSheet>
 
     <!--Model Outputs-->
