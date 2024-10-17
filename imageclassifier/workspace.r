@@ -304,28 +304,37 @@ predictRanger <- function(raster,
 #' of probabilities
 #'
 #' @param trainingRaster training raster for predictRanger (spatRaster)
-#' @param model1 random forest model for predicting presence (random forest object)
-#' @param model2 random forest model for generating probability values (random forest object)
+#' @param model predictive model for generating probability values (random forest or maxent object)
+#' @param threshold threshold for converted results into binary outcomes (numeric)
+#' @param modelType type of model used (character)
 #' @return raster of predicted presence and probability values (spatRaster)
 #'
 #' @details
 #'
 #' @noRd
 getPredictionRasters <- function(trainingRaster,
-                                 model1,
-                                 model2) {
+                                 model,
+                                 threshold,
+                                 modelType ="randomForest") {
   # predict presence for each raster
-  predictedPresence <- predictRanger(trainingRaster,
-                                     model1)
-
+  if(modelType == "randomForest"){
   # generate probabilities for each raster
-  probabilityRaster <- 1 - (predictRanger(trainingRaster,
-                                          model2))
-  # assign values
-  # values(predictedPresence) <- ifelse(values(predictedPresence) == 2, 1, 0)
+  probabilityRaster <- 1- predictRanger(trainingRaster,
+                                     model)
+  } else if(modelType == "MaxEnt") {
+    probabilityRaster <- predict(model, trainingRaster, type="logistic")
+  }  else {
+    stop("Model type not recognized")
+  }                                 
+  predictedPresence <- reclassifyRaster(probabilityRaster, threshold)
+  return(list(predictedPresence = predictedPresence,
+              probabilityRaster = probabilityRaster))
+}
 
-  return(list(predictedPresence,
-              probabilityRaster))
+reclassifyRaster <- function(raster, threshold) {
+  raster[raster >= threshold] <- 1
+  raster[raster < threshold] <- 0
+  return(raster)
 }
 
 #' Filter prediction raster
@@ -837,8 +846,10 @@ getOptimalThreshold <- function(model, testingData, modelType="randomForest") {
   ## predicting data
   if(modelType == "randomForest"){
   testingPredictions <- predict(model, testingData)$predictions[,2]
-  } else {
+  } else if(modelType == "MaxEnt") {
     testingPredictions <- predict(model, testingData, type="logistic")
+  } else {
+    stop("Model type not recognized")
   }
   # Calculate sensitivity and specificity for each threshold
   metrics <- t(sapply(thresholds, getSensSpec, probs = testingPredictions, actual = testingObservations))

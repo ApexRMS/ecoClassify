@@ -122,12 +122,13 @@ allTrainData <- splitData[[1]]
 allTestData <- splitData[[2]]
 
 ## Train model -----------------------------------------------------------------
-if(modelType = "MaxEnt") {
+modelType = "randomForest"
+if(modelType == "MaxEnt") {
   modelOut <- getMaxentModel(allTrainData)
-  optimalThreshold <-  getOptimalThreshold(model, allTestData, "MaxEnt")
-} else if(modelType = "RandomForest") {
+  optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "MaxEnt")
+} else if(modelType == "randomForest") {
   modelOut <- getRandomForestModel(allTrainData)
-  optimalThreshold <-  getOptimalThreshold(rf2, allTestData, "randomForest")
+  optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "randomForest")
 } else {
   stop("Model type not recognized")
 }
@@ -147,8 +148,9 @@ varImportanceOutputDataframe <- variableImportanceOutput[[2]]
 for (t in seq_along(trainingRasterList)) {
 
   predictionRasters <- getPredictionRasters(trainingRasterList[[t]],
-                                            rf1,
-                                            rf2)
+                                            modelOut[[1]],
+                                            optimalThreshold,
+                                            modelType)
   predictedPresence <- predictionRasters[[1]]
   probabilityRaster <- predictionRasters[[2]]
 
