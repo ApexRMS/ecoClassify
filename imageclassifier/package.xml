@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<package name="imageclassifier" displayName="Image Classifier" description="Image classifier using semantic image segmentation" version="1.0.3" url="https://apexrms.github.io/imageclassifier/">
+<package name="imageclassifier" displayName="Image Classifier" description="Image classifier using semantic image segmentation" version="1.0.4" url="https://apexrms.github.io/imageclassifier/">
 
     <!--Model Inputs-->
     <dataSheet name="RunControl" displayName="Run Control" isRunControl="True" timestepTitle="Timestep" showMinIteration="False">
@@ -26,12 +26,7 @@
         <column name="applyFiltering" dataType="Boolean" displayName="Apply filtering"/>
         <column name="filterResolution" dataType="Double" displayName="Filter resolution (optional)"/>
         <column name="filterPercent" dataType="Double" displayName="Filter threshold (optional)"/>
-        <column name="modelType" dataType="String" displayName="Model type">
-        <select>
-            <option value="MaxEnt">MaxEnt</option>
-            <option value="randomForest">Random Forest</option>
-        </select>
-    </column>
+        <column name="modelType" displayName="Model type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt" isOptional="True"/>
     </dataSheet>
 
     <!--Model Outputs-->

@@ -49,7 +49,7 @@ filterResolution <- inputVariables[[3]]
 filterPercent <- inputVariables[[4]]
 applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
-modelType <- inputVariables[[7]]
+modelType <- ifelse(inputVariables[[7]]==0 | is.na(inputVariables[[7]]), "randomForest", "MaxEnt")
 
 # Load raster input datasheets
 rasterTrainingDataframe <- datasheet(myScenario,
