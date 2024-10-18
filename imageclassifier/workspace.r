@@ -9,6 +9,7 @@ library(gtools)
 library(reshape2)
 library(roxygen2)
 library(codetools)
+library(ENMeval) ## add to Conda
 
 # define functions ------------------------------------------------
 
@@ -179,7 +180,7 @@ decomposedRaster <- function(predRast,
 #' 'plotVariableImportance' creates and writes variable importance plot
 #' from the random forest model
 #'
-#' @param model random forest model (output from ranger)
+#' @param importanceData vector of importance values (numeric) with names attribute
 #' @param transferDir filepath for exporting the plot
 #' @return variable importance plot (ggplot) and dataframe with filepath
 #' to where the plot was written
@@ -187,11 +188,11 @@ decomposedRaster <- function(predRast,
 #' @details
 #' transferDir is defined based on the ssim session.
 #' @noRd
-plotVariableImportance <- function(model,
+plotVariableImportance <- function(importanceData,
                                    transferDir) {
 
   # extract variable importance
-  variableImportance <- melt(model$variable.importance) %>%
+  variableImportance <- melt(importanceData) %>%
     tibble::rownames_to_column("variable")
 
   # make a variable importance plot for specified model
@@ -303,28 +304,37 @@ predictRanger <- function(raster,
 #' of probabilities
 #'
 #' @param trainingRaster training raster for predictRanger (spatRaster)
-#' @param model1 random forest model for predicting presence (random forest object)
-#' @param model2 random forest model for generating probability values (random forest object)
+#' @param model predictive model for generating probability values (random forest or maxent object)
+#' @param threshold threshold for converted results into binary outcomes (numeric)
+#' @param modelType type of model used (character)
 #' @return raster of predicted presence and probability values (spatRaster)
 #'
 #' @details
 #'
 #' @noRd
 getPredictionRasters <- function(trainingRaster,
-                                 model1,
-                                 model2) {
+                                 model,
+                                 threshold,
+                                 modelType ="randomForest") {
   # predict presence for each raster
-  predictedPresence <- predictRanger(trainingRaster,
-                                     model1)
-
+  if(modelType == "randomForest"){
   # generate probabilities for each raster
-  probabilityRaster <- 1 - (predictRanger(trainingRaster,
-                                          model2))
-  # assign values
-  # values(predictedPresence) <- ifelse(values(predictedPresence) == 2, 1, 0)
+  probabilityRaster <- 1- predictRanger(trainingRaster,
+                                     model)
+  } else if(modelType == "MaxEnt") {
+    probabilityRaster <- predict(model, trainingRaster, type="logistic")
+  }  else {
+    stop("Model type not recognized")
+  }                                 
+  predictedPresence <- reclassifyRaster(probabilityRaster, threshold)
+  return(list(predictedPresence = predictedPresence,
+              probabilityRaster = probabilityRaster))
+}
 
-  return(list(predictedPresence,
-              probabilityRaster))
+reclassifyRaster <- function(raster, threshold) {
+  raster[raster >= threshold] <- 1
+  raster[raster < threshold] <- 0
+  return(raster)
 }
 
 #' Filter prediction raster
@@ -645,6 +655,7 @@ saveFiles <- function(predictedPresence,
 #'
 #' @param model random forest model (random forest object)
 #' @param testData test data to make prediction with (dataframe)
+#' @param threshold threshold for converted results into binary outcomes (numeric)
 #' @param confusionOutputDataframe empty dataframe for confusion matrix results (dataframe)
 #' @param modelOutputDataframe empty dataframe for model statistics (dataframe)
 #' @return data frames with confusion matrix results and model statistics
@@ -654,11 +665,16 @@ saveFiles <- function(predictedPresence,
 #' @noRd
 calculateStatistics <- function(model,
                                 testData,
+                                threshold,
                                 confusionOutputDataframe,
                                 modelOutputDataframe) {
-
-  prediction <- predict(model, testData)
-  confusionMatrix <- confusionMatrix(data.frame(prediction)[, 1],
+  if(inherits(model, "ranger")) {
+    prediction <- predict(model, testData)$predictions[,2]
+  } else {
+    prediction <- predict(model, testData, type="logistic")
+  }
+  prediction <- as.factor(ifelse(prediction >= threshold, 2, 1))
+  confusionMatrix <- confusionMatrix(prediction,
                                      testData$presence)
 
   # reformat and add to output datasheets
@@ -776,4 +792,92 @@ contextualizeRaster <- function(rasterList) {
 
   return(contextualizedRasterList)
 
+}
+
+## MaxEnt model and training
+
+getMaxentModel <- function(allTrainData) {
+
+## TO DO: add full range of tuning parameters in parallel
+tuneArgs <- list(fc = c("LQHP"),  
+                  rm = seq(0.5,1, 0.5))
+
+absenceTrainData <- allTrainData[allTrainData$presence == 1,grep("presence|kfold", colnames(allTrainData), invert=T)]
+presenceTrainData <- allTrainData[allTrainData$presence == 2,grep("presence|kfold", colnames(allTrainData), invert=T)]
+max1 <- ENMevaluate(occ = absenceTrainData,
+                    bg.coords = presenceTrainData,
+                    tune.args = tuneArgs, 
+                    progbar = F, 
+                    partitions = "randomkfold",
+                    quiet = T, ## silence messages but not errors
+                    algorithm = 'maxent.jar')
+
+bestMax <- which.max(max1@results$cbi.val.avg)
+varImp <- max1@variable.importance[bestMax] %>% data.frame()
+names(varImp) <- c("variable","percent.contribution","permutation.importance")
+maxentImportance <- getMaxentImportance(varImp)
+
+
+model <- max1@models[[bestMax]]
+modelOut <- max1@results[bestMax,]
+return(list(model, maxentImportance))
+
+}
+
+getMaxentImportance <- function(varImp) {
+  maxentImportance <- as.numeric(varImp$percent.contribution)
+  attr(maxentImportance, "names") <- varImp$variable
+  return(maxentImportance)
+
+}
+
+### Random forest training
+
+## find sensitivity and specificity values
+getSensSpec <- function(probs, actual, threshold) {
+  predicted <- ifelse(probs >= threshold, 1, 0)
+  confMatrix <- confusionMatrix(as.factor(predicted), as.factor(actual))
+  
+  sensitivity <- confMatrix$byClass['Sensitivity']
+  specificity <- confMatrix$byClass['Specificity']
+  
+  return(c(sensitivity, specificity))
+}
+
+## find optimal threshold between sensitivity and specificity
+getOptimalThreshold <- function(model, testingData, modelType="randomForest") {
+  thresholds <- seq(0.01, 0.99, by = 0.01)
+  testingObservations <- as.numeric(testingData$presence)-1
+
+  ## predicting data
+  if(modelType == "randomForest"){
+  testingPredictions <- predict(model, testingData)$predictions[,2]
+  } else if(modelType == "MaxEnt") {
+    testingPredictions <- predict(model, testingData, type="logistic")
+  } else {
+    stop("Model type not recognized")
+  }
+  # Calculate sensitivity and specificity for each threshold
+  metrics <- t(sapply(thresholds, getSensSpec, probs = testingPredictions, actual = testingObservations))
+  youdenIndex  <- metrics[,1] + metrics[,2] - 1
+  optimalYouden <- thresholds[which.max(youdenIndex)]
+  
+  return(optimalYouden)
+}
+
+getRandomForestModel <- function(allTrainData) {
+trainingVariables <-  grep("presence|kfold", colnames(allTrainData), invert=T, value=T)
+
+mainModel <- formula(sprintf("%s ~ %s",
+                             "presence",
+                             paste(trainingVariables,
+                                   collapse = " + ")))
+
+rf1 <-  ranger(mainModel,
+               data = allTrainData,
+               mtry = 2,
+               probability = TRUE,
+               importance = "impurity")
+
+return(list(rf1, rf1$variable.importance))
 }

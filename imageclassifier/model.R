@@ -28,6 +28,7 @@ transferDir <- ""
 # plot(trainingRasterList[[1]])
 
 # START OF MODEL SCRIPT:
+## SKIP OUTSIDE GUI
 # set up workspace ---------------------------------------------------------
 packageDir <- (Sys.getenv("ssim_package_directory"))
 source(file.path(packageDir, "workspace.r"))
@@ -36,6 +37,7 @@ source(file.path(packageDir, "workspace.r"))
 myScenario <- scenario()  # Get the SyncroSim Scenario that is currently running
 
 # Retrieve the transfer directory for storing output rasters
+## CONTINUE HERE
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
@@ -47,6 +49,7 @@ filterResolution <- inputVariables[[3]]
 filterPercent <- inputVariables[[4]]
 applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
+modelType <- ifelse(inputVariables[[7]]==0 | is.na(inputVariables[[7]]), "randomForest", "MaxEnt")
 
 # Load raster input datasheets
 rasterTrainingDataframe <- datasheet(myScenario,
@@ -120,35 +123,33 @@ allTrainData <- splitData[[1]]
 allTestData <- splitData[[2]]
 
 ## Train model -----------------------------------------------------------------
-mainModel <- formula(sprintf("%s ~ %s",
-                             "presence",
-                             paste(names(trainingRasterList[[1]]),
-                                   collapse = " + ")))
-
-rf1 <-  ranger(mainModel,
-               data = allTrainData,
-               mtry = 2,
-               importance = "impurity")
-
-rf2 <-  ranger(mainModel,
-               data = allTrainData,
-               mtry = 2,
-               probability = TRUE,
-               importance = "impurity")
-
+if(modelType == "MaxEnt") {
+  modelOut <- getMaxentModel(allTrainData)
+  optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "MaxEnt")
+} else if(modelType == "randomForest") {
+  modelOut <- getRandomForestModel(allTrainData)
+  optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "randomForest")
+} else {
+  stop("Model type not recognized")
+}
+model <- modelOut[[1]]
+variableImportance <- modelOut[[2]]
+ 
 # extract variable importance plot ---------------------------------------------
-variableImportanceOutput <- plotVariableImportance(rf1,
+variableImportanceOutput <- plotVariableImportance(variableImportance,
                                                    transferDir)
 
 variableImportancePlot <- variableImportanceOutput[[1]]
 varImportanceOutputDataframe <- variableImportanceOutput[[2]]
 
+
 ## Predict presence for training rasters in each timestep group ----------------
 for (t in seq_along(trainingRasterList)) {
 
   predictionRasters <- getPredictionRasters(trainingRasterList[[t]],
-                                            rf1,
-                                            rf2)
+                                            model,
+                                            optimalThreshold,
+                                            modelType)
   predictedPresence <- predictionRasters[[1]]
   probabilityRaster <- predictionRasters[[2]]
 
@@ -192,9 +193,10 @@ if (applyContextualization == TRUE) {
 ## Predict presence for rasters to classify ------------------------------------
 for (t in seq_along(toClassifyRasterList)) {
 
-  classifiedRasters <- getPredictionRasters(toClassifyRasterList[[t]],
-                                            rf1,
-                                            rf2)
+  classifiedRasters <- getPredictionRasters(trainingRasterList[[t]],
+                                            model,
+                                            optimalThreshold,
+                                            modelType)  
   classifiedPresence <- classifiedRasters[[1]]
   classifiedProbability <- classifiedRasters[[2]]
 
@@ -226,8 +228,9 @@ for (t in seq_along(toClassifyRasterList)) {
 }
 
 # calculate mean values for model statistics -----------------------------------
-outputDataframes <- calculateStatistics(rf1,
+outputDataframes <- calculateStatistics(model,
                                         allTestData,
+                                        optimalThreshold,
                                         confusionOutputDataframe,
                                         modelOutputDataframe)
 
