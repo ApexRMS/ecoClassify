@@ -70,7 +70,7 @@
     </dataSheet>
 
     <dataSheet name="ClassifiedRgbOutput" displayName="RGB Images" hasTimestep="True" hasIteration="True">
-	    <column name="ClassifiedRGBImage" dataType="String" isExternalFile="True" isImage="True"/>
+	    <column name="RGBImage" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
 
     <!--Main transformer-->
@@ -141,7 +141,7 @@
         <item name="VariableImportancePlot" displayName="Variable Importance" dataSheet="ModelOutput" column="VariableImportance"/>
         <group name="RGBImagePlots" displayName="RGB Images">
             <item name="TrainingRGBImagePlots" displayName="Training" dataSheet="RgbOutput" column="RGBImage"/>
-            <item name="ClassifiedRGBImagePlots" displayName="Classified" dataSheet="ClassifiedRgbOutput" column="ClassifiedRGBImage"/>
+            <item name="ClassifiedRGBImagePlots" displayName="Classified" dataSheet="ClassifiedRgbOutput" column="RGBImage"/>
         </group>
     </layout>
 

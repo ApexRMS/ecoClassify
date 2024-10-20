@@ -1,31 +1,28 @@
-# set up library (remove after testing) -----------------------------------
-library(rsyncrosim)
-mySession <- session("C:/Program Files/SyncroSim Studio")
-libPath <- "library/image_classifier_testing.ssim"
+# # set up library (remove after testing) -----------------------------------
+# library(rsyncrosim)
+# mySession <- session("C:/Program Files/SyncroSim Studio")
+# libPath <- "library/image_classifier_testing.ssim"
 
-myLibrary <- ssimLibrary(name = libPath,
-                         session = mySession)
+# myLibrary <- ssimLibrary(name = libPath,
+#                          session = mySession)
 
-# define project
-myProject <- project(myLibrary, project = 1)
+# # define project
+# myProject <- rsyncrosim::project(myLibrary, project = 1)
 
-# define scenario
-scenario(myProject)
-myScenario <- scenario(myProject, scenario = 89)
+# # define scenario
+# scenario(myProject)
+# myScenario <- scenario(myProject, scenario = 89)
 
-# view datasheets
-datasheet(myScenario)
-source("imageclassifier/workspace.r")
-transferDir <- ""
+# # view datasheets
+# datasheet(myScenario)
+# source("imageclassifier/workspace.r")
+# # transferDir <- ""
 
-# set transferDir filepath if exporting
+# # set transferDir filepath if exporting
 # transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
 
-# testing ground truth raster with multiple classes
-# groundTruthRasterList <- list(rast("C:/Users/HannahAdams/Documents/Projects/Image classifier/multiple-class-ground-truth.tif"))
-# plot(groundTruthRasterList[[1]])
-# trainingRasterList <- trainingRasterList[1]
-# plot(trainingRasterList[[1]])
+# # toggle here and skip line 48
+# applyContextualization <- FALSE
 
 # START OF MODEL SCRIPT:
 ## SKIP OUTSIDE GUI
@@ -123,10 +120,10 @@ allTrainData <- splitData[[1]]
 allTestData <- splitData[[2]]
 
 ## Train model -----------------------------------------------------------------
-if(modelType == "MaxEnt") {
+if (modelType == "MaxEnt") {
   modelOut <- getMaxentModel(allTrainData)
   optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "MaxEnt")
-} else if(modelType == "randomForest") {
+} else if (modelType == "randomForest") {
   modelOut <- getRandomForestModel(allTrainData)
   optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "randomForest")
 } else {
@@ -134,7 +131,7 @@ if(modelType == "MaxEnt") {
 }
 model <- modelOut[[1]]
 variableImportance <- modelOut[[2]]
- 
+
 # extract variable importance plot ---------------------------------------------
 variableImportanceOutput <- plotVariableImportance(variableImportance,
                                                    transferDir)
@@ -196,7 +193,7 @@ for (t in seq_along(toClassifyRasterList)) {
   classifiedRasters <- getPredictionRasters(trainingRasterList[[t]],
                                             model,
                                             optimalThreshold,
-                                            modelType)  
+                                            modelType)
   classifiedPresence <- classifiedRasters[[1]]
   classifiedProbability <- classifiedRasters[[2]]
 

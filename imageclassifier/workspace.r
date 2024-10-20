@@ -9,7 +9,43 @@ library(gtools)
 library(reshape2)
 library(roxygen2)
 library(codetools)
+# install.packages("ENMeval", repos='http://cran.us.r-project.org')
 library(ENMeval) ## add to Conda
+
+
+tryCatch({library(rJava)
+  },
+  error = function(e) {
+    install.packages("rJava")
+  },
+  finally = {
+    library(rJava)
+  }
+)
+
+tryCatch(
+  {
+    library(ecospat)
+  },
+  error = function(e) {
+    install.packages("ecospat")
+  },
+  finally = {
+    library(ecospat)
+  }
+)
+
+tryCatch(
+  {
+    library(ENMeval)
+  },
+  error = function(e) {
+    install.packages("ENMeval")
+  },
+  finally = {
+    library(ENMeval)
+  }
+)
 
 # define functions ------------------------------------------------
 
@@ -46,6 +82,7 @@ assignVariables <- function(myScenario) {
   filterPercent <- modelInputDataframe$filterPercent
   applyFiltering <- modelInputDataframe$applyFiltering
   applyContextualization <- modelInputDataframe$applyContextualization
+  modelType <- modelInputDataframe$modelType
 
   # return as a list
   return(list(timesteps,
@@ -53,7 +90,8 @@ assignVariables <- function(myScenario) {
               filterResolution,
               filterPercent,
               applyFiltering,
-              applyContextualization))
+              applyContextualization,
+              modelType))
 }
 
 #' Extract rasters from filepaths in a dataframe
@@ -315,18 +353,20 @@ predictRanger <- function(raster,
 getPredictionRasters <- function(trainingRaster,
                                  model,
                                  threshold,
-                                 modelType ="randomForest") {
+                                 modelType = "randomForest") {
   # predict presence for each raster
-  if(modelType == "randomForest"){
-  # generate probabilities for each raster
-  probabilityRaster <- 1- predictRanger(trainingRaster,
-                                     model)
-  } else if(modelType == "MaxEnt") {
-    probabilityRaster <- predict(model, trainingRaster, type="logistic")
+  if (modelType == "randomForest") {
+    # generate probabilities for each raster
+    probabilityRaster <- 1 - predictRanger(trainingRaster,
+                                           model)
+  } else if (modelType == "MaxEnt") {
+    probabilityRaster <- predict(model, trainingRaster, type = "logistic")
   }  else {
     stop("Model type not recognized")
-  }                                 
+  }
+
   predictedPresence <- reclassifyRaster(probabilityRaster, threshold)
+
   return(list(predictedPresence = predictedPresence,
               probabilityRaster = probabilityRaster))
 }
@@ -798,29 +838,29 @@ contextualizeRaster <- function(rasterList) {
 
 getMaxentModel <- function(allTrainData) {
 
-## TO DO: add full range of tuning parameters in parallel
-tuneArgs <- list(fc = c("LQHP"),  
-                  rm = seq(0.5,1, 0.5))
+  ## TO DO: add full range of tuning parameters in parallel
+  tuneArgs <- list(fc = c("LQHP"),  
+                    rm = seq(0.5,1, 0.5))
 
-absenceTrainData <- allTrainData[allTrainData$presence == 1,grep("presence|kfold", colnames(allTrainData), invert=T)]
-presenceTrainData <- allTrainData[allTrainData$presence == 2,grep("presence|kfold", colnames(allTrainData), invert=T)]
-max1 <- ENMevaluate(occ = absenceTrainData,
-                    bg.coords = presenceTrainData,
-                    tune.args = tuneArgs, 
-                    progbar = F, 
-                    partitions = "randomkfold",
-                    quiet = T, ## silence messages but not errors
-                    algorithm = 'maxent.jar')
+  absenceTrainData <- allTrainData[allTrainData$presence == 1,grep("presence|kfold", colnames(allTrainData), invert=T)]
+  presenceTrainData <- allTrainData[allTrainData$presence == 2,grep("presence|kfold", colnames(allTrainData), invert=T)]
+  max1 <- ENMevaluate(occ = absenceTrainData,
+                      bg.coords = presenceTrainData,
+                      tune.args = tuneArgs,
+                      progbar = F,
+                      partitions = "randomkfold",
+                      quiet = T, ## silence messages but not errors
+                      algorithm = 'maxent.jar')
 
-bestMax <- which.max(max1@results$cbi.val.avg)
-varImp <- max1@variable.importance[bestMax] %>% data.frame()
-names(varImp) <- c("variable","percent.contribution","permutation.importance")
-maxentImportance <- getMaxentImportance(varImp)
+  bestMax <- which.max(max1@results$cbi.val.avg)
+  varImp <- max1@variable.importance[bestMax] %>% data.frame()
+  names(varImp) <- c("variable","percent.contribution","permutation.importance")
+  maxentImportance <- getMaxentImportance(varImp)
 
+  model <- max1@models[[bestMax]]
+  modelOut <- max1@results[bestMax,]
 
-model <- max1@models[[bestMax]]
-modelOut <- max1@results[bestMax,]
-return(list(model, maxentImportance))
+  return(list(model, maxentImportance))
 
 }
 
@@ -837,10 +877,10 @@ getMaxentImportance <- function(varImp) {
 getSensSpec <- function(probs, actual, threshold) {
   predicted <- ifelse(probs >= threshold, 1, 0)
   confMatrix <- confusionMatrix(as.factor(predicted), as.factor(actual))
-  
+
   sensitivity <- confMatrix$byClass['Sensitivity']
   specificity <- confMatrix$byClass['Specificity']
-  
+
   return(c(sensitivity, specificity))
 }
 
@@ -851,7 +891,7 @@ getOptimalThreshold <- function(model, testingData, modelType="randomForest") {
 
   ## predicting data
   if(modelType == "randomForest"){
-  testingPredictions <- predict(model, testingData)$predictions[,2]
+    testingPredictions <- predict(model, testingData)$predictions[,2]
   } else if(modelType == "MaxEnt") {
     testingPredictions <- predict(model, testingData, type="logistic")
   } else {
@@ -861,23 +901,23 @@ getOptimalThreshold <- function(model, testingData, modelType="randomForest") {
   metrics <- t(sapply(thresholds, getSensSpec, probs = testingPredictions, actual = testingObservations))
   youdenIndex  <- metrics[,1] + metrics[,2] - 1
   optimalYouden <- thresholds[which.max(youdenIndex)]
-  
+
   return(optimalYouden)
 }
 
 getRandomForestModel <- function(allTrainData) {
-trainingVariables <-  grep("presence|kfold", colnames(allTrainData), invert=T, value=T)
+  trainingVariables <-  grep("presence|kfold", colnames(allTrainData), invert=T, value=T)
 
-mainModel <- formula(sprintf("%s ~ %s",
-                             "presence",
-                             paste(trainingVariables,
-                                   collapse = " + ")))
+  mainModel <- formula(sprintf("%s ~ %s",
+                              "presence",
+                              paste(trainingVariables,
+                                    collapse = " + ")))
 
-rf1 <-  ranger(mainModel,
-               data = allTrainData,
-               mtry = 2,
-               probability = TRUE,
-               importance = "impurity")
+  rf1 <-  ranger(mainModel,
+                data = allTrainData,
+                mtry = 2,
+                probability = TRUE,
+                importance = "impurity")
 
-return(list(rf1, rf1$variable.importance))
+  return(list(rf1, rf1$variable.importance))
 }
