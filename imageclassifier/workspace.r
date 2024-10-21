@@ -117,6 +117,9 @@ assignVariables <- function(myScenario) {
 extractRasters <- function(dataframe,
                            column) {
 
+  # remove rows with NA values in the second column
+  dataframe <- dataframe %>% filter(!is.na(dataframe[, column]))
+
   # define timesteps
   timesteps <- unique(dataframe[, 1])
 
@@ -159,28 +162,30 @@ extractRasters <- function(dataframe,
 #' @noRd
 extractAllRasters <- function(inputRasterDataframe) {
 
-  # extract training rasters
-  trainingRasterList <- extractRasters(inputRasterDataframe,
-                                       column = 2)
+  if (modelType == "Random Forest") {
+    # extract training rasters
+    trainingRasterList <- extractRasters(inputRasterDataframe,
+                                         column = 2)
 
-  # extract ground truth rasters
-  groundTruthRasterList <- extractRasters(inputRasterDataframe,
-                                          column = 3)
+    # extract ground truth rasters
+    groundTruthRasterList <- extractRasters(inputRasterDataframe,
+                                            column = 3)
 
-  # warning if training and ground truth rasters are different lengths
-  # if(length(rasterTrainingDataframe) != length(rasterGroundTruthDataframe)) stop('must have equal number of training and ground truth rasters')
+    # warning if training and ground truth rasters are different lengths
+    # if(length(rasterTrainingDataframe) != length(rasterGroundTruthDataframe)) stop('must have equal number of training and ground truth rasters')
 
-  # extract rasters to classify
-  if (length(inputRasterDataframe$RasterFileToClassify) > 1) {
+    return(list(trainingRasterList,
+                groundTruthRasterList))
+  } else if (modelType == "MaxEnt") {
+
+    # extract rasters to classify
     toClassifyRasterList <- extractRasters(inputRasterDataframe,
                                            column = 4)
-  } else {
-    toClassifyRasterList <- ""
+
+    return(toClassifyRasterList)
+
   }
 
-  return(list(trainingRasterList,
-              groundTruthRasterList,
-              toClassifyRasterList))
 }
 
 #' Decompose rasters for image classification
@@ -358,17 +363,17 @@ predictRanger <- function(raster,
 #' @details
 #'
 #' @noRd
-getPredictionRasters <- function(trainingRaster,
+getPredictionRasters <- function(raster,
                                  model,
                                  threshold,
                                  modelType = "Random Forest") {
   # predict presence for each raster
   if (modelType == "Random Forest") {
     # generate probabilities for each raster
-    probabilityRaster <- 1 - predictRanger(trainingRaster,
+    probabilityRaster <- 1 - predictRanger(raster,
                                            model)
   } else if (modelType == "MaxEnt") {
-    probabilityRaster <- predict(model, trainingRaster, type = "logistic")
+    probabilityRaster <- predict(model, raster, type = "logistic")
   }  else {
     stop("Model type not recognized")
   }
@@ -750,7 +755,7 @@ calculateStatistics <- function(model,
   return(list(confusionOutputDataframe, modelOutputDataframe))
 }
 
-# check for issues with data structure ----------------------------- 
+# check for issues with data structure -----------------------------
 checkTimesteps <- function(timesteps,
                            rasterTrainingDataframe,
                            rasterGroundTruthDataframe) {
