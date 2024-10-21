@@ -1,29 +1,29 @@
-# set up library (remove after testing) -----------------------------------
-library(rsyncrosim)
-mySession <- session("C:/Program Files/SyncroSim Studio")
-# libPath <- "library/image_classifier_testing.ssim"
-libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image-classifier-testing-2024-10-19.ssim"
+# # set up library (remove after testing) -----------------------------------
+# library(rsyncrosim)
+# mySession <- session("C:/Program Files/SyncroSim Studio")
+# # libPath <- "library/image_classifier_testing.ssim"
+# libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image-classifier-testing-2024-10-19.ssim"
 
-myLibrary <- ssimLibrary(name = libPath,
-                         session = mySession)
+# myLibrary <- ssimLibrary(name = libPath,
+#                          session = mySession)
 
-# define project
-myProject <- rsyncrosim::project(myLibrary, project = 1)
+# # define project
+# myProject <- rsyncrosim::project(myLibrary, project = 1)
 
-# define scenario
-scenario(myProject)
-myScenario <- scenario(myProject, scenario = 1)
+# # define scenario
+# scenario(myProject)
+# myScenario <- scenario(myProject, scenario = 1)
 
-# view datasheets
-datasheet(myScenario)
-source("imageclassifier/workspace.r")
-# transferDir <- ""
+# # view datasheets
+# datasheet(myScenario)
+# source("imageclassifier/workspace.r")
+# # transferDir <- ""
 
-# set transferDir filepath if exporting
-transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
+# # set transferDir filepath if exporting
+# transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
 
-# toggle here and skip line 48
-applyContextualization <- FALSE
+# # toggle here and skip line 48
+# applyContextualization <- FALSE
 
 # START OF MODEL SCRIPT:
 ## SKIP OUTSIDE GUI
@@ -47,7 +47,7 @@ filterResolution <- inputVariables[[3]]
 filterPercent <- inputVariables[[4]]
 applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
-modelType <- inputVariables[[7]]
+modelType <- as.character(inputVariables[[7]])
 
 # Load raster input datasheets
 rasterTrainingDataframe <- datasheet(myScenario,
@@ -124,9 +124,9 @@ allTestData <- splitData[[2]]
 if (modelType == "MaxEnt") {
   modelOut <- getMaxentModel(allTrainData)
   optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "MaxEnt")
-} else if (modelType == "randomForest") {
+} else if (modelType == "Random Forest") {
   modelOut <- getRandomForestModel(allTrainData)
-  optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "randomForest")
+  optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "Random Forest")
 } else {
   stop("Model type not recognized")
 }

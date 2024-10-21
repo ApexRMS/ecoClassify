@@ -353,9 +353,9 @@ predictRanger <- function(raster,
 getPredictionRasters <- function(trainingRaster,
                                  model,
                                  threshold,
-                                 modelType = "randomForest") {
+                                 modelType = "Random Forest") {
   # predict presence for each raster
-  if (modelType == "randomForest") {
+  if (modelType == "Random Forest") {
     # generate probabilities for each raster
     probabilityRaster <- 1 - predictRanger(trainingRaster,
                                            model)
@@ -885,12 +885,12 @@ getSensSpec <- function(probs, actual, threshold) {
 }
 
 ## find optimal threshold between sensitivity and specificity
-getOptimalThreshold <- function(model, testingData, modelType="randomForest") {
+getOptimalThreshold <- function(model, testingData, modelType="Random Forest") {
   thresholds <- seq(0.01, 0.99, by = 0.01)
   testingObservations <- as.numeric(testingData$presence)-1
 
   ## predicting data
-  if(modelType == "randomForest"){
+  if(modelType == "Random Forest"){
     testingPredictions <- predict(model, testingData)$predictions[,2]
   } else if(modelType == "MaxEnt") {
     testingPredictions <- predict(model, testingData, type="logistic")
