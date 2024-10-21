@@ -47,27 +47,19 @@ filterResolution <- inputVariables[[3]]
 filterPercent <- inputVariables[[4]]
 applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
-modelType <- as.character(inputVariables[[7]])
+modelType <- inputVariables[[7]]
 
 # Load raster input datasheets
-rasterTrainingDataframe <- datasheet(myScenario,
-                                     name = "imageclassifier_TrainingData")
-
-rasterGroundTruthDataframe <- datasheet(myScenario,
-                                        name = "imageclassifier_GroundTruthData")
-
-rasterToClassifyDataframe <- datasheet(myScenario,
-                                       name = "imageclassifier_DataToClassify")
+inputRasterDataframe <- datasheet(myScenario,
+                                  name = "imageclassifier_InputRasters")
 
 # check timesteps were input correctly ---------------------------------------
-checkTimesteps(timesteps,
-               rasterTrainingDataframe,
-               rasterGroundTruthDataframe)
+# checkTimesteps(timesteps,
+#                rasterTrainingDataframe,
+#                rasterGroundTruthDataframe)
 
 # extract list of training, testing, and ground truth rasters ----------------
-extractedRasters <- extractAllRasters(rasterTrainingDataframe,
-                                      rasterGroundTruthDataframe,
-                                      rasterToClassifyDataframe)
+extractedRasters <- extractAllRasters(inputRasterDataframe)
 
 trainingRasterList <- extractedRasters[[1]]
 groundTruthRasterList <- extractedRasters[[2]]
@@ -101,9 +93,6 @@ rgbOutputDataframe <- data.frame(Iteration = numeric(0),
 classifiedRgbOutputDataframe <- data.frame(Iteration = numeric(0),
                                            Timestep = numeric(0),
                                            RGBImage = character(0))
-
-filterOutputDataframe <- data.frame(filterResolutionOutput = filterResolution,
-                                    filterThresholdOutput = filterPercent)
 
 # add contextualization if selected --------------------------------------------
 
@@ -259,12 +248,8 @@ saveDatasheet(myScenario,
               name = "imageclassifier_ModelStatistics")
 
 saveDatasheet(myScenario,
-              data = filterOutputDataframe,
-              name = "imageclassifier_FilterStatistics")
-
-saveDatasheet(myScenario,
               data = varImportanceOutputDataframe,
-              name = "imageclassifier_ModelOutput")
+              name = "imageclassifier_VariableImportanceOutput")
 
 saveDatasheet(myScenario,
               data = rgbOutputDataframe,

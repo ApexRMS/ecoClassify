@@ -72,17 +72,23 @@ assignVariables <- function(myScenario) {
   # Extract timesteps based on min and max input values
   timesteps <- seq(runSettings$MinimumTimestep, runSettings$MaximumTimestep)
 
-  # Load model input datasheet
-  modelInputDataframe <- datasheet(myScenario,
-                                   name = "imageclassifier_ModelInput")
+  # Load classifier options datasheet
+  classifierOptionsDataframe <- datasheet(myScenario,
+                                          name = "imageclassifier_ClassifierOptions")
 
   # Extract model input values
-  nObs <- modelInputDataframe$nObs
-  filterResolution <- modelInputDataframe$filterResolution
-  filterPercent <- modelInputDataframe$filterPercent
-  applyFiltering <- modelInputDataframe$applyFiltering
-  applyContextualization <- modelInputDataframe$applyContextualization
-  modelType <- modelInputDataframe$modelType
+  nObs <- classifierOptionsDataframe$nObs
+  applyContextualization <- classifierOptionsDataframe$applyContextualization
+  modelType <- as.character(classifierOptionsDataframe$modelType)
+
+  # Load post-processing options datasheet
+  postProcessingDataframe <- datasheet(myScenario,
+                                       name = "imageclassifier_PostProcessingOptions")
+
+  # Extract post-processing values
+  filterResolution <- postProcessingDataframe$filterResolution
+  filterPercent <- postProcessingDataframe$filterPercent
+  applyFiltering <- postProcessingDataframe$applyFiltering
 
   # return as a list
   return(list(timesteps,
@@ -108,7 +114,8 @@ assignVariables <- function(myScenario) {
 #' timestep are combined into one raster using the terra package, and added
 #' to a list.
 #' @noRd
-extractRasters <- function(dataframe) {
+extractRasters <- function(dataframe,
+                           column) {
 
   # define timesteps
   timesteps <- unique(dataframe[, 1])
@@ -122,7 +129,7 @@ extractRasters <- function(dataframe) {
     # subset based on timestep
     subsetData <- dataframe %>% filter(Timesteps == t)
     # list all files
-    allFiles <- as.vector(subsetData[, 2])
+    allFiles <- as.vector(subsetData[, column])
     # read in all files as a single raster
     subsetRaster <- rast(allFiles)
     # add to main raster list
@@ -150,22 +157,23 @@ extractRasters <- function(dataframe) {
 #' rasterToClassifyDataframe can be an empty dataframe and will return
 #' an empty list
 #' @noRd
-extractAllRasters <- function(rasterTrainingDataframe,
-                              rasterGroundTruthDataframe,
-                              rasterToClassifyDataframe) {
+extractAllRasters <- function(inputRasterDataframe) {
 
   # extract training rasters
-  trainingRasterList <- extractRasters(rasterTrainingDataframe)
+  trainingRasterList <- extractRasters(inputRasterDataframe,
+                                       column = 2)
 
   # extract ground truth rasters
-  groundTruthRasterList <- extractRasters(rasterGroundTruthDataframe)
+  groundTruthRasterList <- extractRasters(inputRasterDataframe,
+                                          column = 3)
 
   # warning if training and ground truth rasters are different lengths
-  if(length(rasterTrainingDataframe) != length(rasterGroundTruthDataframe)) stop('must have equal number of training and ground truth rasters')
+  # if(length(rasterTrainingDataframe) != length(rasterGroundTruthDataframe)) stop('must have equal number of training and ground truth rasters')
 
   # extract rasters to classify
-  if (length(rasterToClassifyDataframe$RasterFileToClassify) > 1) {
-    toClassifyRasterList <- extractRasters(rasterToClassifyDataframe)
+  if (length(inputRasterDataframe$RasterFileToClassify) > 1) {
+    toClassifyRasterList <- extractRasters(inputRasterDataframe,
+                                           column = 4)
   } else {
     toClassifyRasterList <- ""
   }
