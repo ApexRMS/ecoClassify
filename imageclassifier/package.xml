@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<package name="imageclassifier" displayName="Image Classifier" description="Image classifier using semantic image segmentation" version="1.0.3" url="https://apexrms.github.io/imageclassifier/">
+<package name="imageclassifier" displayName="Image Classifier" description="Image classifier using semantic image segmentation" version="1.0.4" url="https://apexrms.github.io/imageclassifier/">
 
     <!--Model Inputs-->
     <dataSheet name="RunControl" displayName="Run Control" isRunControl="True" timestepTitle="Timestep" showMinIteration="False">
@@ -22,9 +22,11 @@
 
     <dataSheet name="ModelInput" displayName="Classifier options" isSingleRow="True">
         <column name="nObs" dataType="Integer" displayName="Sample size"/>
+        <column name="applyContextualization" dataType="Boolean" displayName="Apply contextualization"/>
         <column name="applyFiltering" dataType="Boolean" displayName="Apply filtering"/>
         <column name="filterResolution" dataType="Double" displayName="Filter resolution (optional)"/>
         <column name="filterPercent" dataType="Double" displayName="Filter threshold (optional)"/>
+        <column name="modelType" displayName="Model type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt" isOptional="True"/>
     </dataSheet>
 
     <!--Model Outputs-->
@@ -59,7 +61,7 @@
         <column name="filterThresholdOutput" dataType="Double" displayName="Filter Threshold"/>
     </dataSheet>
 
-    <dataSheet name="ModelOutput" displayName="Model Output" hasTimestep="True" hasIteration="True">
+    <dataSheet name="ModelOutput" displayName="Model Output">
 	    <column name="VariableImportance" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
 
@@ -68,7 +70,7 @@
     </dataSheet>
 
     <dataSheet name="ClassifiedRgbOutput" displayName="RGB Images" hasTimestep="True" hasIteration="True">
-	    <column name="ClassifiedRGBImage" dataType="String" isExternalFile="True" isImage="True"/>
+	    <column name="RGBImage" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
 
     <!--Main transformer-->
@@ -139,7 +141,7 @@
         <item name="VariableImportancePlot" displayName="Variable Importance" dataSheet="ModelOutput" column="VariableImportance"/>
         <group name="RGBImagePlots" displayName="RGB Images">
             <item name="TrainingRGBImagePlots" displayName="Training" dataSheet="RgbOutput" column="RGBImage"/>
-            <item name="ClassifiedRGBImagePlots" displayName="Classified" dataSheet="ClassifiedRgbOutput" column="ClassifiedRGBImage"/>
+            <item name="ClassifiedRGBImagePlots" displayName="Classified" dataSheet="ClassifiedRgbOutput" column="RGBImage"/>
         </group>
     </layout>
 

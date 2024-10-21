@@ -1,23 +1,32 @@
-# # set up library (remove after testing) -----------------------------------
-# library(rsyncrosim)
-# mySession <- session("C:/Program Files/SyncroSim Studio")
-# libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image_classifier_testing.ssim"
+# set up library (remove after testing) -----------------------------------
+library(rsyncrosim)
+mySession <- session("C:/Program Files/SyncroSim Studio")
+# libPath <- "library/image_classifier_testing.ssim"
+libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image-classifier-testing-2024-10-19.ssim"
 
-# myLibrary <- ssimLibrary(name = libPath,
-#                          session = mySession)
+myLibrary <- ssimLibrary(name = libPath,
+                         session = mySession)
 
-# # define project
-# myProject <- project(myLibrary, project = 1)
+# define project
+myProject <- rsyncrosim::project(myLibrary, project = 1)
 
-# # define scenario
-# scenario(myProject)
-# myScenario <- scenario(myProject, scenario = 89)
+# define scenario
+scenario(myProject)
+myScenario <- scenario(myProject, scenario = 1)
 
-# # view datasheets
-# datasheet(myScenario)
-# source("imageclassifier/workspace.r")
-# transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
+# view datasheets
+datasheet(myScenario)
+source("imageclassifier/workspace.r")
+# transferDir <- ""
 
+# set transferDir filepath if exporting
+transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
+
+# toggle here and skip line 48
+applyContextualization <- FALSE
+
+# START OF MODEL SCRIPT:
+## SKIP OUTSIDE GUI
 # set up workspace ---------------------------------------------------------
 packageDir <- (Sys.getenv("ssim_package_directory"))
 source(file.path(packageDir, "workspace.r"))
@@ -26,6 +35,7 @@ source(file.path(packageDir, "workspace.r"))
 myScenario <- scenario()  # Get the SyncroSim Scenario that is currently running
 
 # Retrieve the transfer directory for storing output rasters
+## CONTINUE HERE
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
@@ -36,6 +46,8 @@ nObs <- inputVariables[[2]]
 filterResolution <- inputVariables[[3]]
 filterPercent <- inputVariables[[4]]
 applyFiltering <- inputVariables[[5]]
+applyContextualization <- inputVariables[[6]]
+modelType <- inputVariables[[7]]
 
 # Load raster input datasheets
 rasterTrainingDataframe <- datasheet(myScenario,
@@ -93,6 +105,14 @@ classifiedRgbOutputDataframe <- data.frame(Iteration = numeric(0),
 filterOutputDataframe <- data.frame(filterResolutionOutput = filterResolution,
                                     filterThresholdOutput = filterPercent)
 
+# add contextualization if selected --------------------------------------------
+
+if (applyContextualization == TRUE) {
+
+  trainingRasterList <- contextualizeRaster(trainingRasterList) # change naming to avoid this
+
+}
+
 # separate training and testing data -------------------------------------------
 splitData <- splitTrainTest(trainingRasterList,
                             groundTruthRasterList,
@@ -101,35 +121,33 @@ allTrainData <- splitData[[1]]
 allTestData <- splitData[[2]]
 
 ## Train model -----------------------------------------------------------------
-mainModel <- formula(sprintf("%s ~ %s",
-                             "presence",
-                             paste(names(trainingRasterList[[1]]),
-                                   collapse = " + ")))
-
-rf1 <-  ranger(mainModel,
-               data = allTrainData,
-               mtry = 2,
-               importance = "impurity")
-
-rf2 <-  ranger(mainModel,
-               data = allTrainData,
-               mtry = 2,
-               probability = TRUE,
-               importance = "impurity")
+if (modelType == "MaxEnt") {
+  modelOut <- getMaxentModel(allTrainData)
+  optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "MaxEnt")
+} else if (modelType == "randomForest") {
+  modelOut <- getRandomForestModel(allTrainData)
+  optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "randomForest")
+} else {
+  stop("Model type not recognized")
+}
+model <- modelOut[[1]]
+variableImportance <- modelOut[[2]]
 
 # extract variable importance plot ---------------------------------------------
-variableImportanceOutput <- plotVariableImportance(rf1,
+variableImportanceOutput <- plotVariableImportance(variableImportance,
                                                    transferDir)
 
 variableImportancePlot <- variableImportanceOutput[[1]]
 varImportanceOutputDataframe <- variableImportanceOutput[[2]]
 
+
 ## Predict presence for training rasters in each timestep group ----------------
 for (t in seq_along(trainingRasterList)) {
 
   predictionRasters <- getPredictionRasters(trainingRasterList[[t]],
-                                            rf1,
-                                            rf2)
+                                            model,
+                                            optimalThreshold,
+                                            modelType)
   predictedPresence <- predictionRasters[[1]]
   probabilityRaster <- predictionRasters[[2]]
 
@@ -163,12 +181,20 @@ for (t in seq_along(trainingRasterList)) {
             transferDir)
 }
 
+# add contextualization for toclassify rasters if selected ---------------------
+if (applyContextualization == TRUE) {
+
+  toClassifyRasterList <- contextualizeRaster(toClassifyRasterList) # change naming to avoid this
+
+}
+
 ## Predict presence for rasters to classify ------------------------------------
 for (t in seq_along(toClassifyRasterList)) {
 
-  classifiedRasters <- getPredictionRasters(toClassifyRasterList[[t]],
-                                            rf1,
-                                            rf2)
+  classifiedRasters <- getPredictionRasters(trainingRasterList[[t]],
+                                            model,
+                                            optimalThreshold,
+                                            modelType)
   classifiedPresence <- classifiedRasters[[1]]
   classifiedProbability <- classifiedRasters[[2]]
 
@@ -190,9 +216,9 @@ for (t in seq_along(toClassifyRasterList)) {
                                                   transferDir)
 
   # save files
-  saveFiles(predictedPresence,
+  saveFiles(classifiedPresence,
             groundTruth = NULL,
-            probabilityRaster,
+            classifiedProbability,
             toClassifyRasterList,
             iteration = 2,
             t,
@@ -200,8 +226,9 @@ for (t in seq_along(toClassifyRasterList)) {
 }
 
 # calculate mean values for model statistics -----------------------------------
-outputDataframes <- calculateStatistics(rf1,
+outputDataframes <- calculateStatistics(model,
                                         allTestData,
+                                        optimalThreshold,
                                         confusionOutputDataframe,
                                         modelOutputDataframe)
 
