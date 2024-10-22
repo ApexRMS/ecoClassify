@@ -5,28 +5,23 @@
     <dataSheet name="RunControl" displayName="Run Control" isRunControl="True" timestepTitle="Timestep" showMinIteration="False">
 	</dataSheet>
         
-    <dataSheet name="TrainingData" displayName="Training Rasters">
+    <dataSheet name="InputRasters" displayName="Input rasters">
         <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
         <column name="TrainingRasterFile" dataType="String" displayName="Training raster" isExternalFile="True"/>
-    </dataSheet>
-
-    <dataSheet name="GroundTruthData" displayName="Ground Truth Rasters">
-        <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
         <column name="GroundTruthRasterFile" dataType="String" displayName="Ground truth raster" isExternalFile="True"/>
-    </dataSheet>
-
-    <dataSheet name="DataToClassify" displayName="Rasters to Classify">
-        <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
         <column name="RasterFileToClassify" dataType="String" displayName="Raster to Classfiy" isExternalFile="True"/>
     </dataSheet>
 
-    <dataSheet name="ModelInput" displayName="Classifier options" isSingleRow="True">
+    <dataSheet name="ClassifierOptions" displayName="Classifier options" isSingleRow="True">
         <column name="nObs" dataType="Integer" displayName="Sample size"/>
         <column name="applyContextualization" dataType="Boolean" displayName="Apply contextualization"/>
+        <column name="modelType" displayName="Model type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt" isOptional="True"/>
+    </dataSheet>
+
+    <dataSheet name="PostProcessingOptions" displayName="Post-processing options" isSingleRow="True">
         <column name="applyFiltering" dataType="Boolean" displayName="Apply filtering"/>
         <column name="filterResolution" dataType="Double" displayName="Filter resolution (optional)"/>
         <column name="filterPercent" dataType="Double" displayName="Filter threshold (optional)"/>
-        <column name="modelType" displayName="Model type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt" isOptional="True"/>
     </dataSheet>
 
     <!--Model Outputs-->
@@ -56,12 +51,7 @@
         <column name="Value" dataType="Double" displayName="Value"/>
     </dataSheet>
 
-    <dataSheet name="FilterStatistics" displayName="Filtering">
-        <column name="filterResolutionOutput" dataType="Double" displayName="Filter Resolution"/>
-        <column name="filterThresholdOutput" dataType="Double" displayName="Filter Threshold"/>
-    </dataSheet>
-
-    <dataSheet name="ModelOutput" displayName="Model Output">
+    <dataSheet name="VariableImportanceOutput" displayName="Variable Importance">
 	    <column name="VariableImportance" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
 
@@ -73,31 +63,43 @@
 	    <column name="RGBImage" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
 
-    <!--Main transformer-->
-    <transformer name="Main" displayName="Image classifier" programName="Rscript" programArguments="model.R" condaEnv="watchtower-conda.yml" condaEnvVersion="8">
+    <dataSheet name="ModelObject" displayName="Model">
+	    <column name="Model" dataType="String" isExternalFile="True"/>
+        <column name="OptimalThreshold" dataType="Double"/>
+    </dataSheet>
+
+    <!--Transformer 1: training classifier-->
+    <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="watchtower-conda.yml" condaEnvVersion="10">
         <dataSheet name="RunControl" type="Input"/>
-        <dataSheet name="TrainingData" type="Input"/>
-        <dataSheet name="GroundTruthData" type="Input"/>
-        <dataSheet name="DataToClassify" type="Input"/>
-        <dataSheet name="ModelInput" type="Input"/>
+        <dataSheet name="InputRasters" type="Input"/>
+        <dataSheet name="ClassifierOptions" type="Input"/>
         <dataSheet name="RasterOutput" type="Output"/>
         <dataSheet name="ClassifiedRasterOutput" type="Output"/>
         <dataSheet name="ConfusionMatrix" type="Output"/>
         <dataSheet name="ModelStatistics" type="Output"/>
-        <dataSheet name="FilterStatistics" type="Output"/>
-        <dataSheet name="ModelOutput" type="Output"/>
+        <dataSheet name="VariableImportanceOutput" type="Output"/>
         <dataSheet name="RgbOutput" type="Output"/>
+        <dataSheet name="ModelObject" type="Output"/>
+    </transformer>
+
+    <!--Transformer 2: forecasting-->
+    <transformer name="Forecast" displayName="2-Forecast" programName="Rscript" programArguments="2-forecast.R" condaEnv="watchtower-conda.yml" condaEnvVersion="10">
+        <dataSheet name="RunControl" type="Input"/>
+        <dataSheet name="InputRasters" type="Input"/>
+        <dataSheet name="ClassifierOptions" type="Input"/>
+        <dataSheet name="PostProcessingOptions" type="Input"/>
+        <dataSheet name="ModelObject" type="Input"/>
+        <dataSheet name="ClassifiedRasterOutput" type="Output"/>
         <dataSheet name="ClassifiedRgbOutput" type="Output"/>
     </transformer>
 
     <!--Export transformers-->
     <transformer name="ConfusionMatrixExport" dataSheet="ConfusionMatrix" isExport="True"/>
     <transformer name="ModelStatisticsExport" dataSheet="ModelStatistics" isExport="True"/>
-    <transformer name="FilterStatisticsExport" dataSheet="FilterStatistics" isExport="True"/>
     <transformer name="PredictedUnfilteredExport" dataSheet="RasterOutput" column="PredictedUnfiltered" isRasterExport="True"/>
     <transformer name="PredictedFilteredExport" dataSheet="RasterOutput" column="PredictedFiltered" isRasterExport="True"/>
     <transformer name="GroundTruthExport" dataSheet="RasterOutput" column="GroundTruth" isRasterExport="True"/>
-    <transformer name="ModelOutputExport" dataSheet="ModelOutput" column="VariableImportance" isExport="True"/>
+    <transformer name="VariableImportanceOutputExport" dataSheet="VariableImportanceOutput" column="VariableImportance" isExport="True"/>
 
     <!--Scenario Layout-->
     <layout type="Scenario">
@@ -105,18 +107,14 @@
         <item name="RunControl"/>
 
         <group name="AllInputs" displayName="Input">
-            <item name="ModelInput"/>
-            <item name="TrainingData"/>
-            <item name="GroundTruthData"/>
-            <item name="DataToClassify"/>
+            <item name="ClassifierOptions"/>
+            <item name="PostProcessingOptions"/>
+            <item name="InputRasters"/>
         </group>
 
         <group name="AllOutputs" displayName="Output">
-            <item name="RasterOutput"/>
-            <item name="ClassifiedRasterOutput"/>
             <item name="ConfusionMatrix"/>
             <item name="ModelStatistics"/>
-            <item name="FilterStatistics"/>
         </group>
 
     </layout>
@@ -137,8 +135,8 @@
     </layout>
 
     <!--Image Layout-->
-    <layout type="Image" configurationSheet="RunControl">	
-        <item name="VariableImportancePlot" displayName="Variable Importance" dataSheet="ModelOutput" column="VariableImportance"/>
+    <layout type="Image">	
+        <item name="VariableImportancePlot" displayName="Variable Importance Plot" dataSheet="VariableImportanceOutput" column="VariableImportance"/>
         <group name="RGBImagePlots" displayName="RGB Images">
             <item name="TrainingRGBImagePlots" displayName="Training" dataSheet="RgbOutput" column="RGBImage"/>
             <item name="ClassifiedRGBImagePlots" displayName="Classified" dataSheet="ClassifiedRgbOutput" column="RGBImage"/>
@@ -149,7 +147,6 @@
     <layout type="Export">
         <item name="ConfusionMatrixExport" displayName="Confusion Matrix"/>
         <item name="ModelStatisticsExport" displayName="Model Statistics"/>
-        <item name="FilterStatisticsExport" displayName="Filtering"/>
 
         <group name="MapExport" displayName="Map Outputs">
             <item name="PredictedUnfilteredExport" displayName="Unfiltered Prediction"/>
@@ -157,7 +154,7 @@
             <item name="GroundTruthExport" displayName="Ground Truth"/>
         </group>
         <group name="ImageExport" displayName="Image Outputs">
-            <item name="ModelOutputExport" displayName="Variable Importance"/>
+            <item name="VariableImportanceOutputExport" displayName="Variable Importance Plot"/>
         </group>
     </layout>
 

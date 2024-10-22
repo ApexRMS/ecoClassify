@@ -1,29 +1,26 @@
-# set up library (remove after testing) -----------------------------------
-library(rsyncrosim)
-mySession <- session("C:/Program Files/SyncroSim Studio")
-# libPath <- "library/image_classifier_testing.ssim"
-libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image-classifier-testing-2024-10-19.ssim"
+# # set up library (remove after testing) -----------------------------------
+# library(rsyncrosim)
+# mySession <- session("C:/Program Files/SyncroSim Studio")
+# # libPath <- "library/image_classifier_testing.ssim"
+# libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image-classifier-testing-2024-10-19.ssim"
 
-myLibrary <- ssimLibrary(name = libPath,
-                         session = mySession)
+# myLibrary <- ssimLibrary(name = libPath,
+#                          session = mySession)
 
-# define project
-myProject <- rsyncrosim::project(myLibrary, project = 1)
+# # define project
+# myProject <- rsyncrosim::project(myLibrary, project = 1)
 
-# define scenario
-scenario(myProject)
-myScenario <- scenario(myProject, scenario = 1)
+# # define scenario
+# scenario(myProject)
+# myScenario <- scenario(myProject, scenario = 1)
 
-# view datasheets
-datasheet(myScenario)
-source("imageclassifier/workspace.r")
-# transferDir <- ""
+# # view datasheets
+# datasheet(myScenario)
+# source("imageclassifier/workspace.r")
+# # transferDir <- ""
 
-# set transferDir filepath if exporting
-transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
-
-# toggle here and skip line 48
-applyContextualization <- FALSE
+# # set transferDir filepath if exporting
+# transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
 
 # START OF MODEL SCRIPT:
 ## SKIP OUTSIDE GUI
@@ -50,28 +47,17 @@ applyContextualization <- inputVariables[[6]]
 modelType <- inputVariables[[7]]
 
 # Load raster input datasheets
-rasterTrainingDataframe <- datasheet(myScenario,
-                                     name = "imageclassifier_TrainingData")
-
-rasterGroundTruthDataframe <- datasheet(myScenario,
-                                        name = "imageclassifier_GroundTruthData")
-
-rasterToClassifyDataframe <- datasheet(myScenario,
-                                       name = "imageclassifier_DataToClassify")
+inputRasterDataframe <- datasheet(myScenario,
+                                  name = "imageclassifier_InputRasters")
 
 # check timesteps were input correctly ---------------------------------------
-checkTimesteps(timesteps,
-               rasterTrainingDataframe,
-               rasterGroundTruthDataframe)
+# checkTimesteps(timesteps,
+#                rasterTrainingDataframe,
+#                rasterGroundTruthDataframe)
 
 # extract list of training, testing, and ground truth rasters ----------------
-extractedRasters <- extractAllRasters(rasterTrainingDataframe,
-                                      rasterGroundTruthDataframe,
-                                      rasterToClassifyDataframe)
-
-trainingRasterList <- extractedRasters[[1]]
-groundTruthRasterList <- extractedRasters[[2]]
-toClassifyRasterList <- extractedRasters[[3]]
+trainingRasterList <- extractRasters(inputRasterDataframe, column = 2)
+groundTruthRasterList <- extractRasters(inputRasterDataframe, column = 3)
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(Iteration = numeric(0),
@@ -80,12 +66,6 @@ rasterOutputDataframe <- data.frame(Iteration = numeric(0),
                                     PredictedFiltered = character(0),
                                     GroundTruth = character(0),
                                     Probability = character(0))
-
-classifiedRasterOutputDataframe <- data.frame(Iteration = numeric(0),
-                                              Timestep = numeric(0),
-                                              ClassifiedUnfiltered = character(0),
-                                              ClassifiedFiltered = character(0),
-                                              ClassifiedProbability = character(0))
 
 confusionOutputDataframe <- data.frame(Prediction = numeric(0),
                                        Reference = numeric(0),
@@ -97,13 +77,6 @@ modelOutputDataframe <- data.frame(Statistic = character(0),
 rgbOutputDataframe <- data.frame(Iteration = numeric(0),
                                  Timestep = numeric(0),
                                  RGBImage = character(0))
-
-classifiedRgbOutputDataframe <- data.frame(Iteration = numeric(0),
-                                           Timestep = numeric(0),
-                                           RGBImage = character(0))
-
-filterOutputDataframe <- data.frame(filterResolutionOutput = filterResolution,
-                                    filterThresholdOutput = filterPercent)
 
 # add contextualization if selected --------------------------------------------
 
@@ -124,14 +97,21 @@ allTestData <- splitData[[2]]
 if (modelType == "MaxEnt") {
   modelOut <- getMaxentModel(allTrainData)
   optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "MaxEnt")
-} else if (modelType == "randomForest") {
+} else if (modelType == "Random Forest") {
   modelOut <- getRandomForestModel(allTrainData)
-  optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "randomForest")
+  optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "Random Forest")
 } else {
   stop("Model type not recognized")
 }
 model <- modelOut[[1]]
 variableImportance <- modelOut[[2]]
+
+# save model
+saveRDS(model, file.path(transferDir, "model.rds"))
+
+# add to output datasheet
+modelObjectOutputDataframe <- data.frame(Model = file.path(transferDir, "model.rds"),
+                                         OptimalThreshold = optimalThreshold)
 
 # extract variable importance plot ---------------------------------------------
 variableImportanceOutput <- plotVariableImportance(variableImportance,
@@ -181,50 +161,6 @@ for (t in seq_along(trainingRasterList)) {
             transferDir)
 }
 
-# add contextualization for toclassify rasters if selected ---------------------
-if (applyContextualization == TRUE) {
-
-  toClassifyRasterList <- contextualizeRaster(toClassifyRasterList) # change naming to avoid this
-
-}
-
-## Predict presence for rasters to classify ------------------------------------
-for (t in seq_along(toClassifyRasterList)) {
-
-  classifiedRasters <- getPredictionRasters(trainingRasterList[[t]],
-                                            model,
-                                            optimalThreshold,
-                                            modelType)
-  classifiedPresence <- classifiedRasters[[1]]
-  classifiedProbability <- classifiedRasters[[2]]
-
-  # generate rasterDataframe based on filtering argument
-  classifiedRasterOutputDataframe <- generateRasterDataframe(applyFiltering,
-                                                             classifiedPresence,
-                                                             filterResolution,
-                                                             filterPercent,
-                                                             iteration = 2,
-                                                             t,
-                                                             transferDir,
-                                                             classifiedRasterOutputDataframe,
-                                                             hasGroundTruth = FALSE)
-
-  # define RGB data frame
-  classifiedRgbOutputDataframe <- getRgbDataframe(classifiedRgbOutputDataframe,
-                                                  iteration = 2,
-                                                  t,
-                                                  transferDir)
-
-  # save files
-  saveFiles(classifiedPresence,
-            groundTruth = NULL,
-            classifiedProbability,
-            toClassifyRasterList,
-            iteration = 2,
-            t,
-            transferDir)
-}
-
 # calculate mean values for model statistics -----------------------------------
 outputDataframes <- calculateStatistics(model,
                                         allTestData,
@@ -247,10 +183,6 @@ saveDatasheet(myScenario,
               name = "imageclassifier_RasterOutput")
 
 saveDatasheet(myScenario,
-              data = classifiedRasterOutputDataframe,
-              name = "imageclassifier_ClassifiedRasterOutput")
-
-saveDatasheet(myScenario,
               data = confusionOutputDataframe,
               name = "imageclassifier_ConfusionMatrix")
 
@@ -259,17 +191,13 @@ saveDatasheet(myScenario,
               name = "imageclassifier_ModelStatistics")
 
 saveDatasheet(myScenario,
-              data = filterOutputDataframe,
-              name = "imageclassifier_FilterStatistics")
-
-saveDatasheet(myScenario,
               data = varImportanceOutputDataframe,
-              name = "imageclassifier_ModelOutput")
+              name = "imageclassifier_VariableImportanceOutput")
 
 saveDatasheet(myScenario,
               data = rgbOutputDataframe,
               name = "imageclassifier_RgbOutput")
 
 saveDatasheet(myScenario,
-              data = classifiedRgbOutputDataframe,
-              name = "imageclassifier_ClassifiedRgbOutput")
+              data = modelObjectOutputDataframe,
+              name = "imageclassifier_ModelObject")

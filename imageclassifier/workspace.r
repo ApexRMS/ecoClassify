@@ -1,4 +1,8 @@
 # load packages ---------------------------------------------------
+update.packages(repos='http://cran.us.r-project.org', ask = FALSE, oldPkgs = c("terra"))
+
+install.packages("reshape2", repos='http://cran.us.r-project.org')
+
 library(rsyncrosim)
 library(tidyverse)
 library(terra)
@@ -6,46 +10,21 @@ library(sf)
 library(ranger)
 library(caret)
 library(gtools)
-library(reshape2)
-library(roxygen2)
 library(codetools)
-# install.packages("ENMeval", repos='http://cran.us.r-project.org')
-library(ENMeval) ## add to Conda
+library(ENMeval)
+library(rJava)
+library(ecospat)
+library(ENMeval)
 
-
-tryCatch({library(rJava)
-  },
-  error = function(e) {
-    install.packages("rJava")
-  },
-  finally = {
-    library(rJava)
-  }
-)
-
-tryCatch(
-  {
-    library(ecospat)
-  },
-  error = function(e) {
-    install.packages("ecospat")
-  },
-  finally = {
-    library(ecospat)
-  }
-)
-
-tryCatch(
-  {
-    library(ENMeval)
-  },
-  error = function(e) {
-    install.packages("ENMeval")
-  },
-  finally = {
-    library(ENMeval)
-  }
-)
+# tryCatch({library(rJava)
+#   },
+#   error = function(e) {
+#     install.packages("rJava")
+#   },
+#   finally = {
+#     library(rJava)
+#   }
+# )
 
 # define functions ------------------------------------------------
 
@@ -72,17 +51,23 @@ assignVariables <- function(myScenario) {
   # Extract timesteps based on min and max input values
   timesteps <- seq(runSettings$MinimumTimestep, runSettings$MaximumTimestep)
 
-  # Load model input datasheet
-  modelInputDataframe <- datasheet(myScenario,
-                                   name = "imageclassifier_ModelInput")
+  # Load classifier options datasheet
+  classifierOptionsDataframe <- datasheet(myScenario,
+                                          name = "imageclassifier_ClassifierOptions")
 
   # Extract model input values
-  nObs <- modelInputDataframe$nObs
-  filterResolution <- modelInputDataframe$filterResolution
-  filterPercent <- modelInputDataframe$filterPercent
-  applyFiltering <- modelInputDataframe$applyFiltering
-  applyContextualization <- modelInputDataframe$applyContextualization
-  modelType <- modelInputDataframe$modelType
+  nObs <- classifierOptionsDataframe$nObs
+  applyContextualization <- classifierOptionsDataframe$applyContextualization
+  modelType <- as.character(classifierOptionsDataframe$modelType)
+
+  # Load post-processing options datasheet
+  postProcessingDataframe <- datasheet(myScenario,
+                                       name = "imageclassifier_PostProcessingOptions")
+
+  # Extract post-processing values
+  filterResolution <- postProcessingDataframe$filterResolution
+  filterPercent <- postProcessingDataframe$filterPercent
+  applyFiltering <- postProcessingDataframe$applyFiltering
 
   # return as a list
   return(list(timesteps,
@@ -108,7 +93,11 @@ assignVariables <- function(myScenario) {
 #' timestep are combined into one raster using the terra package, and added
 #' to a list.
 #' @noRd
-extractRasters <- function(dataframe) {
+extractRasters <- function(dataframe,
+                           column) {
+
+  # remove rows with NA values in the second column
+  dataframe <- dataframe %>% filter(!is.na(dataframe[, column]))
 
   # define timesteps
   timesteps <- unique(dataframe[, 1])
@@ -122,7 +111,7 @@ extractRasters <- function(dataframe) {
     # subset based on timestep
     subsetData <- dataframe %>% filter(Timesteps == t)
     # list all files
-    allFiles <- as.vector(subsetData[, 2])
+    allFiles <- as.vector(subsetData[, column])
     # read in all files as a single raster
     subsetRaster <- rast(allFiles)
     # add to main raster list
@@ -150,29 +139,32 @@ extractRasters <- function(dataframe) {
 #' rasterToClassifyDataframe can be an empty dataframe and will return
 #' an empty list
 #' @noRd
-extractAllRasters <- function(rasterTrainingDataframe,
-                              rasterGroundTruthDataframe,
-                              rasterToClassifyDataframe) {
+extractAllRasters <- function(inputRasterDataframe) {
 
-  # extract training rasters
-  trainingRasterList <- extractRasters(rasterTrainingDataframe)
+  if (modelType == "Random Forest") {
+    # extract training rasters
+    trainingRasterList <- extractRasters(inputRasterDataframe,
+                                         column = 2)
 
-  # extract ground truth rasters
-  groundTruthRasterList <- extractRasters(rasterGroundTruthDataframe)
+    # extract ground truth rasters
+    groundTruthRasterList <- extractRasters(inputRasterDataframe,
+                                            column = 3)
 
-  # warning if training and ground truth rasters are different lengths
-  if(length(rasterTrainingDataframe) != length(rasterGroundTruthDataframe)) stop('must have equal number of training and ground truth rasters')
+    # warning if training and ground truth rasters are different lengths
+    # if(length(rasterTrainingDataframe) != length(rasterGroundTruthDataframe)) stop('must have equal number of training and ground truth rasters')
 
-  # extract rasters to classify
-  if (length(rasterToClassifyDataframe$RasterFileToClassify) > 1) {
-    toClassifyRasterList <- extractRasters(rasterToClassifyDataframe)
-  } else {
-    toClassifyRasterList <- ""
+    return(list(trainingRasterList,
+                groundTruthRasterList))
+  } else if (modelType == "MaxEnt") {
+
+    # extract rasters to classify
+    toClassifyRasterList <- extractRasters(inputRasterDataframe,
+                                           column = 4)
+
+    return(toClassifyRasterList)
+
   }
 
-  return(list(trainingRasterList,
-              groundTruthRasterList,
-              toClassifyRasterList))
 }
 
 #' Decompose rasters for image classification
@@ -230,8 +222,9 @@ plotVariableImportance <- function(importanceData,
                                    transferDir) {
 
   # extract variable importance
-  variableImportance <- melt(importanceData) %>%
-    tibble::rownames_to_column("variable")
+  variableImportance <- data.frame(importanceData) %>%
+    tibble::rownames_to_column("variable") %>%
+    rename(value = 2)
 
   # make a variable importance plot for specified model
   variableImportancePlot <- ggplot(variableImportance,
@@ -350,17 +343,17 @@ predictRanger <- function(raster,
 #' @details
 #'
 #' @noRd
-getPredictionRasters <- function(trainingRaster,
+getPredictionRasters <- function(raster,
                                  model,
                                  threshold,
-                                 modelType = "randomForest") {
+                                 modelType = "Random Forest") {
   # predict presence for each raster
-  if (modelType == "randomForest") {
+  if (modelType == "Random Forest") {
     # generate probabilities for each raster
-    probabilityRaster <- 1 - predictRanger(trainingRaster,
+    probabilityRaster <- 1 - predictRanger(raster,
                                            model)
   } else if (modelType == "MaxEnt") {
-    probabilityRaster <- predict(model, trainingRaster, type = "logistic")
+    probabilityRaster <- predict(model, raster, type = "logistic")
   }  else {
     stop("Model type not recognized")
   }
@@ -742,7 +735,7 @@ calculateStatistics <- function(model,
   return(list(confusionOutputDataframe, modelOutputDataframe))
 }
 
-# check for issues with data structure ----------------------------- 
+# check for issues with data structure -----------------------------
 checkTimesteps <- function(timesteps,
                            rasterTrainingDataframe,
                            rasterGroundTruthDataframe) {
@@ -842,8 +835,8 @@ getMaxentModel <- function(allTrainData) {
   tuneArgs <- list(fc = c("LQHP"),  
                     rm = seq(0.5,1, 0.5))
 
-  absenceTrainData <- allTrainData[allTrainData$presence == 1,grep("presence|kfold", colnames(allTrainData), invert=T)]
-  presenceTrainData <- allTrainData[allTrainData$presence == 2,grep("presence|kfold", colnames(allTrainData), invert=T)]
+  absenceTrainData <- allTrainData[allTrainData$presence == 2,grep("presence|kfold", colnames(allTrainData), invert=T)]
+  presenceTrainData <- allTrainData[allTrainData$presence == 1,grep("presence|kfold", colnames(allTrainData), invert=T)]
   max1 <- ENMevaluate(occ = absenceTrainData,
                       bg.coords = presenceTrainData,
                       tune.args = tuneArgs,
@@ -885,12 +878,12 @@ getSensSpec <- function(probs, actual, threshold) {
 }
 
 ## find optimal threshold between sensitivity and specificity
-getOptimalThreshold <- function(model, testingData, modelType="randomForest") {
+getOptimalThreshold <- function(model, testingData, modelType="Random Forest") {
   thresholds <- seq(0.01, 0.99, by = 0.01)
   testingObservations <- as.numeric(testingData$presence)-1
 
   ## predicting data
-  if(modelType == "randomForest"){
+  if(modelType == "Random Forest"){
     testingPredictions <- predict(model, testingData)$predictions[,2]
   } else if(modelType == "MaxEnt") {
     testingPredictions <- predict(model, testingData, type="logistic")
