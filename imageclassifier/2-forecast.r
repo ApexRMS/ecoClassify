@@ -26,6 +26,12 @@ inputRasterDataframe <- datasheet(myScenario,
 modelObjectDataframe <- datasheet(myScenario,
                                   name = "imageclassifier_ModelObject")
 
+# extract unique timesteps from inputRasterDataframe --------------------------
+timestepList <- inputRasterDataframe %>%
+  filter(!is.na(RasterFileToClassify)) %>%
+  pull(Timesteps) %>%
+  unique()
+
 # load model and threshold
 model <- readRDS(modelObjectDataframe$Model)
 optimalThreshold <- modelObjectDataframe$OptimalThreshold
@@ -54,6 +60,9 @@ if (applyContextualization == TRUE) {
 ## Predict presence for rasters to classify ------------------------------------
 for (t in seq_along(toClassifyRasterList)) {
 
+  # get timestep for the current raster
+  timestep <- timestepList[t]
+
   classifiedRasters <- getPredictionRasters(toClassifyRasterList[[t]],
                                             model,
                                             optimalThreshold,
@@ -67,7 +76,7 @@ for (t in seq_along(toClassifyRasterList)) {
                                                              filterResolution,
                                                              filterPercent,
                                                              category = "forecasting",
-                                                             t,
+                                                             timestep,
                                                              transferDir,
                                                              classifiedRasterOutputDataframe,
                                                              hasGroundTruth = FALSE)
@@ -75,7 +84,7 @@ for (t in seq_along(toClassifyRasterList)) {
   # define RGB data frame
   classifiedRgbOutputDataframe <- getRgbDataframe(classifiedRgbOutputDataframe,
                                                   category = "forecasting",
-                                                  t,
+                                                  timestep,
                                                   transferDir)
 
   # save files
@@ -84,7 +93,7 @@ for (t in seq_along(toClassifyRasterList)) {
             classifiedProbability,
             toClassifyRasterList,
             category = "forecasting",
-            t,
+            timestep,
             transferDir)
 }
 

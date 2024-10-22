@@ -1,4 +1,4 @@
-# set up library (remove after testing) -----------------------------------
+# # set up library (remove after testing) -----------------------------------
 # library(rsyncrosim)
 # mySession <- session("C:/Program Files/SyncroSim Studio")
 # # libPath <- "library/image_classifier_testing.ssim"
@@ -58,6 +58,12 @@ inputRasterDataframe <- datasheet(myScenario,
 # extract list of training, testing, and ground truth rasters ----------------
 trainingRasterList <- extractRasters(inputRasterDataframe, column = 2)
 groundTruthRasterList <- extractRasters(inputRasterDataframe, column = 3)
+
+# extract unique timesteps from inputRasterDataframe --------------------------
+timestepList <- inputRasterDataframe %>%
+  filter(!is.na(TrainingRasterFile)) %>%
+  pull(Timesteps) %>%
+  unique()
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(Timestep = numeric(0),
@@ -122,6 +128,9 @@ varImportanceOutputDataframe <- variableImportanceOutput[[2]]
 ## Predict presence for training rasters in each timestep group ----------------
 for (t in seq_along(trainingRasterList)) {
 
+  # get timestep for the current raster
+  timestep <- timestepList[t]
+
   predictionRasters <- getPredictionRasters(trainingRasterList[[t]],
                                             model,
                                             optimalThreshold,
@@ -135,7 +144,7 @@ for (t in seq_along(trainingRasterList)) {
                                                    filterResolution,
                                                    filterPercent,
                                                    category = "training",
-                                                   t,
+                                                   timestep,
                                                    transferDir,
                                                    rasterOutputDataframe,
                                                    hasGroundTruth = TRUE)
@@ -146,7 +155,7 @@ for (t in seq_along(trainingRasterList)) {
   # define RGB data frame
   rgbOutputDataframe <- getRgbDataframe(rgbOutputDataframe,
                                         category = "training",
-                                        t,
+                                        timestep,
                                         transferDir)
 
   # save files
@@ -155,7 +164,7 @@ for (t in seq_along(trainingRasterList)) {
             probabilityRaster,
             trainingRasterList,
             category = "training",
-            t,
+            timestep,
             transferDir)
 }
 
