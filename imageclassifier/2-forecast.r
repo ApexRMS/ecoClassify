@@ -35,15 +35,13 @@ toClassifyRasterList <- extractRasters(inputRasterDataframe, column = 4)
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 
-classifiedRasterOutputDataframe <- data.frame(Iteration = numeric(0),
-                                              Timestep = numeric(0),
+classifiedRasterOutputDataframe <- data.frame(Timestep = numeric(0),
                                               ClassifiedUnfiltered = character(0),
                                               ClassifiedFiltered = character(0),
                                               ClassifiedProbability = character(0))
 
 
-classifiedRgbOutputDataframe <- data.frame(Iteration = numeric(0),
-                                           Timestep = numeric(0),
+classifiedRgbOutputDataframe <- data.frame(Timestep = numeric(0),
                                            RGBImage = character(0))
 
 # add contextualization for toclassify rasters if selected ---------------------
@@ -68,7 +66,7 @@ for (t in seq_along(toClassifyRasterList)) {
                                                              classifiedPresence,
                                                              filterResolution,
                                                              filterPercent,
-                                                             iteration = 2,
+                                                             category = "forecasting",
                                                              t,
                                                              transferDir,
                                                              classifiedRasterOutputDataframe,
@@ -76,7 +74,7 @@ for (t in seq_along(toClassifyRasterList)) {
 
   # define RGB data frame
   classifiedRgbOutputDataframe <- getRgbDataframe(classifiedRgbOutputDataframe,
-                                                  iteration = 2,
+                                                  category = "forecasting",
                                                   t,
                                                   transferDir)
 
@@ -85,7 +83,7 @@ for (t in seq_along(toClassifyRasterList)) {
             groundTruth = NULL,
             classifiedProbability,
             toClassifyRasterList,
-            iteration = 2,
+            category = "forecasting",
             t,
             transferDir)
 }

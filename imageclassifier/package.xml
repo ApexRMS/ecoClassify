@@ -25,7 +25,7 @@
     </dataSheet>
 
     <!--Model Outputs-->
-    <dataSheet name="RasterOutput" displayName="Training Rasters" hasTimestep="True" hasIteration="True">
+    <dataSheet name="RasterOutput" displayName="Training Rasters" hasTimestep="True">
         <column name="PredictedUnfiltered" dataType="String" displayName="Predicted" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="PredictedFiltered" dataType="String" displayName="Predicted filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="GroundTruth" dataType="String" displayName="Ground truth" isExternalFile="True" isRaster="True"/>
@@ -33,7 +33,7 @@
         <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True"/>
     </dataSheet>
 
-    <dataSheet name="ClassifiedRasterOutput" displayName="Classified Rasters" hasTimestep="True" hasIteration="True">
+    <dataSheet name="ClassifiedRasterOutput" displayName="Classified Rasters" hasTimestep="True">
         <column name="ClassifiedUnfiltered" dataType="String" displayName="Classified" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="ClassifiedFiltered" dataType="String" displayName="Classified filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="ClassifiedProbability" dataType="String" displayName="Probability" isExternalFile="True" isRaster="True"/>
@@ -55,11 +55,11 @@
 	    <column name="VariableImportance" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
 
-    <dataSheet name="RgbOutput" displayName="RGB Images" hasTimestep="True" hasIteration="True">
+    <dataSheet name="RgbOutput" displayName="RGB Images" hasTimestep="True">
 	    <column name="RGBImage" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
 
-    <dataSheet name="ClassifiedRgbOutput" displayName="RGB Images" hasTimestep="True" hasIteration="True">
+    <dataSheet name="ClassifiedRgbOutput" displayName="RGB Images" hasTimestep="True">
 	    <column name="RGBImage" dataType="String" isExternalFile="True" isImage="True"/>
     </dataSheet>
 
@@ -120,7 +120,7 @@
     </layout>
 
     <!--Map Layout-->
-	<layout type="Map" configurationSheet="RunControl">
+	<layout type="Map">
         <group name="PredictionMaps" displayName="Training Predictions">
 		    <item name="PredictedUnfilteredMap" displayName="Unfiltered" dataSheet="RasterOutput" column="PredictedUnfiltered"/>
             <item name="PredictedFilteredMap" displayName="Filtered" dataSheet="RasterOutput" column="PredictedFiltered"/>

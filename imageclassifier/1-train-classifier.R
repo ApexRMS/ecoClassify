@@ -1,4 +1,4 @@
-# # set up library (remove after testing) -----------------------------------
+# set up library (remove after testing) -----------------------------------
 # library(rsyncrosim)
 # mySession <- session("C:/Program Files/SyncroSim Studio")
 # # libPath <- "library/image_classifier_testing.ssim"
@@ -60,8 +60,7 @@ trainingRasterList <- extractRasters(inputRasterDataframe, column = 2)
 groundTruthRasterList <- extractRasters(inputRasterDataframe, column = 3)
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
-rasterOutputDataframe <- data.frame(Iteration = numeric(0),
-                                    Timestep = numeric(0),
+rasterOutputDataframe <- data.frame(Timestep = numeric(0),
                                     PredictedUnfiltered = character(0),
                                     PredictedFiltered = character(0),
                                     GroundTruth = character(0),
@@ -74,8 +73,7 @@ confusionOutputDataframe <- data.frame(Prediction = numeric(0),
 modelOutputDataframe <- data.frame(Statistic = character(0),
                                    Value = numeric(0))
 
-rgbOutputDataframe <- data.frame(Iteration = numeric(0),
-                                 Timestep = numeric(0),
+rgbOutputDataframe <- data.frame(Timestep = numeric(0),
                                  RGBImage = character(0))
 
 # add contextualization if selected --------------------------------------------
@@ -136,7 +134,7 @@ for (t in seq_along(trainingRasterList)) {
                                                    predictedPresence,
                                                    filterResolution,
                                                    filterPercent,
-                                                   iteration = 1,
+                                                   category = "training",
                                                    t,
                                                    transferDir,
                                                    rasterOutputDataframe,
@@ -147,7 +145,7 @@ for (t in seq_along(trainingRasterList)) {
 
   # define RGB data frame
   rgbOutputDataframe <- getRgbDataframe(rgbOutputDataframe,
-                                        iteration = 1,
+                                        category = "training",
                                         t,
                                         transferDir)
 
@@ -156,7 +154,7 @@ for (t in seq_along(trainingRasterList)) {
             groundTruth,
             probabilityRaster,
             trainingRasterList,
-            iteration = 1,
+            category = "training",
             t,
             transferDir)
 }
