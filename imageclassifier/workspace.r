@@ -1,4 +1,8 @@
 # load packages ---------------------------------------------------
+update.packages(repos='http://cran.us.r-project.org', ask = FALSE, oldPkgs = c("terra"))
+
+install.packages("reshape2", repos='http://cran.us.r-project.org')
+
 library(rsyncrosim)
 library(tidyverse)
 library(terra)
@@ -6,46 +10,21 @@ library(sf)
 library(ranger)
 library(caret)
 library(gtools)
-library(reshape2)
-library(roxygen2)
 library(codetools)
-# install.packages("ENMeval", repos='http://cran.us.r-project.org')
-library(ENMeval) ## add to Conda
+library(ENMeval)
+library(rJava)
+library(ecospat)
+library(ENMeval)
 
-
-tryCatch({library(rJava)
-  },
-  error = function(e) {
-    install.packages("rJava")
-  },
-  finally = {
-    library(rJava)
-  }
-)
-
-tryCatch(
-  {
-    library(ecospat)
-  },
-  error = function(e) {
-    install.packages("ecospat")
-  },
-  finally = {
-    library(ecospat)
-  }
-)
-
-tryCatch(
-  {
-    library(ENMeval)
-  },
-  error = function(e) {
-    install.packages("ENMeval")
-  },
-  finally = {
-    library(ENMeval)
-  }
-)
+# tryCatch({library(rJava)
+#   },
+#   error = function(e) {
+#     install.packages("rJava")
+#   },
+#   finally = {
+#     library(rJava)
+#   }
+# )
 
 # define functions ------------------------------------------------
 
@@ -243,8 +222,9 @@ plotVariableImportance <- function(importanceData,
                                    transferDir) {
 
   # extract variable importance
-  variableImportance <- melt(importanceData) %>%
-    tibble::rownames_to_column("variable")
+  variableImportance <- data.frame(importanceData) %>%
+    tibble::rownames_to_column("variable") %>%
+    rename(value = 2)
 
   # make a variable importance plot for specified model
   variableImportancePlot <- ggplot(variableImportance,
