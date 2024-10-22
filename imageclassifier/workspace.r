@@ -855,8 +855,8 @@ getMaxentModel <- function(allTrainData) {
   tuneArgs <- list(fc = c("LQHP"),  
                     rm = seq(0.5,1, 0.5))
 
-  absenceTrainData <- allTrainData[allTrainData$presence == 1,grep("presence|kfold", colnames(allTrainData), invert=T)]
-  presenceTrainData <- allTrainData[allTrainData$presence == 2,grep("presence|kfold", colnames(allTrainData), invert=T)]
+  absenceTrainData <- allTrainData[allTrainData$presence == 2,grep("presence|kfold", colnames(allTrainData), invert=T)]
+  presenceTrainData <- allTrainData[allTrainData$presence == 1,grep("presence|kfold", colnames(allTrainData), invert=T)]
   max1 <- ENMevaluate(occ = absenceTrainData,
                       bg.coords = presenceTrainData,
                       tune.args = tuneArgs,

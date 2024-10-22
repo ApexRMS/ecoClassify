@@ -135,8 +135,8 @@
     </layout>
 
     <!--Image Layout-->
-    <layout type="Image" configurationSheet="RunControl">	
-        <item name="VariableImportancePlot" displayName="Variable Importance Plot" dataSheet="ModelOutput" column="VariableImportance"/>
+    <layout type="Image">	
+        <item name="VariableImportancePlot" displayName="Variable Importance Plot" dataSheet="VariableImportanceOutput" column="VariableImportance"/>
         <group name="RGBImagePlots" displayName="RGB Images">
             <item name="TrainingRGBImagePlots" displayName="Training" dataSheet="RgbOutput" column="RGBImage"/>
             <item name="ClassifiedRGBImagePlots" displayName="Classified" dataSheet="ClassifiedRgbOutput" column="RGBImage"/>
