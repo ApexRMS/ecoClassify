@@ -9,28 +9,24 @@ myScenario <- scenario()  # Get the SyncroSim Scenario that is currently running
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
-# Assign variables ----------------------------------------------------------
-inputVariables <- assignVariables(myScenario)
-timesteps <- inputVariables[[1]]
-nObs <- inputVariables[[2]]
-filterResolution <- inputVariables[[3]]
-filterPercent <- inputVariables[[4]]
-applyFiltering <- inputVariables[[5]]
-applyContextualization <- inputVariables[[6]]
-modelType <- inputVariables[[7]]
-
-# Load raster input datasheets
+# Load raster input datasheets -----------------------------------------------
 inputRasterDataframe <- datasheet(myScenario,
                                   name = "imageclassifier_InputRasters")
 
 modelObjectDataframe <- datasheet(myScenario,
                                   name = "imageclassifier_ModelObject")
 
-# extract unique timesteps from inputRasterDataframe --------------------------
-timestepList <- inputRasterDataframe %>%
-  filter(!is.na(RasterFileToClassify)) %>%
-  pull(Timesteps) %>%
-  unique()
+# Assign variables ----------------------------------------------------------
+inputVariables <- assignVariables(myScenario,
+                                  inputRasterDataframe,
+                                  inputRasterDataframe$RasterFileToClassify)
+timestepList <- inputVariables[[1]]
+nObs <- inputVariables[[2]]
+filterResolution <- inputVariables[[3]]
+filterPercent <- inputVariables[[4]]
+applyFiltering <- inputVariables[[5]]
+applyContextualization <- inputVariables[[6]]
+modelType <- inputVariables[[7]]
 
 # load model and threshold
 model <- readRDS(modelObjectDataframe$Model)

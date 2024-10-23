@@ -36,19 +36,21 @@ myScenario <- scenario()  # Get the SyncroSim Scenario that is currently running
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
+# Load raster input datasheet ------------------------------------------------
+inputRasterDataframe <- datasheet(myScenario,
+                                  name = "imageclassifier_InputRasters")
+
 # Assign variables ----------------------------------------------------------
-inputVariables <- assignVariables(myScenario)
-timesteps <- inputVariables[[1]]
+inputVariables <- assignVariables(myScenario,
+                                  inputRasterDataframe,
+                                  inputRasterDataframe$TrainingRasterFile)
+timestepList <- inputVariables[[1]]
 nObs <- inputVariables[[2]]
 filterResolution <- inputVariables[[3]]
 filterPercent <- inputVariables[[4]]
 applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
 modelType <- inputVariables[[7]]
-
-# Load raster input datasheets
-inputRasterDataframe <- datasheet(myScenario,
-                                  name = "imageclassifier_InputRasters")
 
 # check timesteps were input correctly ---------------------------------------
 # checkTimesteps(timesteps,
@@ -58,12 +60,6 @@ inputRasterDataframe <- datasheet(myScenario,
 # extract list of training, testing, and ground truth rasters ----------------
 trainingRasterList <- extractRasters(inputRasterDataframe, column = 2)
 groundTruthRasterList <- extractRasters(inputRasterDataframe, column = 3)
-
-# extract unique timesteps from inputRasterDataframe --------------------------
-timestepList <- inputRasterDataframe %>%
-  filter(!is.na(TrainingRasterFile)) %>%
-  pull(Timesteps) %>%
-  unique()
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(Timestep = numeric(0),

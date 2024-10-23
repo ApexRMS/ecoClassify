@@ -43,13 +43,15 @@ library(ENMeval)
 #' @details
 #' This function is specifically designed for the the watchtower package
 #' @noRd
-assignVariables <- function(myScenario) {
+assignVariables <- function(myScenario,
+                            inputRasterDataframe,
+                            column) {
 
-  # Load RunControl datasheet
-  runSettings <- datasheet(myScenario, name = "imageclassifier_RunControl")
-
-  # Extract timesteps based on min and max input values
-  timesteps <- seq(runSettings$MinimumTimestep, runSettings$MaximumTimestep)
+  # extract unique timesteps from inputRasterDataframe --------------------------
+  timestepList <- inputRasterDataframe %>%
+    filter(!is.na(column)) %>%
+    pull(Timesteps) %>%
+    unique()
 
   # Load classifier options datasheet
   classifierOptionsDataframe <- datasheet(myScenario,
@@ -69,8 +71,11 @@ assignVariables <- function(myScenario) {
   filterPercent <- postProcessingDataframe$filterPercent
   applyFiltering <- postProcessingDataframe$applyFiltering
 
+  # apply default filtering values if not specified
+  
+
   # return as a list
-  return(list(timesteps,
+  return(list(timestepList,
               nObs,
               filterResolution,
               filterPercent,

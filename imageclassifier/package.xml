@@ -2,9 +2,7 @@
 <package name="imageclassifier" displayName="Image Classifier" description="Image classifier using semantic image segmentation" version="1.0.4" url="https://apexrms.github.io/imageclassifier/">
 
     <!--Model Inputs-->
-    <dataSheet name="RunControl" displayName="Run Control" isRunControl="True" timestepTitle="Timestep" showMinIteration="False">
-	</dataSheet>
-        
+            
     <dataSheet name="InputRasters" displayName="Input rasters">
         <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
         <column name="TrainingRasterFile" dataType="String" displayName="Training raster" isExternalFile="True"/>
@@ -70,7 +68,6 @@
 
     <!--Transformer 1: training classifier-->
     <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="watchtower-conda.yml" condaEnvVersion="10">
-        <dataSheet name="RunControl" type="Input"/>
         <dataSheet name="InputRasters" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Input"/>
         <dataSheet name="RasterOutput" type="Output"/>
@@ -84,7 +81,6 @@
 
     <!--Transformer 2: forecasting-->
     <transformer name="Forecast" displayName="2-Forecast" programName="Rscript" programArguments="2-forecast.R" condaEnv="watchtower-conda.yml" condaEnvVersion="10">
-        <dataSheet name="RunControl" type="Input"/>
         <dataSheet name="InputRasters" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Input"/>
         <dataSheet name="PostProcessingOptions" type="Input"/>
@@ -103,8 +99,6 @@
 
     <!--Scenario Layout-->
     <layout type="Scenario">
-
-        <item name="RunControl"/>
 
         <group name="AllInputs" displayName="Input">
             <item name="ClassifierOptions"/>
