@@ -72,7 +72,13 @@ assignVariables <- function(myScenario,
   applyFiltering <- postProcessingDataframe$applyFiltering
 
   # apply default filtering values if not specified
-  
+  if (is.na(filterResolution)) {
+    filterResolution <- 5
+  }
+
+  if (is.na(filterPercent)) {
+    filterPercent <- 0.25
+  }
 
   # return as a list
   return(list(timestepList,

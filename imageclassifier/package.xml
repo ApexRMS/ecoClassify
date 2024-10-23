@@ -67,7 +67,7 @@
     </dataSheet>
 
     <!--Transformer 1: training classifier-->
-    <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="watchtower-conda.yml" condaEnvVersion="10">
+    <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="watchtower-conda.yml" condaEnvVersion="11">
         <dataSheet name="InputRasters" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Input"/>
         <dataSheet name="RasterOutput" type="Output"/>
@@ -80,7 +80,7 @@
     </transformer>
 
     <!--Transformer 2: forecasting-->
-    <transformer name="Forecast" displayName="2-Forecast" programName="Rscript" programArguments="2-forecast.R" condaEnv="watchtower-conda.yml" condaEnvVersion="10">
+    <transformer name="Forecast" displayName="2-Forecast" programName="Rscript" programArguments="2-forecast.R" condaEnv="watchtower-conda.yml" condaEnvVersion="11">
         <dataSheet name="InputRasters" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Input"/>
         <dataSheet name="PostProcessingOptions" type="Input"/>

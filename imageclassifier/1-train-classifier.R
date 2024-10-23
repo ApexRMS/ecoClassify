@@ -174,6 +174,11 @@ outputDataframes <- calculateStatistics(model,
 confusionOutputDataframe <- outputDataframes[[1]]
 modelOutputDataframe <- outputDataframes[[2]]
 
+# save filter resolution and threshold to input datasheet ----------------------
+filterOutputDataframe <- data.frame(applyFiltering = applyFiltering,
+                                    filterResolution = filterResolution,
+                                    filterPercent = filterPercent)
+
 # check data type for output dataframes before saving --------------------------
 checkOutputDataframes(rasterOutputDataframe,
                       confusionOutputDataframe,
@@ -181,6 +186,11 @@ checkOutputDataframes(rasterOutputDataframe,
                       rgbOutputDataframe)
 
 # Save dataframes back to SyncroSim library's output datasheets ----------------
+
+saveDatasheet(myScenario,
+              data = filterOutputDataframe,
+              name = "imageclassifier_PostProcessingOptions")
+
 saveDatasheet(myScenario,
               data = rasterOutputDataframe,
               name = "imageclassifier_RasterOutput")
