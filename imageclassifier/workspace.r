@@ -63,11 +63,11 @@ assignVariables <- function(myScenario,
   applyFiltering <- postProcessingDataframe$applyFiltering
 
   # apply default filtering values if not specified
-  if (is.na(filterResolution)) {
+  if (is.na(filterResolution) && applyFiltering == TRUE) {
     filterResolution <- 5
   }
 
-  if (is.na(filterPercent)) {
+  if (is.na(filterPercent) && applyFiltering == TRUE) {
     filterPercent <- 0.25
   }
 
@@ -692,12 +692,12 @@ calculateStatistics <- function(model,
                                 threshold,
                                 confusionOutputDataframe,
                                 modelOutputDataframe) {
-  if(inherits(model, "ranger")) {
+  if (inherits(model, "ranger")) {
     prediction <- predict(model, testData)$predictions[,2]
   } else {
     prediction <- predict(model, testData, type="logistic")
   }
-  prediction <- as.factor(ifelse(prediction >= threshold, 2, 1))
+  prediction <- as.factor(ifelse(prediction >= threshold, 1, 0)) # 2, 1
   confusionMatrix <- confusionMatrix(prediction,
                                      testData$presence)
 
@@ -714,7 +714,18 @@ calculateStatistics <- function(model,
     drop_na(Value)
 
   model_stats <- rbind(overall_stats, class_stats) %>%
-    tibble::rownames_to_column("Statistic")
+    tibble::rownames_to_column("Statistics") %>%
+    mutate(Statistic = case_when(
+      Statistics == "AccuracyLower" ~ "Accuracy (lower)",
+      Statistics == "AccuracyUpper" ~ "Accuracy (upper)",
+      Statistics == "AccuracyNull" ~ "Accuracy (null)",
+      Statistics == "AccuracyPValue" ~ "Accuracy P Value",
+      Statistics == "McnemarPValue" ~ "Mcnemar P value",
+      Statistics == "Neg Pred Value" ~ "Negative Predictive Value",
+      Statistics == "Pos Pred Value" ~ "Positive Predictive Value",
+      TRUE ~ Statistics
+    )) %>%
+    select(-Statistics)
 
   # add confusion matrix and model statistics to dataframe
   confusionOutputDataframe <- addRow(confusionOutputDataframe,

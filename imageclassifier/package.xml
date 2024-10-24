@@ -112,7 +112,6 @@
         </group>
 
         <group name="AllOutputs" displayName="Output">
-            <item name="ConfusionMatrix"/>
             <item name="ModelStatistics"/>
         </group>
 

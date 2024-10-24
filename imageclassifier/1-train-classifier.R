@@ -2,7 +2,7 @@
 # library(rsyncrosim)
 # mySession <- session("C:/Program Files/SyncroSim Studio")
 # # libPath <- "library/image_classifier_testing.ssim"
-# libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image-classifier-testing-2024-10-19.ssim"
+# libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/Tamarisk-Forecasting.ssim"
 
 # myLibrary <- ssimLibrary(name = libPath,
 #                          session = mySession)
