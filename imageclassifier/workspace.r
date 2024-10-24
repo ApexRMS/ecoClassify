@@ -15,16 +15,7 @@ library(ENMeval)
 library(rJava)
 library(ecospat)
 library(ENMeval)
-
-# tryCatch({library(rJava)
-#   },
-#   error = function(e) {
-#     install.packages("rJava")
-#   },
-#   finally = {
-#     library(rJava)
-#   }
-# )
+library(cvms)
 
 # define functions ------------------------------------------------
 
@@ -732,7 +723,22 @@ calculateStatistics <- function(model,
   modelOutputDataframe <- addRow(modelOutputDataframe,
                                  model_stats)
 
-  return(list(confusionOutputDataframe, modelOutputDataframe))
+  # make a confusion matrix plot
+  confusionMatrixPlot <- plot_confusion_matrix(
+    as_tibble(confusion_matrix),
+    target_col = "Reference",
+    prediction_col = "Prediction",
+    counts_col = "Frequency",
+    font_counts = font(size = 15),
+    font_normalized = font(size = 6),
+    font_row_percentages = font(size = 6),
+    font_col_percentages = font(size = 6),) +
+    ggplot2::theme(axis.title = element_text(size = 25),
+                   axis.text = element_text(size = 25))
+
+  return(list(confusionOutputDataframe,
+              modelOutputDataframe,
+              confusionMatrixPlot))
 }
 
 # check for issues with data structure -----------------------------

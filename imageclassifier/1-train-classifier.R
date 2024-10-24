@@ -173,6 +173,14 @@ outputDataframes <- calculateStatistics(model,
 
 confusionOutputDataframe <- outputDataframes[[1]]
 modelOutputDataframe <- outputDataframes[[2]]
+confusionMatrixPlot <- outputDataframes[[3]]
+
+# make a confusion matrix output dataframe
+ggsave(filename = file.path(paste0(transferDir, "/ConfusionMatrixPlot.png")),
+       confusionMatrixPlot)
+
+# add to output datasheet
+confusionMatrixPlotOutputDataframe <- data.frame(ConfusionMatrixPlot = file.path(paste0(transferDir, "/ConfusionMatrixPlot.png")))
 
 # save filter resolution and threshold to input datasheet ----------------------
 filterOutputDataframe <- data.frame(applyFiltering = applyFiltering,
@@ -214,3 +222,7 @@ saveDatasheet(myScenario,
 saveDatasheet(myScenario,
               data = modelObjectOutputDataframe,
               name = "imageclassifier_ModelObject")
+
+saveDatasheet(myScenario,
+              data = confusionMatrixPlotOutputDataframe,
+              name = "imageclassifier_ConfusionMatrixPlotOutput")
