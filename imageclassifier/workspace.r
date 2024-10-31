@@ -15,16 +15,7 @@ library(ENMeval)
 library(rJava)
 library(ecospat)
 library(ENMeval)
-
-# tryCatch({library(rJava)
-#   },
-#   error = function(e) {
-#     install.packages("rJava")
-#   },
-#   finally = {
-#     library(rJava)
-#   }
-# )
+library(cvms)
 
 # define functions ------------------------------------------------
 
@@ -43,13 +34,15 @@ library(ENMeval)
 #' @details
 #' This function is specifically designed for the the watchtower package
 #' @noRd
-assignVariables <- function(myScenario) {
+assignVariables <- function(myScenario,
+                            inputRasterDataframe,
+                            column) {
 
-  # Load RunControl datasheet
-  runSettings <- datasheet(myScenario, name = "imageclassifier_RunControl")
-
-  # Extract timesteps based on min and max input values
-  timesteps <- seq(runSettings$MinimumTimestep, runSettings$MaximumTimestep)
+  # extract unique timesteps from inputRasterDataframe --------------------------
+  timestepList <- inputRasterDataframe %>%
+    filter(!is.na(column)) %>%
+    pull(Timesteps) %>%
+    unique()
 
   # Load classifier options datasheet
   classifierOptionsDataframe <- datasheet(myScenario,
@@ -69,8 +62,17 @@ assignVariables <- function(myScenario) {
   filterPercent <- postProcessingDataframe$filterPercent
   applyFiltering <- postProcessingDataframe$applyFiltering
 
+  # apply default filtering values if not specified
+  if (is.na(filterResolution) && applyFiltering == TRUE) {
+    filterResolution <- 5
+  }
+
+  if (is.na(filterPercent) && applyFiltering == TRUE) {
+    filterPercent <- 0.25
+  }
+
   # return as a list
-  return(list(timesteps,
+  return(list(timestepList,
               nObs,
               filterResolution,
               filterPercent,
@@ -282,7 +284,7 @@ splitTrainTest <- function(trainingRasterList,
     # format sampled data
     modelDataSampled <- modelData %>%
       mutate(presence = as.factor(response)) %>%
-      select(-ID, -response) %>%
+      dplyr::select(-ID, -response) %>%
       mutate(kfold = sample(1:10, nrow(.), replace = TRUE)) %>%
       drop_na()
 
@@ -424,8 +426,8 @@ generateRasterDataframe <- function(applyFiltering,
                                     predictedPresence,
                                     filterResolution,
                                     filterPercent,
-                                    iteration,
-                                    t,
+                                    category,
+                                    timestep,
                                     transferDir,
                                     OutputDataframe,
                                     hasGroundTruth) {
@@ -434,73 +436,67 @@ generateRasterDataframe <- function(applyFiltering,
 
       # filter out presence pixels surrounded by non-presence
       filteredPredictedPresence <- focal(predictedPresence,
-                                        w = matrix(1, 5, 5),
-                                        fun = filterFun,
-                                        resolution = filterResolution,
-                                        percent = filterPercent)
+                                         w = matrix(1, 5, 5),
+                                         fun = filterFun,
+                                         resolution = filterResolution,
+                                         percent = filterPercent)
 
       # save raster
       writeRaster(filteredPredictedPresence,
                   filename = file.path(paste0(transferDir,
-                                              "/filteredPredictedPresence.iter",
-                                              iteration,
-                                              ".t",
-                                              t,
+                                              "/filteredPredictedPresence-",
+                                              category,
+                                              "-t",
+                                              timestep,
                                               ".tif")),
                   overwrite = TRUE)
 
       # build dataframe
       rasterDataframe <- data.frame(
-        Iteration = iteration,
-        Timestep = t,
+        Timestep = timestep,
         PredictedUnfiltered = file.path(paste0(transferDir,
-                                              "/PredictedPresence.iter",
-                                              iteration,
-                                              ".t",
-                                              t,
-                                              ".tif")),
+                                               "/PredictedPresence-",
+                                               category,
+                                               "-t",
+                                               timestep,
+                                               ".tif")),
         PredictedFiltered = file.path(paste0(transferDir,
-                                            "/filteredPredictedPresence.iter",
-                                            iteration,
-                                            ".t",
-                                            t,
-                                            ".tif")),
+                                             "/filteredPredictedPresence-",
+                                             category,
+                                             "-t",
+                                             timestep,
+                                             ".tif")),
         GroundTruth = file.path(paste0(transferDir,
-                                      "/GroundTruth.iter",
-                                      iteration,
-                                      ".t",
-                                      t,
-                                      ".tif")),
+                                       "/GroundTruth-t",
+                                       timestep,
+                                       ".tif")),
         Probability = file.path(paste0(transferDir,
-                                      "/Probability.iter",
-                                      iteration,
-                                      ".t",
-                                      t,
-                                      ".tif"))
+                                       "/Probability-",
+                                       category,
+                                       "-t",
+                                       timestep,
+                                       ".tif"))
       )
     } else {
       # build dataframe
       rasterDataframe <- data.frame(
-        Iteration = iteration,
-        Timestep = t,
+        Timestep = timestep,
         PredictedUnfiltered = file.path(paste0(transferDir,
-                                               "/PredictedPresence.iter",
-                                               iteration,
-                                               ".t",
-                                               t,
+                                               "/PredictedPresence-",
+                                               category,
+                                               "-t",
+                                               timestep,
                                                ".tif")),
         PredictedFiltered = "",
         GroundTruth = file.path(paste0(transferDir,
-                                       "/GroundTruth.iter",
-                                       iteration,
-                                       ".t",
-                                       t,
+                                       "/GroundTruth-t",
+                                       timestep,
                                        ".tif")),
         Probability = file.path(paste0(transferDir,
-                                       "/Probability.iter",
-                                       iteration,
-                                       ".t",
-                                       t,
+                                       "/Probability-",
+                                       category,
+                                       "-t",
+                                       timestep,
                                        ".tif"))
       )
     }
@@ -513,62 +509,60 @@ generateRasterDataframe <- function(applyFiltering,
 
       # filter out presence pixels surrounded by non-presence
       filteredPredictedPresence <- focal(predictedPresence,
-                                        w = matrix(1, 5, 5),
-                                        fun = filterFun,
-                                        resolution = filterResolution,
-                                        percent = filterPercent)
+                                         w = matrix(1, 5, 5),
+                                         fun = filterFun,
+                                         resolution = filterResolution,
+                                         percent = filterPercent)
 
       # save raster
       writeRaster(filteredPredictedPresence,
                   filename = file.path(paste0(transferDir,
-                                              "/filteredPredictedPresence.iter",
-                                              iteration,
-                                              ".t",
-                                              t,
+                                              "/filteredPredictedPresence-",
+                                              category,
+                                              "-t",
+                                              timestep,
                                               ".tif")),
                   overwrite = TRUE)
 
       # build dataframe
       rasterDataframe <- data.frame(
-        Iteration = iteration,
-        Timestep = t,
+        Timestep = timestep,
         ClassifiedUnfiltered = file.path(paste0(transferDir,
-                                                "/PredictedPresence.iter",
-                                                iteration,
-                                              ".t",
-                                                t,
+                                                "/PredictedPresence-",
+                                                category,
+                                                "-t",
+                                                timestep,
                                                 ".tif")),
         ClassifiedFiltered = file.path(paste0(transferDir,
-                                              "/filteredPredictedPresence.iter",
-                                              iteration,
-                                              ".t",
-                                              t,
+                                              "/filteredPredictedPresence-",
+                                              category,
+                                              "-t",
+                                              timestep,
                                               ".tif")),
         ClassifiedProbability = file.path(paste0(transferDir,
-                                                "/Probability.iter",
-                                                iteration,
-                                              ".t",
-                                                t,
-                                                ".tif"))
+                                                 "/Probability-",
+                                                 category,
+                                                 "-t",
+                                                 timestep,
+                                                 ".tif"))
       )
     } else {
       # build dataframe
       rasterDataframe <- data.frame(
-        Iteration = iteration,
-        Timestep = t,
+        Timestep = timestep,
         ClassifiedUnfiltered = file.path(paste0(transferDir,
-                                                "/PredictedPresence.iter",
-                                                iteration,
-                                              ".t",
-                                                t,
+                                                "/PredictedPresence-",
+                                                category,
+                                                "-t",
+                                                timestep,
                                                 ".tif")),
         ClassifiedFiltered = "",
         ClassifiedProbability = file.path(paste0(transferDir,
-                                                "/Probability.iter",
-                                                iteration,
-                                              ".t",
-                                                t,
-                                                ".tif"))
+                                                 "/Probability-",
+                                                 category,
+                                                 "-t",
+                                                 timestep,
+                                                 ".tif"))
       )
     }
 
@@ -594,17 +588,16 @@ generateRasterDataframe <- function(applyFiltering,
 #'
 #' @noRd
 getRgbDataframe <- function(rgbOutputDataframe,
-                            iteration,
-                            t,
+                            category,
+                            timestep,
                             transferDir) {
 
-  rgbDataframe <- data.frame(Iteration = iteration,
-                             Timestep = t,
+  rgbDataframe <- data.frame(Timestep = timestep,
                              RGBImage = file.path(paste0(transferDir,
-                                                         "/RGBImage.iter",
-                                                         iteration,
-                                                         ".t",
-                                                         t,
+                                                         "/RGBImage-",
+                                                         category,
+                                                         "-t",
+                                                         timestep,
                                                          ".png")))
 
   rgbOutputDataframe <- addRow(rgbOutputDataframe,
@@ -632,45 +625,43 @@ saveFiles <- function(predictedPresence,
                       groundTruth = NULL,
                       probabilityRaster,
                       trainingRasterList,
-                      iteration,
-                      t,
+                      category,
+                      timestep,
                       transferDir) {
 
   # save rasters
   writeRaster(predictedPresence,
               filename = file.path(paste0(transferDir,
-                                          "/PredictedPresence.iter",
-                                          iteration,
-                                          ".t",
-                                          t,
+                                          "/PredictedPresence-",
+                                          category,
+                                          "-t",
+                                          timestep,
                                           ".tif")),
               overwrite = TRUE)
 
   if (!is.null(groundTruth)) {
     writeRaster(groundTruth,
                 filename = file.path(paste0(transferDir,
-                                            "/GroundTruth.iter",
-                                            iteration,
-                                            ".t",
-                                            t,
+                                            "/GroundTruth-t",
+                                            timestep,
                                             ".tif")),
                 overwrite = TRUE)
   }
   writeRaster(probabilityRaster,
               filename = file.path(paste0(transferDir,
-                                          "/Probability.iter",
-                                          iteration,
-                                          ".t",
-                                          t,
+                                          "/Probability-",
+                                          category,
+                                          "-t",
+                                          timestep,
                                           ".tif")),
               overwrite = TRUE)
 
   # save RBG Image
   png(file = file.path(paste0(transferDir,
-                              "/RGBImage.iter",
-                              iteration,
-                              ".t",
-                              t,
+                              "/RGBImage-",
+                              category,
+                              "-t",
+                              timestep,
                               ".png")))
   plotRGB(trainingRasterList[[t]],
           r = 3,
@@ -701,12 +692,14 @@ calculateStatistics <- function(model,
                                 threshold,
                                 confusionOutputDataframe,
                                 modelOutputDataframe) {
-  if(inherits(model, "ranger")) {
-    prediction <- predict(model, testData)$predictions[,2]
+  if (inherits(model, "ranger")) {
+    prediction <- predict(model, testData)$predictions[, 2]
   } else {
-    prediction <- predict(model, testData, type="logistic")
+    prediction <- predict(model, testData, type = "logistic")
   }
-  prediction <- as.factor(ifelse(prediction >= threshold, 2, 1))
+
+  # prediction <- as.factor(ifelse(prediction >= threshold, prediction, 0)) # 2, 1
+
   confusionMatrix <- confusionMatrix(prediction,
                                      testData$presence)
 
@@ -723,7 +716,18 @@ calculateStatistics <- function(model,
     drop_na(Value)
 
   model_stats <- rbind(overall_stats, class_stats) %>%
-    tibble::rownames_to_column("Statistic")
+    tibble::rownames_to_column("Statistics") %>%
+    mutate(Statistic = case_when(
+      Statistics == "AccuracyLower" ~ "Accuracy (lower)",
+      Statistics == "AccuracyUpper" ~ "Accuracy (upper)",
+      Statistics == "AccuracyNull" ~ "Accuracy (null)",
+      Statistics == "AccuracyPValue" ~ "Accuracy P Value",
+      Statistics == "McnemarPValue" ~ "Mcnemar P value",
+      Statistics == "Neg Pred Value" ~ "Negative Predictive Value",
+      Statistics == "Pos Pred Value" ~ "Positive Predictive Value",
+      TRUE ~ Statistics
+    )) %>%
+    select(-Statistics)
 
   # add confusion matrix and model statistics to dataframe
   confusionOutputDataframe <- addRow(confusionOutputDataframe,
@@ -732,7 +736,22 @@ calculateStatistics <- function(model,
   modelOutputDataframe <- addRow(modelOutputDataframe,
                                  model_stats)
 
-  return(list(confusionOutputDataframe, modelOutputDataframe))
+  # make a confusion matrix plot
+  confusionMatrixPlot <- plot_confusion_matrix(
+    as_tibble(confusion_matrix),
+    target_col = "Reference",
+    prediction_col = "Prediction",
+    counts_col = "Frequency",
+    font_counts = font(size = 15),
+    font_normalized = font(size = 6),
+    font_row_percentages = font(size = 6),
+    font_col_percentages = font(size = 6),) +
+    ggplot2::theme(axis.title = element_text(size = 25),
+                   axis.text = element_text(size = 25))
+
+  return(list(confusionOutputDataframe,
+              modelOutputDataframe,
+              confusionMatrixPlot))
 }
 
 # check for issues with data structure -----------------------------
@@ -764,7 +783,6 @@ checkOutputDataframes <- function(rasterOutputDataframe,
                                   rgbOutputDataframe) {
 
   # check that rasterOutputDataframe has the correct data types
-  if (!is.numeric(rasterOutputDataframe$Iteration)) warning('Incorrect data type for Iteration in raster output datasheet')
   if (!is.numeric(rasterOutputDataframe$Timestep)) warning('Incorrect data type for Timestep in raster output datasheet')
   if (!is.character(rasterOutputDataframe$PredictedUnfiltered)) warning('Incorrect data type for unfiltered prediction filepath in raster output datasheet')
   if (!is.character(rasterOutputDataframe$PredictedFiltered)) warning('Incorrect data type for filtered prediction filepath in raster output datasheet')
@@ -781,7 +799,6 @@ checkOutputDataframes <- function(rasterOutputDataframe,
   if (!is.numeric(modelOutputDataframe$Value)) warning('Incorrect data type for Value in model statistics output')
 
   # check that rgbOutputDataframe has the correct data types
-  if (!is.numeric(rgbOutputDataframe$Iteration)) warning('Incorrect data type for Iteration in RBG raster output')
   if (!is.numeric(rgbOutputDataframe$Timestep)) warning('Incorrect data type for Timestep in RBG raster output')
   if (!is.character(rgbOutputDataframe$RGBImage)) warning('Incorrect data type for RGBImage in RBG raster output')
 }
@@ -832,13 +849,13 @@ contextualizeRaster <- function(rasterList) {
 getMaxentModel <- function(allTrainData) {
 
   ## TO DO: add full range of tuning parameters in parallel
-  tuneArgs <- list(fc = c("LQHP"),  
-                    rm = seq(0.5,1, 0.5))
+  tuneArgs <- list(fc = c("LQHP"),
+                   rm = seq(0.5, 1, 0.5))
 
-  absenceTrainData <- allTrainData[allTrainData$presence == 2,grep("presence|kfold", colnames(allTrainData), invert=T)]
-  presenceTrainData <- allTrainData[allTrainData$presence == 1,grep("presence|kfold", colnames(allTrainData), invert=T)]
-  max1 <- ENMevaluate(occ = absenceTrainData,
-                      bg.coords = presenceTrainData,
+  absenceTrainData <- allTrainData[allTrainData$presence == 1, grep("presence|kfold", colnames(allTrainData), invert=T)] # 2 # 1
+  presenceTrainData <- allTrainData[allTrainData$presence != 1, grep("presence|kfold", colnames(allTrainData), invert=T)] # 1 # 0
+  max1 <- ENMevaluate(occ = presenceTrainData, # absenceTrainData,
+                      bg.coords = absenceTrainData, # presenceTrainData,
                       tune.args = tuneArgs,
                       progbar = F,
                       partitions = "randomkfold",
@@ -878,21 +895,23 @@ getSensSpec <- function(probs, actual, threshold) {
 }
 
 ## find optimal threshold between sensitivity and specificity
-getOptimalThreshold <- function(model, testingData, modelType="Random Forest") {
+getOptimalThreshold <- function(model, testingData, modelType = "Random Forest") {
+
   thresholds <- seq(0.01, 0.99, by = 0.01)
-  testingObservations <- as.numeric(testingData$presence)-1
+  testingObservations <- as.numeric(testingData$presence) - 1 # remove "-1"?
 
   ## predicting data
-  if(modelType == "Random Forest"){
-    testingPredictions <- predict(model, testingData)$predictions[,2]
-  } else if(modelType == "MaxEnt") {
-    testingPredictions <- predict(model, testingData, type="logistic")
+  if (modelType == "Random Forest") {
+    testingPredictions <- predict(model, testingData)$predictions[, 2]
+  } else if (modelType == "MaxEnt") {
+    testingPredictions <- predict(model, testingData, type = "logistic")
   } else {
     stop("Model type not recognized")
   }
+
   # Calculate sensitivity and specificity for each threshold
   metrics <- t(sapply(thresholds, getSensSpec, probs = testingPredictions, actual = testingObservations))
-  youdenIndex  <- metrics[,1] + metrics[,2] - 1
+  youdenIndex  <- metrics[, 1] + metrics[, 2] - 1
   optimalYouden <- thresholds[which.max(youdenIndex)]
 
   return(optimalYouden)

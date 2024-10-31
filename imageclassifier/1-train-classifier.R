@@ -2,7 +2,7 @@
 # library(rsyncrosim)
 # mySession <- session("C:/Program Files/SyncroSim Studio")
 # # libPath <- "library/image_classifier_testing.ssim"
-# libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/image-classifier-testing-2024-10-19.ssim"
+# libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/Tamarisk-Forecasting.ssim"
 
 # myLibrary <- ssimLibrary(name = libPath,
 #                          session = mySession)
@@ -22,6 +22,14 @@
 # # set transferDir filepath if exporting
 # transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
 
+# applyContextualization <- FALSE
+
+# groundTruthRasterList <- list(rast("C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/data/response/tamarisk_ground_truth_subset_multiclass.tif"))
+# plot(groundTruthRasterList[[1]])
+
+# trainingRasterList <- trainingRasterList[1]
+# plot(trainingRasterList[[1]])
+
 # START OF MODEL SCRIPT:
 ## SKIP OUTSIDE GUI
 # set up workspace ---------------------------------------------------------
@@ -36,19 +44,21 @@ myScenario <- scenario()  # Get the SyncroSim Scenario that is currently running
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
+# Load raster input datasheet ------------------------------------------------
+inputRasterDataframe <- datasheet(myScenario,
+                                  name = "imageclassifier_InputRasters")
+
 # Assign variables ----------------------------------------------------------
-inputVariables <- assignVariables(myScenario)
-timesteps <- inputVariables[[1]]
+inputVariables <- assignVariables(myScenario,
+                                  inputRasterDataframe,
+                                  inputRasterDataframe$TrainingRasterFile)
+timestepList <- inputVariables[[1]]
 nObs <- inputVariables[[2]]
 filterResolution <- inputVariables[[3]]
 filterPercent <- inputVariables[[4]]
 applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
 modelType <- inputVariables[[7]]
-
-# Load raster input datasheets
-inputRasterDataframe <- datasheet(myScenario,
-                                  name = "imageclassifier_InputRasters")
 
 # check timesteps were input correctly ---------------------------------------
 # checkTimesteps(timesteps,
@@ -60,8 +70,7 @@ trainingRasterList <- extractRasters(inputRasterDataframe, column = 2)
 groundTruthRasterList <- extractRasters(inputRasterDataframe, column = 3)
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
-rasterOutputDataframe <- data.frame(Iteration = numeric(0),
-                                    Timestep = numeric(0),
+rasterOutputDataframe <- data.frame(Timestep = numeric(0),
                                     PredictedUnfiltered = character(0),
                                     PredictedFiltered = character(0),
                                     GroundTruth = character(0),
@@ -74,8 +83,7 @@ confusionOutputDataframe <- data.frame(Prediction = numeric(0),
 modelOutputDataframe <- data.frame(Statistic = character(0),
                                    Value = numeric(0))
 
-rgbOutputDataframe <- data.frame(Iteration = numeric(0),
-                                 Timestep = numeric(0),
+rgbOutputDataframe <- data.frame(Timestep = numeric(0),
                                  RGBImage = character(0))
 
 # add contextualization if selected --------------------------------------------
@@ -124,6 +132,9 @@ varImportanceOutputDataframe <- variableImportanceOutput[[2]]
 ## Predict presence for training rasters in each timestep group ----------------
 for (t in seq_along(trainingRasterList)) {
 
+  # get timestep for the current raster
+  timestep <- timestepList[t]
+
   predictionRasters <- getPredictionRasters(trainingRasterList[[t]],
                                             model,
                                             optimalThreshold,
@@ -136,8 +147,8 @@ for (t in seq_along(trainingRasterList)) {
                                                    predictedPresence,
                                                    filterResolution,
                                                    filterPercent,
-                                                   iteration = 1,
-                                                   t,
+                                                   category = "training",
+                                                   timestep,
                                                    transferDir,
                                                    rasterOutputDataframe,
                                                    hasGroundTruth = TRUE)
@@ -147,8 +158,8 @@ for (t in seq_along(trainingRasterList)) {
 
   # define RGB data frame
   rgbOutputDataframe <- getRgbDataframe(rgbOutputDataframe,
-                                        iteration = 1,
-                                        t,
+                                        category = "training",
+                                        timestep,
                                         transferDir)
 
   # save files
@@ -156,8 +167,8 @@ for (t in seq_along(trainingRasterList)) {
             groundTruth,
             probabilityRaster,
             trainingRasterList,
-            iteration = 1,
-            t,
+            category = "training",
+            timestep,
             transferDir)
 }
 
@@ -170,6 +181,19 @@ outputDataframes <- calculateStatistics(model,
 
 confusionOutputDataframe <- outputDataframes[[1]]
 modelOutputDataframe <- outputDataframes[[2]]
+confusionMatrixPlot <- outputDataframes[[3]]
+
+# make a confusion matrix output dataframe
+ggsave(filename = file.path(paste0(transferDir, "/ConfusionMatrixPlot.png")),
+       confusionMatrixPlot)
+
+# add to output datasheet
+confusionMatrixPlotOutputDataframe <- data.frame(ConfusionMatrixPlot = file.path(paste0(transferDir, "/ConfusionMatrixPlot.png")))
+
+# save filter resolution and threshold to input datasheet ----------------------
+filterOutputDataframe <- data.frame(applyFiltering = applyFiltering,
+                                    filterResolution = filterResolution,
+                                    filterPercent = filterPercent)
 
 # check data type for output dataframes before saving --------------------------
 checkOutputDataframes(rasterOutputDataframe,
@@ -178,6 +202,11 @@ checkOutputDataframes(rasterOutputDataframe,
                       rgbOutputDataframe)
 
 # Save dataframes back to SyncroSim library's output datasheets ----------------
+
+saveDatasheet(myScenario,
+              data = filterOutputDataframe,
+              name = "imageclassifier_PostProcessingOptions")
+
 saveDatasheet(myScenario,
               data = rasterOutputDataframe,
               name = "imageclassifier_RasterOutput")
@@ -201,3 +230,7 @@ saveDatasheet(myScenario,
 saveDatasheet(myScenario,
               data = modelObjectOutputDataframe,
               name = "imageclassifier_ModelObject")
+
+saveDatasheet(myScenario,
+              data = confusionMatrixPlotOutputDataframe,
+              name = "imageclassifier_ConfusionMatrixPlotOutput")
