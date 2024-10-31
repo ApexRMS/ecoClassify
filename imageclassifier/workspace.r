@@ -54,6 +54,7 @@ assignVariables <- function(myScenario,
   nObs <- classifierOptionsDataframe$nObs
   applyContextualization <- classifierOptionsDataframe$applyContextualization
   modelType <- as.character(classifierOptionsDataframe$modelType)
+  modelTuning <- classifierOptionsDataframe$modelTuning
 
   # Load post-processing options datasheet
   postProcessingDataframe <- datasheet(myScenario,
@@ -80,7 +81,8 @@ assignVariables <- function(myScenario,
               filterPercent,
               applyFiltering,
               applyContextualization,
-              modelType))
+              modelType,
+              modelTuning))
 }
 
 ## Set cores

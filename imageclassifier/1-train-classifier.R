@@ -48,6 +48,7 @@ filterPercent <- inputVariables[[4]]
 applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
 modelType <- inputVariables[[7]]
+modelTuning <- inputVariables[[8]]
 
 ## check if multiprocessing is selected
 mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
