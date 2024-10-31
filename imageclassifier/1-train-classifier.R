@@ -17,19 +17,19 @@ myScenario <- scenario(myProject, scenario = 1)
 # view datasheets
 datasheet(myScenario)
 source("imageclassifier/workspace.r")
-# transferDir <- ""
-
-# set transferDir filepath if exporting
+transferDir <- ""
 transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
 
-applyContextualization <- FALSE
 modelType <- "Random Forest"
+applyContextualization <- FALSE
 
+# multiclass ground truth raster
 groundTruthRasterList <- list(rast("C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/data/response/tamarisk_ground_truth_subset_multiclass.tif"))
 plot(groundTruthRasterList[[1]])
 
 trainingRasterList <- trainingRasterList[1]
 plot(trainingRasterList[[1]])
+
 
 # START OF MODEL SCRIPT:
 ## SKIP OUTSIDE GUI
