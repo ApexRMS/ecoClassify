@@ -22,6 +22,14 @@
 # # set transferDir filepath if exporting
 # transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
 
+# applyContextualization <- FALSE
+
+# groundTruthRasterList <- list(rast("C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/data/response/tamarisk_ground_truth_subset_multiclass.tif"))
+# plot(groundTruthRasterList[[1]])
+
+# trainingRasterList <- trainingRasterList[1]
+# plot(trainingRasterList[[1]])
+
 # START OF MODEL SCRIPT:
 ## SKIP OUTSIDE GUI
 # set up workspace ---------------------------------------------------------

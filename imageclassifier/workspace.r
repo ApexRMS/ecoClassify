@@ -284,7 +284,7 @@ splitTrainTest <- function(trainingRasterList,
     # format sampled data
     modelDataSampled <- modelData %>%
       mutate(presence = as.factor(response)) %>%
-      select(-ID, -response) %>%
+      dplyr::select(-ID, -response) %>%
       mutate(kfold = sample(1:10, nrow(.), replace = TRUE)) %>%
       drop_na()
 
@@ -693,11 +693,13 @@ calculateStatistics <- function(model,
                                 confusionOutputDataframe,
                                 modelOutputDataframe) {
   if (inherits(model, "ranger")) {
-    prediction <- predict(model, testData)$predictions[,2]
+    prediction <- predict(model, testData)$predictions[, 2]
   } else {
-    prediction <- predict(model, testData, type="logistic")
+    prediction <- predict(model, testData, type = "logistic")
   }
-  prediction <- as.factor(ifelse(prediction >= threshold, 1, 0)) # 2, 1
+
+  # prediction <- as.factor(ifelse(prediction >= threshold, prediction, 0)) # 2, 1
+
   confusionMatrix <- confusionMatrix(prediction,
                                      testData$presence)
 
@@ -847,13 +849,13 @@ contextualizeRaster <- function(rasterList) {
 getMaxentModel <- function(allTrainData) {
 
   ## TO DO: add full range of tuning parameters in parallel
-  tuneArgs <- list(fc = c("LQHP"),  
-                    rm = seq(0.5,1, 0.5))
+  tuneArgs <- list(fc = c("LQHP"),
+                   rm = seq(0.5, 1, 0.5))
 
-  absenceTrainData <- allTrainData[allTrainData$presence == 2,grep("presence|kfold", colnames(allTrainData), invert=T)]
-  presenceTrainData <- allTrainData[allTrainData$presence == 1,grep("presence|kfold", colnames(allTrainData), invert=T)]
-  max1 <- ENMevaluate(occ = absenceTrainData,
-                      bg.coords = presenceTrainData,
+  absenceTrainData <- allTrainData[allTrainData$presence == 1, grep("presence|kfold", colnames(allTrainData), invert=T)] # 2 # 1
+  presenceTrainData <- allTrainData[allTrainData$presence != 1, grep("presence|kfold", colnames(allTrainData), invert=T)] # 1 # 0
+  max1 <- ENMevaluate(occ = presenceTrainData, # absenceTrainData,
+                      bg.coords = absenceTrainData, # presenceTrainData,
                       tune.args = tuneArgs,
                       progbar = F,
                       partitions = "randomkfold",
@@ -893,21 +895,23 @@ getSensSpec <- function(probs, actual, threshold) {
 }
 
 ## find optimal threshold between sensitivity and specificity
-getOptimalThreshold <- function(model, testingData, modelType="Random Forest") {
+getOptimalThreshold <- function(model, testingData, modelType = "Random Forest") {
+
   thresholds <- seq(0.01, 0.99, by = 0.01)
-  testingObservations <- as.numeric(testingData$presence)-1
+  testingObservations <- as.numeric(testingData$presence) - 1 # remove "-1"?
 
   ## predicting data
-  if(modelType == "Random Forest"){
-    testingPredictions <- predict(model, testingData)$predictions[,2]
-  } else if(modelType == "MaxEnt") {
-    testingPredictions <- predict(model, testingData, type="logistic")
+  if (modelType == "Random Forest") {
+    testingPredictions <- predict(model, testingData)$predictions[, 2]
+  } else if (modelType == "MaxEnt") {
+    testingPredictions <- predict(model, testingData, type = "logistic")
   } else {
     stop("Model type not recognized")
   }
+
   # Calculate sensitivity and specificity for each threshold
   metrics <- t(sapply(thresholds, getSensSpec, probs = testingPredictions, actual = testingObservations))
-  youdenIndex  <- metrics[,1] + metrics[,2] - 1
+  youdenIndex  <- metrics[, 1] + metrics[, 2] - 1
   optimalYouden <- thresholds[which.max(youdenIndex)]
 
   return(optimalYouden)
