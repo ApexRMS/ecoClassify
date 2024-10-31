@@ -1,34 +1,35 @@
-# # set up library (remove after testing) -----------------------------------
-# library(rsyncrosim)
-# mySession <- session("C:/Program Files/SyncroSim Studio")
-# # libPath <- "library/image_classifier_testing.ssim"
-# libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/Tamarisk-Forecasting.ssim"
+# set up library (remove after testing) -----------------------------------
+library(rsyncrosim)
+mySession <- session("C:/Program Files/SyncroSim Studio")
+# libPath <- "library/image_classifier_testing.ssim"
+libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/Tamarisk-Forecasting.ssim"
 
-# myLibrary <- ssimLibrary(name = libPath,
-#                          session = mySession)
+myLibrary <- ssimLibrary(name = libPath,
+                         session = mySession)
 
-# # define project
-# myProject <- rsyncrosim::project(myLibrary, project = 1)
+# define project
+myProject <- rsyncrosim::project(myLibrary, project = 1)
 
-# # define scenario
-# scenario(myProject)
-# myScenario <- scenario(myProject, scenario = 1)
+# define scenario
+scenario(myProject)
+myScenario <- scenario(myProject, scenario = 1)
 
-# # view datasheets
-# datasheet(myScenario)
-# source("imageclassifier/workspace.r")
-# # transferDir <- ""
+# view datasheets
+datasheet(myScenario)
+source("imageclassifier/workspace.r")
+# transferDir <- ""
 
-# # set transferDir filepath if exporting
-# transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
+# set transferDir filepath if exporting
+transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
 
-# applyContextualization <- FALSE
+applyContextualization <- FALSE
+modelType <- "Random Forest"
 
-# groundTruthRasterList <- list(rast("C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/data/response/tamarisk_ground_truth_subset_multiclass.tif"))
-# plot(groundTruthRasterList[[1]])
+groundTruthRasterList <- list(rast("C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/data/response/tamarisk_ground_truth_subset_multiclass.tif"))
+plot(groundTruthRasterList[[1]])
 
-# trainingRasterList <- trainingRasterList[1]
-# plot(trainingRasterList[[1]])
+trainingRasterList <- trainingRasterList[1]
+plot(trainingRasterList[[1]])
 
 # START OF MODEL SCRIPT:
 ## SKIP OUTSIDE GUI

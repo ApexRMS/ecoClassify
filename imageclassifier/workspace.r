@@ -884,8 +884,8 @@ getMaxentImportance <- function(varImp) {
 ### Random forest training
 
 ## find sensitivity and specificity values
-getSensSpec <- function(probs, actual, threshold) {
-  predicted <- ifelse(probs >= threshold, 1, 0)
+getSensSpec <- function(probs, actual, threshold, assignVal) {
+  predicted <- ifelse(probs >= threshold, assignVal, 0) # TODO assign predictions for each class here
   confMatrix <- confusionMatrix(as.factor(predicted), as.factor(actual))
 
   sensitivity <- confMatrix$byClass['Sensitivity']
@@ -894,15 +894,39 @@ getSensSpec <- function(probs, actual, threshold) {
   return(c(sensitivity, specificity))
 }
 
+# predictMultiClass <- function(model, testingData) {
+#   # Ensure testingData is a SpatRaster
+#   if (!inherits(testingData, "SpatRaster")) {
+#     stop("testingData must be a SpatRaster")
+#   }
+
+#   # Use terra::predict to make predictions
+#   predictedRaster <- terra::predict(testingData, model, type = "response")
+
+#   return(predictedRaster)
+# }
+as.factor(testingObservations)
+as.factor(testingPredictions)
+
 ## find optimal threshold between sensitivity and specificity
 getOptimalThreshold <- function(model, testingData, modelType = "Random Forest") {
 
   thresholds <- seq(0.01, 0.99, by = 0.01)
-  testingObservations <- as.numeric(testingData$presence) - 1 # remove "-1"?
+  testingObservations <- as.numeric(testingData$presence) # -1 # TODO remove -1?
 
   ## predicting data
   if (modelType == "Random Forest") {
-    testingPredictions <- predict(model, testingData)$predictions[, 2]
+    testingPredictionsDf <- predict(model, testingData)$predictions # [, 1] # TODO find a way to get threshold for each class
+
+    # add columns for classification and probability
+    testingPredictionsDf <- as.data.frame(testingPredictionsDf)
+    testingPredictionsDf$predictedClass <- as.numeric(colnames(testingPredictionsDf)[apply(testingPredictionsDf, 1, which.max)])
+    testingPredictionsDf$maxValue <- apply(testingPredictionsDf[, -ncol(testingPredictionsDf)], 1, max)
+    testingPredictionsDf$maxClassValue <- testingPredictionsDf$maxValue + testingPredictionsDf$predictedClass - 1
+
+    # select testing predictions
+    testingPredictions <- testingPredictionsDf$predictedClass
+
   } else if (modelType == "MaxEnt") {
     testingPredictions <- predict(model, testingData, type = "logistic")
   } else {
@@ -910,7 +934,7 @@ getOptimalThreshold <- function(model, testingData, modelType = "Random Forest")
   }
 
   # Calculate sensitivity and specificity for each threshold
-  metrics <- t(sapply(thresholds, getSensSpec, probs = testingPredictions, actual = testingObservations))
+  metrics <- t(sapply(thresholds, getSensSpec, probs = testingPredictionsDf$maxClassValue, actual = testingObservations, assignVal = testingPredictionsDf$predictedClass))
   youdenIndex  <- metrics[, 1] + metrics[, 2] - 1
   optimalYouden <- thresholds[which.max(youdenIndex)]
 
@@ -929,7 +953,8 @@ getRandomForestModel <- function(allTrainData) {
                 data = allTrainData,
                 mtry = 2,
                 probability = TRUE,
-                importance = "impurity")
+                importance = "impurity",
+                classification = TRUE)
 
   return(list(rf1, rf1$variable.importance))
 }
