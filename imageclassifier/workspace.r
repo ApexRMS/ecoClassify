@@ -698,7 +698,7 @@ calculateStatistics <- function(model,
     prediction <- predict(model, testData, type = "logistic")
   }
 
-  # prediction <- as.factor(ifelse(prediction >= threshold, prediction, 0)) # 2, 1
+  prediction <- as.factor(ifelse(prediction >= threshold, 2, 1))
 
   confusionMatrix <- confusionMatrix(prediction,
                                      testData$presence)
@@ -852,8 +852,8 @@ getMaxentModel <- function(allTrainData) {
   tuneArgs <- list(fc = c("LQHP"),
                    rm = seq(0.5, 1, 0.5))
 
-  absenceTrainData <- allTrainData[allTrainData$presence == 1, grep("presence|kfold", colnames(allTrainData), invert=T)] # 2 # 1
-  presenceTrainData <- allTrainData[allTrainData$presence != 1, grep("presence|kfold", colnames(allTrainData), invert=T)] # 1 # 0
+  absenceTrainData <- allTrainData[allTrainData$presence == 1, grep("presence|kfold", colnames(allTrainData), invert=T)]
+  presenceTrainData <- allTrainData[allTrainData$presence == 2, grep("presence|kfold", colnames(allTrainData), invert=T)]
   max1 <- ENMevaluate(occ = presenceTrainData, # absenceTrainData,
                       bg.coords = absenceTrainData, # presenceTrainData,
                       tune.args = tuneArgs,
@@ -898,7 +898,7 @@ getSensSpec <- function(probs, actual, threshold) {
 getOptimalThreshold <- function(model, testingData, modelType = "Random Forest") {
 
   thresholds <- seq(0.01, 0.99, by = 0.01)
-  testingObservations <- as.numeric(testingData$presence) - 1 # remove "-1"?
+  testingObservations <- as.numeric(testingData$presence) - 1
 
   ## predicting data
   if (modelType == "Random Forest") {
