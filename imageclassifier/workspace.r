@@ -1005,6 +1005,6 @@ bestModel <- ranger(mainModel,
                     probability = TRUE,
                     importance = "impurity")
 
-return(bestModel)
+return(list(bestModel, bestModel$variable.importance))
 stopCluster(cl)
 }
