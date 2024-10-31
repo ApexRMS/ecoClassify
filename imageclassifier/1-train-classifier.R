@@ -3,8 +3,8 @@
 # mySession <- session("C:/Program Files/SyncroSim Studio")
 # libPath <- "library/image_classifier_testing.ssim"
 
-# myLibrary <- ssimLibrary(name = libPath,
-#                          session = mySession)
+myLibrary <- ssimLibrary(name = libPath,
+                         session = mySession)
 
 # # define project
 # myProject <- rsyncrosim::project(myLibrary, project = 1)
@@ -49,6 +49,10 @@ applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
 modelType <- inputVariables[[7]]
 
+## check if multiprocessing is selected
+mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
+nCores <- setCores(mulitprocessingSheet)
+
 # check timesteps were input correctly ---------------------------------------
 # checkTimesteps(timesteps,
 #                rasterTrainingDataframe,
@@ -92,10 +96,10 @@ allTestData <- splitData[[2]]
 
 ## Train model -----------------------------------------------------------------
 if (modelType == "MaxEnt") {
-  modelOut <- getMaxentModel(allTrainData)
+  modelOut <- getMaxentModel(allTrainData, nCores, isTuningOn)
   optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "MaxEnt")
 } else if (modelType == "Random Forest") {
-  modelOut <- getRandomForestModel(allTrainData)
+  modelOut <- getRandomForestModel(allTrainData, nCores, isTuningOn)
   optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "Random Forest")
 } else {
   stop("Model type not recognized")

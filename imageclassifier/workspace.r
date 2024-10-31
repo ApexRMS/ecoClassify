@@ -16,6 +16,8 @@ library(rJava)
 library(ecospat)
 library(ENMeval)
 library(cvms)
+library(foreach)
+library(doParallel)
 
 # define functions ------------------------------------------------
 
@@ -877,11 +879,16 @@ contextualizeRaster <- function(rasterList) {
 
 ## MaxEnt model and training
 
-getMaxentModel <- function(allTrainData) {
+getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
 
-  ## TO DO: add full range of tuning parameters in parallel
-  tuneArgs <- list(fc = c("LQHP"),
-                   rm = seq(0.5, 1, 0.5))
+  ## Specifying feature classes and regularization parameters for Maxent
+if (isTuningOn) {
+  tuneArgs <- list(fc = c("L", "Q", "P", "LQ", "H", "LQH", "LQHP"), 
+                   rm = seq(0.5, 3, 0.5))
+} else {
+  tuneArgs <- list(fc = c("LQH"), 
+                   rm = 1)
+}
 
   absenceTrainData <- allTrainData[allTrainData$presence == 1, grep("presence|kfold", colnames(allTrainData), invert=T)]
   presenceTrainData <- allTrainData[allTrainData$presence == 2, grep("presence|kfold", colnames(allTrainData), invert=T)]
@@ -890,6 +897,8 @@ getMaxentModel <- function(allTrainData) {
                       tune.args = tuneArgs,
                       progbar = F,
                       partitions = "randomkfold",
+                      parallel = T,
+                      numCores = nCores,
                       quiet = T, ## silence messages but not errors
                       algorithm = 'maxent.jar')
 
@@ -948,7 +957,7 @@ getOptimalThreshold <- function(model, testingData, modelType = "Random Forest")
   return(optimalYouden)
 }
 
-getRandomForestModel <- function(allTrainData) {
+getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   trainingVariables <-  grep("presence|kfold", colnames(allTrainData), invert=T, value=T)
 
   mainModel <- formula(sprintf("%s ~ %s",
@@ -956,11 +965,46 @@ getRandomForestModel <- function(allTrainData) {
                               paste(trainingVariables,
                                     collapse = " + ")))
 
+   ## Specifying feature classes and regularization parameters for Maxent
+if (isTuningOn) {
+  tuneArgs <- list(mtry = c(1:6),  ## number of splits
+                   maxDepth = seq(0, 1, 0.2), ## regulariation amount
+                   nTrees = c(500, 1000, 2000)) ## number of trees
+  tuneArgsGrid <- expand.grid(tuneArgs)
+} else {
+  tuneArgs <- list(mtry = round(sqrt(length(trainingVariables)),0),  ## defaults
+                   maxDepth = 0,
+                   nTrees = 500)
+  tuneArgsGrid <- expand.grid(tuneArgs)
+}
+
+  results <- foreach(i = 1:nrow(tuneArgsGrid), .combine = rbind, .packages = "ranger") %dopar% {
   rf1 <-  ranger(mainModel,
                 data = allTrainData,
-                mtry = 2,
+                mtry = tuneArgsGrid$mtry[i],
+                num.trees = tuneArgsGrid$nTrees[i],
+                max.depth = tuneArgsGrid$maxDepth[i],
                 probability = TRUE,
                 importance = "impurity")
 
-  return(list(rf1, rf1$variable.importance))
+  oobError <- rf1$prediction.error
+  
+  modelResults <- tuneArgsGrid[i,]
+  modelResults[,"oobError"] <- oobError
+  modelResults
+ 
+}
+
+# Find the best model and train off of it
+bestModel <- ranger(mainModel,
+                    data = allTrainData,
+                    mtry = results[which.min(results$oobError), "mtry"],
+                    num.trees = results[which.min(results$oobError), "nTrees"],
+                    max.depth = results[which.min(results$oobError), "maxDepth"],
+                    num.threads = nCores,
+                    probability = TRUE,
+                    importance = "impurity")
+
+return(bestModel)
+stopCluster(cl)
 }
