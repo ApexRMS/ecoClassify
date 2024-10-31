@@ -877,8 +877,24 @@ contextualizeRaster <- function(rasterList) {
 
 }
 
-## MaxEnt model and training
-
+#' Train a Maxent Model with Hyperparameter Tuning
+#'
+#' @description
+#' This function trains a Maxent model using the `ENMevaluate` function with optional hyperparameter tuning.
+#' It evaluates multiple hyperparameter combinations and selects the best model based on the Continuous Boyce Index (CBI).
+#'
+#' @param allTrainData A dataframe containing the training data. The dataframe should include a column named 'presence' indicating the target variable.
+#' @param nCores An integer specifying the number of cores to use for parallel processing.
+#' @param isTuningOn A logical value indicating whether hyperparameter tuning should be performed.
+#' @return A list containing the best Maxent model and its variable importance.
+#'
+#' @details
+#' The function first splits the training data into presence and absence data based on the 'presence' column.
+#' If `isTuningOn` is TRUE, it evaluates multiple combinations of feature classes (`fc`) and regularization multipliers (`rm`).
+#' The best model is selected based on the highest Continuous Boyce Index (CBI). If `isTuningOn` is FALSE, default hyperparameters are used.
+#'
+#'
+#' @import ENMeval
 getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
 
   ## Specifying feature classes and regularization parameters for Maxent
@@ -957,6 +973,26 @@ getOptimalThreshold <- function(model, testingData, modelType = "Random Forest")
   return(optimalYouden)
 }
 
+#' Train a Random Forest Model with Hyperparameter Tuning
+#'
+#' @description
+#' This function trains a random forest model using the `ranger` package with optional hyperparameter tuning.
+#' It evaluates multiple hyperparameter combinations in parallel and selects the best model based on the Out-of-Bag (OOB) error.
+#'
+#' @param allTrainData A dataframe containing the training data. The dataframe should include a column named 'presence' indicating the target variable.
+#' @param nCores An integer specifying the number of cores to use for parallel processing.
+#' @param isTuningOn A logical value indicating whether hyperparameter tuning should be performed.
+#' @return A list containing the best random forest model and its variable importance.
+#'
+#' @details
+#' The function first constructs a formula for the random forest model using all columns in `allTrainData` except 'presence' and 'kfold'.
+#' If `isTuningOn` is TRUE, it evaluates multiple combinations of hyperparameters (`mtry`, `maxDepth`, and `nTrees`) in parallel using the `foreach` and `doParallel` packages.
+#' The best model is selected based on the lowest OOB error. If `isTuningOn` is FALSE, default hyperparameters are used.
+#'
+#' @import ranger
+#' @import foreach
+#' @import doParallel
+#' @export
 getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   trainingVariables <-  grep("presence|kfold", colnames(allTrainData), invert=T, value=T)
 
