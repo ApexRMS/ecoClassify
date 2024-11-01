@@ -317,17 +317,19 @@ splitTrainTest <- function(trainingRasterList,
 predictRanger <- function(raster,
                           model) {
   ## generate blank raster
-  predictionRaster <- raster[[1]]
-  names(predictionRaster) <- "present"
+  predictionRaster <- raster # [[1]]
 
   ## predict over raster decomposition
   rasterMatrix <- data.frame(raster)
   rasterMatrix <- na.omit(rasterMatrix)
   predictedValues <- data.frame(predict(model, rasterMatrix)) # [, 1] # TODO make a multibanded probability raster
-  head(predictedValues)
 
   # Create a multiband raster
-  predictedRaster <- rast(nrow = nrow(predictionRaster), ncol = ncol(predictionRaster), nlyrs = ncol(predictedValues))
+  predictedRaster <- rast(nrow = nrow(predictionRaster),
+                          ncol = ncol(predictionRaster),
+                          nlyrs = ncol(predictedValues),
+                          crs = crs(raster),
+                          extent = ext(raster))
 
   # Assign values to each band
   for (i in 1:ncol(predictedValues)) {
@@ -359,9 +361,9 @@ getPredictionRasters <- function(raster,
                                  modelType = "Random Forest") {
   # predict presence for each raster
   if (modelType == "Random Forest") {
-    # generate probabilities for each raster
-    probabilityRaster <- 1 - predictRanger(raster,
-                                           model)
+    # generate probabilities for each raster using ranger
+    probabilityRaster <- predictRanger(raster,
+                                       model)
   } else if (modelType == "MaxEnt") {
     probabilityRaster <- predict(model, raster, type = "logistic")
   }  else {
@@ -370,8 +372,8 @@ getPredictionRasters <- function(raster,
 
   predictedPresence <- reclassifyRaster(probabilityRaster, threshold)
 
-  return(list(predictedPresence = predictedPresence,
-              probabilityRaster = probabilityRaster))
+  return(list(predictedPresence,
+              probabilityRaster))
 }
 
 reclassifyRaster <- function(raster, threshold) {
@@ -386,7 +388,7 @@ reclassifyRaster <- function(raster, threshold) {
   mergedRaster <- app(raster, max)
   names(mergedRaster) <- "present"
 
-  return(raster)
+  return(mergedRaster)
 }
 
 #' Filter prediction raster
@@ -916,24 +918,26 @@ getOptimalThreshold <- function(model, testingData, modelType = "Random Forest")
 
   thresholds <- seq(0.01, 0.99, by = 0.01)
 
-  # change presence observations to range between 0 and 1
-  testingData <- testingData %>%
-    mutate(rescaledPresence = ifelse(presence == 1, 0, 1)) # TODO change so doesn't have to be 1
-  testingObservations <- as.numeric(testingData$rescaledPresence) # - 1
+  # create a 3D array of observations, one layer for each class
+  uniquePresenceValues <- unique(testingData$presence)
+  nLayers <- length(uniquePresenceValues)
+  testingDataArray <- array(0, dim = c(nrow(testingData), 1, nLayers))
+
+  for (i in seq_along(uniquePresenceValues)) {
+    layerValue <- uniquePresenceValues[i]
+    testingDataArray[, , i] <- ifelse(testingData$presence == layerValue, 1, 0)
+  }
+
+  # convert to numeric
+  testingObservations <- as.numeric(testingDataArray)
 
   ## predicting data
   if (modelType == "Random Forest") {
 
-    testingPredictions <- predict(model, testingData)$predictions # [, 2] # TODO get threshold for each class?
+    testingPredictions <- as.data.frame(predict(model, testingData)$predictions)
 
-    # add columns for classification and probability
-    testingPredictions <- as.data.frame(testingPredictions)
-    testingPredictions$predictedClass <- as.numeric(colnames(testingPredictions)[apply(testingPredictions, 1, which.max)])
-    testingPredictions$maxValue <- apply(testingPredictions[, -ncol(testingPredictions)], 1, max)
-    # testingPredictions$maxClassValue <- testingPredictions$maxValue + testingPredictions$predictedClass - 1
-    
-    # select testing predictions
-    testingPredictionData <- as.numeric(testingPredictions$maxValue)
+    # convert to numeric vector in order of class number
+    testingPredictionVector <- as.numeric(c(testingPredictions[, 1], testingPredictions[, 2], testingPredictions[, 3]))
 
   } else if (modelType == "MaxEnt") {
     testingPredictionData <- predict(model, testingData, type = "logistic")
@@ -942,7 +946,7 @@ getOptimalThreshold <- function(model, testingData, modelType = "Random Forest")
   }
 
   # Calculate sensitivity and specificity for each threshold
-  metrics <- t(sapply(thresholds, getSensSpec, probs = testingPredictionData, actual = testingObservations))
+  metrics <- t(sapply(thresholds, getSensSpec, probs = testingPredictionVector, actual = testingObservations))
   youdenIndex  <- metrics[, 1] + metrics[, 2] - 1
   optimalYouden <- thresholds[which.max(youdenIndex)]
 
@@ -953,15 +957,15 @@ getRandomForestModel <- function(allTrainData) {
   trainingVariables <-  grep("presence|kfold", colnames(allTrainData), invert=T, value=T)
 
   mainModel <- formula(sprintf("%s ~ %s",
-                              "presence",
-                              paste(trainingVariables,
-                                    collapse = " + ")))
+                               "presence",
+                               paste(trainingVariables,
+                                     collapse = " + ")))
 
   rf1 <-  ranger(mainModel,
-                data = allTrainData,
-                mtry = 2,
-                probability = TRUE,
-                importance = "impurity")
+                 data = allTrainData,
+                 # mtry = 2,
+                 probability = TRUE,
+                 importance = "impurity")
 
   return(list(rf1, rf1$variable.importance))
 }

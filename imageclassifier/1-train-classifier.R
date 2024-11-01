@@ -61,6 +61,9 @@ applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
 modelType <- inputVariables[[7]]
 
+# define absence class TODO - add as imput to XML
+absenceClass <- 0
+
 # check timesteps were input correctly ---------------------------------------
 # checkTimesteps(timesteps,
 #                rasterTrainingDataframe,
@@ -128,7 +131,6 @@ variableImportanceOutput <- plotVariableImportance(variableImportance,
 
 variableImportancePlot <- variableImportanceOutput[[1]]
 varImportanceOutputDataframe <- variableImportanceOutput[[2]]
-
 
 ## Predict presence for training rasters in each timestep group ----------------
 for (t in seq_along(trainingRasterList)) {
