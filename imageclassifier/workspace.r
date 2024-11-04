@@ -317,26 +317,16 @@ splitTrainTest <- function(trainingRasterList,
 predictRanger <- function(raster,
                           model) {
   ## generate blank raster
-  predictionRaster <- raster # [[1]]
+  predictionRaster <- raster[[1]]
+  names(predictionRaster) <- "present"
 
   ## predict over raster decomposition
   rasterMatrix <- data.frame(raster)
   rasterMatrix <- na.omit(rasterMatrix)
-  predictedValues <- data.frame(predict(model, rasterMatrix)) # [, 1] # TODO make a multibanded probability raster
+  predictedValues <- data.frame(predict(model, rasterMatrix))[, 2]
+  values(predictionRaster) <- predictedValues
 
-  # Create a multiband raster
-  predictedRaster <- rast(nrow = nrow(predictionRaster),
-                          ncol = ncol(predictionRaster),
-                          nlyrs = ncol(predictedValues),
-                          crs = crs(raster),
-                          extent = ext(raster))
-
-  # Assign values to each band
-  for (i in 1:ncol(predictedValues)) {
-    values(predictedRaster[[i]]) <- predictedValues[, i]
-  }
-
-  return(predictedRaster)
+  return(predictionRaster)
 }
 
 #' Predict presence and generate probability values over area
@@ -378,17 +368,10 @@ getPredictionRasters <- function(raster,
 
 reclassifyRaster <- function(raster, threshold) {
 
-  for (i in 1:nlyr(raster)) {
-    band <- raster[[i]]
-    band[band >= threshold] <- i
-    band[band < threshold] <- 1
-    raster[[i]] <- band
-  }
+  raster[raster >= threshold] <- 1 # TO DO: assign original class value?
+  raster[raster < threshold] <- 0
 
-  mergedRaster <- app(raster, max)
-  names(mergedRaster) <- "present"
-
-  return(mergedRaster)
+  return(raster)
 }
 
 #' Filter prediction raster
@@ -415,6 +398,7 @@ filterFun <- function(raster,
 
   # filter
   if (is.na(raster[midPixel])) {
+  # if (dim(raster[midPixel]) == NULL) {
     return(NA)
   } else if (raster[midPixel] == 1 && sum(raster[-midPixel] == 0, na.rm = TRUE) > threshold) {
     return(0)
@@ -864,6 +848,9 @@ contextualizeRaster <- function(rasterList) {
 }
 
 ## MaxEnt model and training
+## TO DO: need to make one maxent model for each class, then merge into final prediction raster where
+## the predicted class is the one with the highest probability (and surpasses the threshold). If below
+## the threshold it is assigned a value of 0
 
 getMaxentModel <- function(allTrainData) {
 
@@ -871,10 +858,14 @@ getMaxentModel <- function(allTrainData) {
   tuneArgs <- list(fc = c("LQHP"),
                    rm = seq(0.5, 1, 0.5))
 
-  absenceTrainData <- allTrainData[allTrainData$presence == 1, grep("presence|kfold", colnames(allTrainData), invert=T)]
-  presenceTrainData <- allTrainData[allTrainData$presence != 1, grep("presence|kfold", colnames(allTrainData), invert=T)]
-  max1 <- ENMevaluate(occ = presenceTrainData, # absenceTrainData,
-                      bg.coords = absenceTrainData, # presenceTrainData,
+  # create a 3D array of observations, one layer for each class
+  # absenceTrainData <- trainingDataArray[trainingDataVector$presence == 0, grep("presence|kfold", colnames(trainingDataArray), invert=T)]
+  # TO DO: need to figure out how to include class in the model! no longer presence/absence with multiclass
+  # unless we need a separate model for each class?
+  presenceTrainData <- allTrainData[allTrainData$presence != 0, grep("kfold", colnames(allTrainData), invert=T)]
+  max1 <- ENMevaluate(occ = (presenceTrainData %>% dplyr::select(-presence)), # absenceTrainData,
+                      # bg.coords = absenceTrainData, # presenceTrainData,
+                      user.grp = presenceTrainData$presence,
                       tune.args = tuneArgs,
                       progbar = F,
                       partitions = "randomkfold",
@@ -916,37 +907,23 @@ getSensSpec <- function(probs, actual, threshold) {
 ## find optimal threshold between sensitivity and specificity
 getOptimalThreshold <- function(model, testingData, modelType = "Random Forest") {
 
+  # define thresholds
   thresholds <- seq(0.01, 0.99, by = 0.01)
 
-  # create a 3D array of observations, one layer for each class
-  uniquePresenceValues <- unique(testingData$presence)
-  nLayers <- length(uniquePresenceValues)
-  testingDataArray <- array(0, dim = c(nrow(testingData), 1, nLayers))
-
-  for (i in seq_along(uniquePresenceValues)) {
-    layerValue <- uniquePresenceValues[i]
-    testingDataArray[, , i] <- ifelse(testingData$presence == layerValue, 1, 0)
-  }
-
-  # convert to numeric
-  testingObservations <- as.numeric(testingDataArray)
+  # define testing observations (subtract 1 for factor level)
+  testingObservations <- as.numeric(testingData$presence) - 1
 
   ## predicting data
   if (modelType == "Random Forest") {
-
-    testingPredictions <- as.data.frame(predict(model, testingData)$predictions)
-
-    # convert to numeric vector in order of class number
-    testingPredictionVector <- as.numeric(c(testingPredictions[, 1], testingPredictions[, 2], testingPredictions[, 3]))
-
+    testingPredictions <- predict(model, testingData)$predictions[, 2] # TO DO use value instead of index?
   } else if (modelType == "MaxEnt") {
-    testingPredictionData <- predict(model, testingData, type = "logistic")
+    testingPredictions <- predict(model, testingData, type = "logistic")
   } else {
     stop("Model type not recognized")
   }
 
   # Calculate sensitivity and specificity for each threshold
-  metrics <- t(sapply(thresholds, getSensSpec, probs = testingPredictionVector, actual = testingObservations))
+  metrics <- t(sapply(thresholds, getSensSpec, probs = testingPredictions, actual = testingObservations))
   youdenIndex  <- metrics[, 1] + metrics[, 2] - 1
   optimalYouden <- thresholds[which.max(youdenIndex)]
 
@@ -963,9 +940,33 @@ getRandomForestModel <- function(allTrainData) {
 
   rf1 <-  ranger(mainModel,
                  data = allTrainData,
-                 # mtry = 2,
+                 mtry = 2,
                  probability = TRUE,
                  importance = "impurity")
 
   return(list(rf1, rf1$variable.importance))
 }
+
+# function to reclassify ground truth rasters
+reclassifyGroundTruth <- function(groundTruthRasterList) {
+  reclassifiedGroundTruthList <- c()
+  for (i in seq_along(groundTruthRasterList)) {
+    groundTruthRaster <- groundTruthRasterList[[i]]
+    groundTruthRaster[groundTruthRaster == min(values(groundTruthRaster), na.rm = TRUE)] <- 0
+    groundTruthRaster[groundTruthRaster == max(values(groundTruthRaster), na.rm = TRUE)] <- 1
+  
+    reclassifiedGroundTruthList <- c(reclassifiedGroundTruthList, groundTruthRaster)
+  }
+  return(reclassifiedGroundTruthList)
+}
+
+## TO DO:
+## 1. update getMaxEntModel to create a model for each class, returns a list
+## of classes
+## 2. Move model and variableImportance inside if elese statement
+## 3. Update getOptimalThreshold to work with maxent model list (move everything
+## inside if else statement)
+## 4. update getPredictionRasters to work with maxent model list
+## 5. update reclassify raster to work with Maxent (it may already, but should receie
+## a multibanded raster). will need to make sure class is given to highest probability,
+## not highest class value if multiple classes meet the threshold

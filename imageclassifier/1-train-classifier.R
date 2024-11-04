@@ -1,8 +1,7 @@
 # set up library (remove after testing) -----------------------------------
 library(rsyncrosim)
 mySession <- session("C:/Program Files/SyncroSim Studio")
-# libPath <- "library/image_classifier_testing.ssim"
-libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/Tamarisk-Forecasting.ssim"
+libPath <- "library/image_classifier_testing.ssim"
 
 myLibrary <- ssimLibrary(name = libPath,
                          session = mySession)
@@ -12,24 +11,13 @@ myProject <- rsyncrosim::project(myLibrary, project = 1)
 
 # define scenario
 scenario(myProject)
-myScenario <- scenario(myProject, scenario = 1)
+myScenario <- scenario(myProject, scenario = 89)
 
 # view datasheets
 datasheet(myScenario)
 source("imageclassifier/workspace.r")
-transferDir <- ""
+# transferDir <- ""
 transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
-
-modelType <- "Random Forest"
-applyContextualization <- FALSE
-
-# multiclass ground truth raster
-groundTruthRasterList <- list(rast("C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/data/response/tamarisk_ground_truth_subset_multiclass.tif"))
-plot(groundTruthRasterList[[1]])
-
-trainingRasterList <- trainingRasterList[1]
-plot(trainingRasterList[[1]])
-
 
 # START OF MODEL SCRIPT:
 ## SKIP OUTSIDE GUI
@@ -61,9 +49,6 @@ applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
 modelType <- inputVariables[[7]]
 
-# define absence class TODO - add as imput to XML
-absenceClass <- 0
-
 # check timesteps were input correctly ---------------------------------------
 # checkTimesteps(timesteps,
 #                rasterTrainingDataframe,
@@ -72,6 +57,9 @@ absenceClass <- 0
 # extract list of training, testing, and ground truth rasters ----------------
 trainingRasterList <- extractRasters(inputRasterDataframe, column = 2)
 groundTruthRasterList <- extractRasters(inputRasterDataframe, column = 3)
+
+# reclassify ground truth rasters --------------------------------------------
+groundTruthRasterList <- reclassifyGroundTruth(groundTruthRasterList) # TO DO: remove
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(Timestep = numeric(0),
@@ -97,7 +85,7 @@ if (applyContextualization == TRUE) {
   trainingRasterList <- contextualizeRaster(trainingRasterList) # change naming to avoid this
 
 }
-
+testingData <- allTestData
 # separate training and testing data -------------------------------------------
 splitData <- splitTrainTest(trainingRasterList,
                             groundTruthRasterList,
