@@ -1,23 +1,23 @@
-# set up library (remove after testing) -----------------------------------
-library(rsyncrosim)
-mySession <- session("C:/Program Files/SyncroSim Studio")
-libPath <- "library/image_classifier_testing.ssim"
+# # set up library (remove after testing) -----------------------------------
+# library(rsyncrosim)
+# mySession <- session("C:/Program Files/SyncroSim Studio")
+# libPath <- "library/image_classifier_testing.ssim"
 
-myLibrary <- ssimLibrary(name = libPath,
-                         session = mySession)
+# myLibrary <- ssimLibrary(name = libPath,
+#                          session = mySession)
 
-# define project
-myProject <- rsyncrosim::project(myLibrary, project = 1)
+# # define project
+# myProject <- rsyncrosim::project(myLibrary, project = 1)
 
-# define scenario
-scenario(myProject)
-myScenario <- scenario(myProject, scenario = 89)
+# # define scenario
+# scenario(myProject)
+# myScenario <- scenario(myProject, scenario = 89)
 
-# view datasheets
-datasheet(myScenario)
-source("imageclassifier/workspace.r")
-# transferDir <- ""
-transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
+# # view datasheets
+# datasheet(myScenario)
+# source("imageclassifier/workspace.r")
+# # transferDir <- ""
+# transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
 
 # START OF MODEL SCRIPT:
 ## SKIP OUTSIDE GUI
@@ -43,7 +43,7 @@ inputVariables <- assignVariables(myScenario,
                                   inputRasterDataframe$TrainingRasterFile)
 timestepList <- inputVariables[[1]]
 nObs <- inputVariables[[2]]
-filterResolution <- inputVariables[[3]]
+filterResolution <- inputVariables[[3]] # TO DO: give warnings for lower limits (must be >=1?)
 filterPercent <- inputVariables[[4]]
 applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
@@ -59,7 +59,7 @@ trainingRasterList <- extractRasters(inputRasterDataframe, column = 2)
 groundTruthRasterList <- extractRasters(inputRasterDataframe, column = 3)
 
 # reclassify ground truth rasters --------------------------------------------
-groundTruthRasterList <- reclassifyGroundTruth(groundTruthRasterList) # TO DO: remove
+groundTruthRasterList <- reclassifyGroundTruth(groundTruthRasterList)
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(Timestep = numeric(0),
@@ -85,7 +85,7 @@ if (applyContextualization == TRUE) {
   trainingRasterList <- contextualizeRaster(trainingRasterList) # change naming to avoid this
 
 }
-testingData <- allTestData
+
 # separate training and testing data -------------------------------------------
 splitData <- splitTrainTest(trainingRasterList,
                             groundTruthRasterList,

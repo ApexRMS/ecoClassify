@@ -398,7 +398,6 @@ filterFun <- function(raster,
 
   # filter
   if (is.na(raster[midPixel])) {
-  # if (dim(raster[midPixel]) == NULL) {
     return(NA)
   } else if (raster[midPixel] == 1 && sum(raster[-midPixel] == 0, na.rm = TRUE) > threshold) {
     return(0)
@@ -701,7 +700,7 @@ calculateStatistics <- function(model,
     prediction <- predict(model, testData, type = "logistic")
   }
 
-  prediction <- as.factor(ifelse(prediction >= threshold, 2, 1))
+  prediction <- as.factor(ifelse(prediction >= threshold, 1, 0))
 
   confusionMatrix <- confusionMatrix(prediction,
                                      testData$presence)
@@ -858,14 +857,11 @@ getMaxentModel <- function(allTrainData) {
   tuneArgs <- list(fc = c("LQHP"),
                    rm = seq(0.5, 1, 0.5))
 
-  # create a 3D array of observations, one layer for each class
-  # absenceTrainData <- trainingDataArray[trainingDataVector$presence == 0, grep("presence|kfold", colnames(trainingDataArray), invert=T)]
-  # TO DO: need to figure out how to include class in the model! no longer presence/absence with multiclass
-  # unless we need a separate model for each class?
-  presenceTrainData <- allTrainData[allTrainData$presence != 0, grep("kfold", colnames(allTrainData), invert=T)]
-  max1 <- ENMevaluate(occ = (presenceTrainData %>% dplyr::select(-presence)), # absenceTrainData,
-                      # bg.coords = absenceTrainData, # presenceTrainData,
-                      user.grp = presenceTrainData$presence,
+  absenceTrainData <- allTrainData[allTrainData$presence == 0, grep("presence|kfold", colnames(allTrainData), invert=T)]
+  presenceTrainData <- allTrainData[allTrainData$presence == 1, grep("presence|kfold", colnames(allTrainData), invert=T)]
+
+  max1 <- ENMevaluate(occ = presenceTrainData,
+                      bg.coords = absenceTrainData,
                       tune.args = tuneArgs,
                       progbar = F,
                       partitions = "randomkfold",
@@ -874,11 +870,11 @@ getMaxentModel <- function(allTrainData) {
 
   bestMax <- which.max(max1@results$cbi.val.avg)
   varImp <- max1@variable.importance[bestMax] %>% data.frame()
-  names(varImp) <- c("variable","percent.contribution","permutation.importance")
+  names(varImp) <- c("variable","percent.contribution", "permutation.importance")
   maxentImportance <- getMaxentImportance(varImp)
 
   model <- max1@models[[bestMax]]
-  modelOut <- max1@results[bestMax,]
+  # modelOut <- max1@results[bestMax,]
 
   return(list(model, maxentImportance))
 
