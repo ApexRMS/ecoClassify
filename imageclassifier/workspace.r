@@ -368,7 +368,7 @@ getPredictionRasters <- function(raster,
 
 reclassifyRaster <- function(raster, threshold) {
 
-  raster[raster >= threshold] <- 1 # TO DO: assign original class value?
+  raster[raster >= threshold] <- 1
   raster[raster < threshold] <- 0
 
   return(raster)
