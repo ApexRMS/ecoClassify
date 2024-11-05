@@ -1,0 +1,4 @@
+# Syncrosim Generated Ground Truth Color Map (QGIS-compatible),,,,,
+INTERPOLATION:DISCRETE
+0.0000,0,0,0,255,No Snow
+1.0000,255,255,255,255,Snow
