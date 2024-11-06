@@ -74,8 +74,8 @@
     <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="watchtower-conda.yml" condaEnvVersion="12">
         <dataSheet name="InputRasters" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Input"/>
+        <dataSheet name="PostProcessingOptions" type="Input"/>
         <dataSheet name="RasterOutput" type="Output"/>
-        <dataSheet name="ClassifiedRasterOutput" type="Output"/>
         <dataSheet name="ConfusionMatrix" type="Output"/>
         <dataSheet name="ModelStatistics" type="Output"/>
         <dataSheet name="VariableImportanceOutput" type="Output"/>

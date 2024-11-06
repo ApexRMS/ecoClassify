@@ -323,7 +323,7 @@ predictRanger <- function(raster,
   ## predict over raster decomposition
   rasterMatrix <- data.frame(raster)
   rasterMatrix <- na.omit(rasterMatrix)
-  predictedValues <- data.frame(predict(model, rasterMatrix))[, 1]
+  predictedValues <- data.frame(predict(model, rasterMatrix))[, 2]
   values(predictionRaster) <- predictedValues
 
   return(predictionRaster)
@@ -351,9 +351,9 @@ getPredictionRasters <- function(raster,
                                  modelType = "Random Forest") {
   # predict presence for each raster
   if (modelType == "Random Forest") {
-    # generate probabilities for each raster
-    probabilityRaster <- 1 - predictRanger(raster,
-                                           model)
+    # generate probabilities for each raster using ranger
+    probabilityRaster <- predictRanger(raster,
+                                       model)
   } else if (modelType == "MaxEnt") {
     probabilityRaster <- predict(model, raster, type = "logistic")
   }  else {
@@ -362,13 +362,15 @@ getPredictionRasters <- function(raster,
 
   predictedPresence <- reclassifyRaster(probabilityRaster, threshold)
 
-  return(list(predictedPresence = predictedPresence,
-              probabilityRaster = probabilityRaster))
+  return(list(predictedPresence,
+              probabilityRaster))
 }
 
 reclassifyRaster <- function(raster, threshold) {
+
   raster[raster >= threshold] <- 1
   raster[raster < threshold] <- 0
+
   return(raster)
 }
 
@@ -693,12 +695,12 @@ calculateStatistics <- function(model,
                                 confusionOutputDataframe,
                                 modelOutputDataframe) {
   if (inherits(model, "ranger")) {
-    prediction <- predict(model, testData)$predictions[, 2]
+    prediction <- predict(model, testData)$predictions[, 2] # TODO update for multiclass
   } else {
     prediction <- predict(model, testData, type = "logistic")
   }
 
-  prediction <- as.factor(ifelse(prediction >= threshold, 2, 1))
+  prediction <- as.factor(ifelse(prediction >= threshold, 1, 0))
 
   confusionMatrix <- confusionMatrix(prediction,
                                      testData$presence)
@@ -845,6 +847,9 @@ contextualizeRaster <- function(rasterList) {
 }
 
 ## MaxEnt model and training
+## TO DO: need to make one maxent model for each class, then merge into final prediction raster where
+## the predicted class is the one with the highest probability (and surpasses the threshold). If below
+## the threshold it is assigned a value of 0
 
 getMaxentModel <- function(allTrainData) {
 
@@ -852,10 +857,11 @@ getMaxentModel <- function(allTrainData) {
   tuneArgs <- list(fc = c("LQHP"),
                    rm = seq(0.5, 1, 0.5))
 
-  absenceTrainData <- allTrainData[allTrainData$presence == 1, grep("presence|kfold", colnames(allTrainData), invert=T)]
-  presenceTrainData <- allTrainData[allTrainData$presence == 2, grep("presence|kfold", colnames(allTrainData), invert=T)]
-  max1 <- ENMevaluate(occ = presenceTrainData, # absenceTrainData,
-                      bg.coords = absenceTrainData, # presenceTrainData,
+  absenceTrainData <- allTrainData[allTrainData$presence == 0, grep("presence|kfold", colnames(allTrainData), invert=T)]
+  presenceTrainData <- allTrainData[allTrainData$presence == 1, grep("presence|kfold", colnames(allTrainData), invert=T)]
+
+  max1 <- ENMevaluate(occ = presenceTrainData,
+                      bg.coords = absenceTrainData,
                       tune.args = tuneArgs,
                       progbar = F,
                       partitions = "randomkfold",
@@ -864,11 +870,11 @@ getMaxentModel <- function(allTrainData) {
 
   bestMax <- which.max(max1@results$cbi.val.avg)
   varImp <- max1@variable.importance[bestMax] %>% data.frame()
-  names(varImp) <- c("variable","percent.contribution","permutation.importance")
+  names(varImp) <- c("variable","percent.contribution", "permutation.importance")
   maxentImportance <- getMaxentImportance(varImp)
 
   model <- max1@models[[bestMax]]
-  modelOut <- max1@results[bestMax,]
+  # modelOut <- max1@results[bestMax,]
 
   return(list(model, maxentImportance))
 
@@ -897,12 +903,15 @@ getSensSpec <- function(probs, actual, threshold) {
 ## find optimal threshold between sensitivity and specificity
 getOptimalThreshold <- function(model, testingData, modelType = "Random Forest") {
 
+  # define thresholds
   thresholds <- seq(0.01, 0.99, by = 0.01)
+
+  # define testing observations (subtract 1 for factor level)
   testingObservations <- as.numeric(testingData$presence) - 1
 
   ## predicting data
   if (modelType == "Random Forest") {
-    testingPredictions <- predict(model, testingData)$predictions[, 2]
+    testingPredictions <- predict(model, testingData)$predictions[, 2] # TO DO use value instead of index?
   } else if (modelType == "MaxEnt") {
     testingPredictions <- predict(model, testingData, type = "logistic")
   } else {
@@ -921,15 +930,39 @@ getRandomForestModel <- function(allTrainData) {
   trainingVariables <-  grep("presence|kfold", colnames(allTrainData), invert=T, value=T)
 
   mainModel <- formula(sprintf("%s ~ %s",
-                              "presence",
-                              paste(trainingVariables,
-                                    collapse = " + ")))
+                               "presence",
+                               paste(trainingVariables,
+                                     collapse = " + ")))
 
   rf1 <-  ranger(mainModel,
-                data = allTrainData,
-                mtry = 2,
-                probability = TRUE,
-                importance = "impurity")
+                 data = allTrainData,
+                 mtry = 2,
+                 probability = TRUE,
+                 importance = "impurity")
 
   return(list(rf1, rf1$variable.importance))
 }
+
+# function to reclassify ground truth rasters
+reclassifyGroundTruth <- function(groundTruthRasterList) {
+  reclassifiedGroundTruthList <- c()
+  for (i in seq_along(groundTruthRasterList)) {
+    groundTruthRaster <- groundTruthRasterList[[i]]
+    groundTruthRaster[groundTruthRaster == min(values(groundTruthRaster), na.rm = TRUE)] <- 0
+    groundTruthRaster[groundTruthRaster == max(values(groundTruthRaster), na.rm = TRUE)] <- 1
+  
+    reclassifiedGroundTruthList <- c(reclassifiedGroundTruthList, groundTruthRaster)
+  }
+  return(reclassifiedGroundTruthList)
+}
+
+## TO DO:
+## 1. update getMaxEntModel to create a model for each class, returns a list
+## of classes
+## 2. Move model and variableImportance inside if elese statement
+## 3. Update getOptimalThreshold to work with maxent model list (move everything
+## inside if else statement)
+## 4. update getPredictionRasters to work with maxent model list
+## 5. update reclassify raster to work with Maxent (it may already, but should receie
+## a multibanded raster). will need to make sure class is given to highest probability,
+## not highest class value if multiple classes meet the threshold
