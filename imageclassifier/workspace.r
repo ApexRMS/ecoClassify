@@ -324,7 +324,9 @@ predictRanger <- function(raster,
   rasterMatrix <- data.frame(raster)
   rasterMatrix <- na.omit(rasterMatrix)
   predictedValues <- data.frame(predict(model, rasterMatrix))[, 2]
-  values(predictionRaster) <- predictedValues
+
+  # assing values where raster is not NA
+  predictionRaster[!is.na(raster[[1]])] <- predictedValues
 
   return(predictionRaster)
 }
@@ -955,14 +957,3 @@ reclassifyGroundTruth <- function(groundTruthRasterList) {
   }
   return(reclassifiedGroundTruthList)
 }
-
-## TO DO:
-## 1. update getMaxEntModel to create a model for each class, returns a list
-## of classes
-## 2. Move model and variableImportance inside if elese statement
-## 3. Update getOptimalThreshold to work with maxent model list (move everything
-## inside if else statement)
-## 4. update getPredictionRasters to work with maxent model list
-## 5. update reclassify raster to work with Maxent (it may already, but should receie
-## a multibanded raster). will need to make sure class is given to highest probability,
-## not highest class value if multiple classes meet the threshold

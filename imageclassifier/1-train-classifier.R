@@ -11,7 +11,7 @@
 
 # # define scenario
 # scenario(myProject)
-# myScenario <- scenario(myProject, scenario = 202)
+# myScenario <- scenario(myProject, scenario = 1)
 
 # # view datasheets
 # datasheet(myScenario)
