@@ -1,4 +1,0 @@
-# Syncrosim Generated Unfiltered Color Map (QGIS-compatible),,,,,
-INTERPOLATION:DISCRETE
-0.0000,220,220,220,255,No Snow
-1.0000,255,0,0,255,Snow

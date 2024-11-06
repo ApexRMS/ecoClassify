@@ -1,4 +1,0 @@
-# Syncrosim Generated Ground Truth Color Map (QGIS-compatible),,,,,
-INTERPOLATION:DISCRETE
-1.2000,212,212,212,255,Not present
-2.0000,255,0,0,255,Present

@@ -2,6 +2,7 @@
 # library(rsyncrosim)
 # mySession <- session("C:/Program Files/SyncroSim Studio")
 # libPath <- "library/image_classifier_testing.ssim"
+# libPath <- "library/image_classifier_testing.ssim"
 
 # myLibrary <- ssimLibrary(name = libPath,
 #                          session = mySession)
