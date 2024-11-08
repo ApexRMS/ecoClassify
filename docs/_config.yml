@@ -1,12 +1,11 @@
-title: Watchtower
+title: EcoClassify
 theme: minima
-description: Watchtower SyncroSim package
+description: EcoClassify SyncroSim package
 author: Apex Resource Management Solutions
 email: info@apexrms.com
 header_pages:
   - index.md
   - getting_started.md
-  - tutorials.md
   - reference.md
 collections:
   project:

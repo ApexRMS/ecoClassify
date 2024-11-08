@@ -54,10 +54,8 @@ Alex Filazzola (Author) <a href="https://orcid.org/0000-0001-6544-2035" target="
 ## Contributors
 
 The ecoClassify SyncroSim package was designed and developed by <a href="https://apexrms.com/" target="_blank">ApexRMS</a>. The development of ecoClassify has been generously supported by several groups, including:
-
 \
 <a href="https://www.utemountainutetribe.com/" target="_blank"><img src="assets/images/ute-mountain-ute-seal.png" width="70px" alt="Ute Mountain Ute Tribe"></a><span style="font-size:12pt; padding-left:5px;">Ute Mountain Ute Tribe
 <a href="https://www.usgs.gov/" target="_blank"><img src="assets/images/usgs_logo.png" width="50px" alt="The U.S. Geological Survey"></a><span style="font-size:12pt; padding-left:5px;">The U.S. Geological Survey
 <a href="https://www.utoronto.ca/" target="_blank"><img src="assets/images/utoronto-coa.png" width="45px" alt="University of Toronto"></a><span style="font-size:12pt; padding-left:5px;">University of Toronto
 <a href="https://www.uwo.ca/index.html" target="_blank"><img src="assets/images/western-logo.png" width="70px" alt="Western University"></a><span style="font-size:12pt; padding-left:5px;">Western University
-\
