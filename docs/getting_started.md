@@ -42,13 +42,13 @@ Having installed the **ecoClassify** *package*, you are now ready to create your
 
 Navigate to <a href="https://cloud.syncrosim.com/" target="_blank">SyncroSim Cloud</a> and click on the **Explore** tab in the top right menu. This will take you to the list of **Public Libraries** available for anyone to download, open, and run in SyncroSim Studio. Scroll through the list of libraries, or begin typing **Snow Classifier (Jumpingpound Mountain, Alberta)** in the search bar to find the pre-configured ecoClassify library. Click on the library to open it on the cloud.
 
-<img align="middle" style="padding: 3px" width="600" src="assets/images/cloud.png">
+<img align="middle" style="padding: 3px" width="700" src="assets/images/cloud.png">
 
 <br>
 
-Download the library by clicking on the **Download library** button [add image of button] in the top right corner. This downloads a backup file of the library, which is denoted by the file extension *.ssimbak*, and contains the library file as well as accompanying data.
+Download the library by clicking on the **Download library** button in the top right corner. This downloads a backup file of the library, which is denoted by the file extension *.ssimbak*, and contains the library file as well as accompanying data.
 
-<img align="middle" style="padding: 3px" width="600" src="assets/images/cloud-download.png">
+<img align="middle" style="padding: 3px" width="800" src="assets/images/cloud-download.png">
 
 <br>
 
@@ -65,7 +65,7 @@ The contents of your newly opened library are now displayed in the **Library Exp
 
 Most model inputs in SyncroSim Studio are organized into *scenarios*, where each *scenario* consists of a suite of *properties*, one for each of the model’s required inputs. Because you downloaded and opened a complete **ecoClassify** library, your library already contains two demonstration *scenarios* with pre-configured model inputs and outputs. For the purpose of this tutorial' we'll focus on the **Snow Classifer [Random Forest]** *scenario*.
 
-<img align="middle" style="padding: 3px" width="294" src="assets/images/scenario.png">
+<img align="middle" style="padding: 3px" width="325" src="assets/images/scenario.png">
 
 <br>
 
@@ -89,13 +89,13 @@ Located underneath the **General** tab, the model **Pipeline** allows you to sel
 
 Note that the *Forecast* stage is dependent on the results of the previous stage, *Train Classifier*. You cannot run a stage without having first run the previous required stages.
 
-<img align="middle" style="padding: 3px" width="470" src="assets/images/pipeline-models.png">
+<img align="middle" style="padding: 3px" width="525" src="assets/images/pipeline-models.png">
 
 <br>
 
 Next, click on the **Datafeeds** node. Here, all of the inputs to the model are listed as individual datasheets. Notice how some rows have a green checkmark in the **Data** column to indicate these datasheets contain data. From here, you can navigate to these individual datasheets by clicking on their name in the **View** column, or by navigating to the next tab called **Image Classifier**.
 
-<img align="middle" style="padding: 3px" width="600" src="assets/images/datafeeds.png">
+<img align="middle" style="padding: 3px" width="700" src="assets/images/datafeeds.png">
 
 <br>
 
@@ -109,19 +109,19 @@ The first node under the **Image Classifier** tab is the **Input** node. Expand 
 
 The **Classifier options** datasheet is where you may specify a sample size, choose whether you would like to apply contextualization or not, and choose from a drop-down menu of model types. Model types currently available include Random Forest and MaxEnt.In this example scenario, we use a Random Forest model. 
 
-<img align="middle" style="padding: 3px" width="470" src="assets/images/classifier-options.png">
+<img align="middle" style="padding: 3px" width="550" src="assets/images/classifier-options.png">
 
 <br>
 
 **Post-processing options** is where you can choose to apply filtering or not. If you choose to apply filtering, you may also apply a filter resolution and threshold.
 
-<img align="middle" style="padding: 3px" width="470" src="assets/images/post-processing-options.png">
+<img align="middle" style="padding: 3px" width="550" src="assets/images/post-processing-options.png">
 
 <br>
 
 Finally, the **Input rasters** datasheet is where all spatial data are loaded into the library. This includes training and ground-thruth rasters for creating the classifier, as well as the rasters that you would like to apply the classifier to. Note that this datasheet also contains a **Timestep** column. In the **ecoClassify** package, timesteps are used to link training rasters with their corresponding ground truth raster, and to distinguish these rasters from those that will be classified. 
 
-<img align="middle" style="padding: 3px" width="700" src="assets/images/input-rasters.png">
+<img align="middle" style="padding: 3px" width="900" src="assets/images/input-rasters.png">
 
 <br>
 
@@ -129,29 +129,29 @@ Finally, the **Input rasters** datasheet is where all spatial data are loaded in
 
 Right-click on the **Snow Classifer [Random Forest]** in the **Library Explorer** window and select **Run** from the context menu. If prompted to save your project, click **Yes**. The example model run should complete within a couple of minutes. If the run is successful, you will see a Status of **Done** in the **Run Monitor** window. If the run fails, you can click on the **Run Log** link to see a report of any problems that occurred.
 
-<img align="middle" style="padding: 3px" width="450" src="assets/images/run-monitor.png">
+<img align="middle" style="padding: 3px" width="550" src="assets/images/run-monitor.png">
 
 <br>
 
 <p id="step5"> <h2>Step 5: Viewing model outputs and results</h2> </p>
 
-Once the run is complete, you can view the details of the *Result Scenario*:
+Once the run is complete, you can view the details of the *result scenario*:
 
 * In the **Library Explorer**, expand the drop-down arrow next to the **Snow Classifer [Random Forest]** *scenario* to reveal the *Results* folder. Nested under this folder are the *result scenarios*. Note that this template **ecoClassify** library already contains results, which is why there are two *result scenarios* associated with this *parent scenario*. 
 
-<img align="middle" style="padding: 3px" width="292" src="assets/images/result-scenario.png">
+<img align="middle" style="padding: 3px" width="400" src="assets/images/result-scenario.png">
 
 <br>
 
 * Right-click and choose **Open** from the context menu to view the details of the *result scenario* you just produced. This opens the *result scenario properties* window. The format of the *result scenario properties* is similar to the *scenario properties* but contains read-only datasheets with updated information produced during the model run. Notice how the output **Statistics** datasheet now appears in the *results scenario's* **Datafeeds**.  
 
-<img align="middle" style="padding: 3px" width="631" src="assets/images/result-scenario-datasheets.png">
+<img align="middle" style="padding: 3px" width="800" src="assets/images/result-scenario-datasheets.png">
 
 <br>
 
 You can look through the *result scenario* to see the updated or newly populated datasheets. You should find that the **Output** datasheet, **Statistics**, has been populated with model run outputs.
 
-<img align="middle" style="padding: 3px" width="442" src="assets/images/statistics.png">
+<img align="middle" style="padding: 3px" width="550" src="assets/images/statistics.png">
 
 <br>
 
@@ -159,7 +159,7 @@ You can look through the *result scenario* to see the updated or newly populated
 
 To view spatial outputs, move to the results panel at the bottom left of the **Library Explorer** window. Under the **Maps** tab, double-click on the **Predicted Presence [Classified]** map to visualize the classified rasters.
 
-<img align="middle" style="padding: 3px" width="292" src="assets/images/library-explorer-maps.png">
+<img align="middle" style="padding: 3px" width="350" src="assets/images/library-explorer-maps.png">
 
 <br>
 
@@ -177,7 +177,7 @@ Next, double-click on the **Predicted Presence [Training]** map to view the **Un
 
 **ecoClassify** also allows you to visual the RGB images of your classified and training rasters under the **Images** tab. 
 
-<img align="middle" style="padding: 3px" width="799" src="assets/images/rgb-image.png">
+<img align="middle" style="padding: 3px" width="850" src="assets/images/rgb-image.png">
 
 <br>
 

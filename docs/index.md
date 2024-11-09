@@ -16,7 +16,7 @@ permalink: /
 ### **EcoClassify** is an open-source <a href="https://syncrosim.com/" target="_blank">SyncroSim</a> package for classifying pixels of aerial or satellite imagery.
 
 
-**EcoClassify** uses image segmentation to identify features in an image at the pixel level. Originally designed for classification of snow cover from satellite imagery, **ecoClassify** has been expanded to classify other land cover features including invasive species, urban agriculture, and more.
+**EcoClassify** uses image segmentation to identify features in an image at the pixel level. Originally designed for the classification of snow cover from satellite imagery, **ecoClassify** has been expanded to classify other land cover features including invasive species, urban agriculture, and more.
 
 <br>
 
