@@ -6,7 +6,7 @@ permalink: /
 ---
 
 # **EcoClassify** SyncroSim Package
-<img align="right" style="padding: 13px" width="180" src="assets/images/logo/geofetch-sticker.png">
+<img align="right" style="padding: 13px" width="180" src="assets/images/logo/ecoClassify-sticker.png">
 [![GitHub release](https://img.shields.io/github/v/release/ApexRMS/A331-watchtower.svg?style=for-the-badge&color=d68a06)](https://github.com/ApexRMS/A331-watchtower/releases/)    <a href="https://github.com/ApexRMS/A331-watchtower"><img align="middle" style="padding: 1px" width="30" src="assets/images/logo/github-trans2.png">
 <br>
 

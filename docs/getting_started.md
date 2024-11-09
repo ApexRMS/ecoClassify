@@ -183,8 +183,6 @@ Next, double-click on the **Predicted Presence [Training]** map to view the **Un
 
 Here, you may also view a confusion matrix quantifying the classifier's performance and a bar chart of the classifier's variable importance. In this Random Forest example, we can see that the SR_B2 variable was the most important variable in training the model.
 
-<img src="assets/images/ute-mountain-ute-seal.png" width="70px" alt="Ute Mountain Ute Tribe"></a><span style="font-size:12pt; padding-left:5px;">Ute Mountain Ute Tribe
-
 <img align="middle" style="padding: 3px" width="500" src="assets/images/confusion-matrix.png">
 <img align="middle" style="padding: 3px" width="500" src="assets/images/variable-importance.png">
 
