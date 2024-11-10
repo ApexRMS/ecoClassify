@@ -1,7 +1,8 @@
 # # set up library (remove after testing) -----------------------------------
 # library(rsyncrosim)
 # mySession <- session("C:/Program Files/SyncroSim Studio")
-# libPath <- "library/image_classifier_testing.ssim"
+# # libPath <- "library/image_classifier_testing.ssim"
+# libPath <- "C:/Users/HannahAdams/Documents/Projects/A332 UofT - UPA Mapping/UPA-testing.ssim"
 
 # myLibrary <- ssimLibrary(name = libPath,
 #                          session = mySession)
@@ -11,7 +12,7 @@
 
 # # define scenario
 # scenario(myProject)
-# myScenario <- scenario(myProject, scenario = 1)
+# myScenario <- scenario(myProject, scenario = 27)
 
 # # view datasheets
 # datasheet(myScenario)
