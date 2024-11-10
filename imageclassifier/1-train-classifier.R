@@ -16,7 +16,7 @@ myLibrary <- ssimLibrary(name = libPath,
 # # view datasheets
 # datasheet(myScenario)
 # source("imageclassifier/workspace.r")
-# transferDir <- ""
+# # transferDir <- ""
 # transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
 
 # START OF MODEL SCRIPT:
@@ -43,7 +43,7 @@ inputVariables <- assignVariables(myScenario,
                                   inputRasterDataframe$TrainingRasterFile)
 timestepList <- inputVariables[[1]]
 nObs <- inputVariables[[2]]
-filterResolution <- inputVariables[[3]]
+filterResolution <- inputVariables[[3]] # TO DO: give warnings for lower limits (must be >=1?)
 filterPercent <- inputVariables[[4]]
 applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
@@ -62,6 +62,9 @@ nCores <- setCores(mulitprocessingSheet)
 # extract list of training, testing, and ground truth rasters ----------------
 trainingRasterList <- extractRasters(inputRasterDataframe, column = 2)
 groundTruthRasterList <- extractRasters(inputRasterDataframe, column = 3)
+
+# reclassify ground truth rasters --------------------------------------------
+groundTruthRasterList <- reclassifyGroundTruth(groundTruthRasterList)
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(Timestep = numeric(0),
@@ -121,7 +124,6 @@ variableImportanceOutput <- plotVariableImportance(variableImportance,
 
 variableImportancePlot <- variableImportanceOutput[[1]]
 varImportanceOutputDataframe <- variableImportanceOutput[[2]]
-
 
 ## Predict presence for training rasters in each timestep group ----------------
 for (t in seq_along(trainingRasterList)) {

@@ -358,8 +358,10 @@ predictRanger <- function(raster,
   ## predict over raster decomposition
   rasterMatrix <- data.frame(raster)
   rasterMatrix <- na.omit(rasterMatrix)
-  predictedValues <- data.frame(predict(model, rasterMatrix))[, 1]
-  values(predictionRaster) <- predictedValues
+  predictedValues <- data.frame(predict(model, rasterMatrix))[, 2]
+
+  # assing values where raster is not NA
+  predictionRaster[!is.na(raster[[1]])] <- predictedValues
 
   return(predictionRaster)
 }
@@ -386,9 +388,9 @@ getPredictionRasters <- function(raster,
                                  modelType = "Random Forest") {
   # predict presence for each raster
   if (modelType == "Random Forest") {
-    # generate probabilities for each raster
-    probabilityRaster <- 1 - predictRanger(raster,
-                                           model)
+    # generate probabilities for each raster using ranger
+    probabilityRaster <- predictRanger(raster,
+                                       model)
   } else if (modelType == "MaxEnt") {
     probabilityRaster <- predict(model, raster, type = "logistic")
   }  else {
@@ -397,13 +399,15 @@ getPredictionRasters <- function(raster,
 
   predictedPresence <- reclassifyRaster(probabilityRaster, threshold)
 
-  return(list(predictedPresence = predictedPresence,
-              probabilityRaster = probabilityRaster))
+  return(list(predictedPresence,
+              probabilityRaster))
 }
 
 reclassifyRaster <- function(raster, threshold) {
+
   raster[raster >= threshold] <- 1
   raster[raster < threshold] <- 0
+
   return(raster)
 }
 
@@ -728,12 +732,12 @@ calculateStatistics <- function(model,
                                 confusionOutputDataframe,
                                 modelOutputDataframe) {
   if (inherits(model, "ranger")) {
-    prediction <- predict(model, testData)$predictions[, 2]
+    prediction <- predict(model, testData)$predictions[, 2] # TODO update for multiclass
   } else {
     prediction <- predict(model, testData, type = "logistic")
   }
 
-  prediction <- as.factor(ifelse(prediction >= threshold, 2, 1))
+  prediction <- as.factor(ifelse(prediction >= threshold, 1, 0))
 
   confusionMatrix <- confusionMatrix(prediction,
                                      testData$presence)
@@ -900,18 +904,19 @@ contextualizeRaster <- function(rasterList) {
 getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
 
   ## Specifying feature classes and regularization parameters for Maxent
-if (isTuningOn) {
-  tuneArgs <- list(fc = c("L", "Q", "P", "LQ", "H", "LQH", "LQHP"), 
-                   rm = seq(0.5, 3, 0.5))
-} else {
-  tuneArgs <- list(fc = c("LQH"), 
-                   rm = 1)
-}
+  if (isTuningOn) {
+    tuneArgs <- list(fc = c("L", "Q", "P", "LQ", "H", "LQH", "LQHP"), 
+                     rm = seq(0.5, 3, 0.5))
+  } else {
+    tuneArgs <- list(fc = c("LQH"), 
+                     rm = 1)
+  }
+  
+  absenceTrainData <- allTrainData[allTrainData$presence == 0, grep("presence|kfold", colnames(allTrainData), invert=T)]
+  presenceTrainData <- allTrainData[allTrainData$presence == 1, grep("presence|kfold", colnames(allTrainData), invert=T)]
 
-  absenceTrainData <- allTrainData[allTrainData$presence == 1, grep("presence|kfold", colnames(allTrainData), invert=T)]
-  presenceTrainData <- allTrainData[allTrainData$presence == 2, grep("presence|kfold", colnames(allTrainData), invert=T)]
-  max1 <- ENMevaluate(occ = presenceTrainData, # absenceTrainData,
-                      bg.coords = absenceTrainData, # presenceTrainData,
+  max1 <- ENMevaluate(occ = presenceTrainData,
+                      bg.coords = absenceTrainData,
                       tune.args = tuneArgs,
                       progbar = F,
                       partitions = "randomkfold",
@@ -922,11 +927,11 @@ if (isTuningOn) {
 
   bestMax <- which.max(max1@results$cbi.val.avg)
   varImp <- max1@variable.importance[bestMax] %>% data.frame()
-  names(varImp) <- c("variable","percent.contribution","permutation.importance")
+  names(varImp) <- c("variable","percent.contribution", "permutation.importance")
   maxentImportance <- getMaxentImportance(varImp)
 
   model <- max1@models[[bestMax]]
-  modelOut <- max1@results[bestMax,]
+  # modelOut <- max1@results[bestMax,]
 
   return(list(model, maxentImportance))
 
@@ -955,12 +960,15 @@ getSensSpec <- function(probs, actual, threshold) {
 ## find optimal threshold between sensitivity and specificity
 getOptimalThreshold <- function(model, testingData, modelType = "Random Forest") {
 
+  # define thresholds
   thresholds <- seq(0.01, 0.99, by = 0.01)
+
+  # define testing observations (subtract 1 for factor level)
   testingObservations <- as.numeric(testingData$presence) - 1
 
   ## predicting data
   if (modelType == "Random Forest") {
-    testingPredictions <- predict(model, testingData)$predictions[, 2]
+    testingPredictions <- predict(model, testingData)$predictions[, 2] # TO DO use value instead of index?
   } else if (modelType == "MaxEnt") {
     testingPredictions <- predict(model, testingData, type = "logistic")
   } else {
@@ -999,9 +1007,9 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   trainingVariables <-  grep("presence|kfold", colnames(allTrainData), invert=T, value=T)
 
   mainModel <- formula(sprintf("%s ~ %s",
-                              "presence",
-                              paste(trainingVariables,
-                                    collapse = " + ")))
+                               "presence",
+                               paste(trainingVariables,
+                                     collapse = " + ")))
 
    ## Specifying feature classes and regularization parameters for Maxent
 if (isTuningOn) {
@@ -1018,12 +1026,12 @@ if (isTuningOn) {
 
   results <- foreach(i = 1:nrow(tuneArgsGrid), .combine = rbind, .packages = "ranger") %dopar% {
   rf1 <-  ranger(mainModel,
-                data = allTrainData,
-                mtry = tuneArgsGrid$mtry[i],
-                num.trees = tuneArgsGrid$nTrees[i],
-                max.depth = tuneArgsGrid$maxDepth[i],
-                probability = TRUE,
-                importance = "impurity")
+                 data = allTrainData,
+                 mtry = tuneArgsGrid$mtry[i],
+                 num.trees = tuneArgsGrid$nTrees[i],
+                 max.depth = tuneArgsGrid$maxDepth[i],
+                 probability = TRUE,
+                 importance = "impurity")
 
   oobError <- rf1$prediction.error
   
@@ -1046,3 +1054,15 @@ bestModel <- ranger(mainModel,
 return(list(bestModel, bestModel$variable.importance))
 stopCluster(cl)
 }
+
+# function to reclassify ground truth rasters
+reclassifyGroundTruth <- function(groundTruthRasterList) {
+  reclassifiedGroundTruthList <- c()
+  for (i in seq_along(groundTruthRasterList)) {
+    groundTruthRaster <- groundTruthRasterList[[i]]
+    groundTruthRaster[groundTruthRaster == min(values(groundTruthRaster), na.rm = TRUE)] <- 0
+    groundTruthRaster[groundTruthRaster == max(values(groundTruthRaster), na.rm = TRUE)] <- 1
+  
+    reclassifiedGroundTruthList <- c(reclassifiedGroundTruthList, groundTruthRaster)
+  }
+  return(reclassifiedGroundTruthList)
