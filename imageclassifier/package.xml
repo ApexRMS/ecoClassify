@@ -14,6 +14,7 @@
         <column name="nObs" dataType="Integer" displayName="Sample size"/>
         <column name="applyContextualization" dataType="Boolean" displayName="Apply contextualization"/>
         <column name="modelType" displayName="Model type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt" isOptional="True"/>
+        <column name="modelTuning" displayName="Enable automated tuning" dataType="Boolean" />
     </dataSheet>
 
     <dataSheet name="PostProcessingOptions" displayName="Post-processing options" isSingleRow="True">

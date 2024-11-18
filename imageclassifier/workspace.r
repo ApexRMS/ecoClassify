@@ -16,7 +16,9 @@ library(rJava)
 library(ecospat)
 library(ENMeval)
 library(cvms)
-library(reshape2)
+library(foreach)
+library(doParallel)
+
 
 # define functions ------------------------------------------------
 
@@ -53,6 +55,7 @@ assignVariables <- function(myScenario,
   nObs <- classifierOptionsDataframe$nObs
   applyContextualization <- classifierOptionsDataframe$applyContextualization
   modelType <- as.character(classifierOptionsDataframe$modelType)
+  modelTuning <- classifierOptionsDataframe$modelTuning
 
   # Load post-processing options datasheet
   postProcessingDataframe <- datasheet(myScenario,
@@ -79,8 +82,40 @@ assignVariables <- function(myScenario,
               filterPercent,
               applyFiltering,
               applyContextualization,
-              modelType))
+              modelType,
+              modelTuning))
 }
+
+## Set cores
+
+#' Set the number of cores for multiprocessing
+#'
+#' @description
+#' 'setCores' determines the number of cores to use for multiprocessing based on the available cores and user settings.
+#'
+#' @param mulitprocessingSheet A dataframe containing multiprocessing settings. It should have the columns 'EnableMultiprocessing' (logical) and 'MaximumJobs' (integer).
+#' @return The number of cores to use for multiprocessing (integer).
+#'
+#' @details
+#' The function first detects the number of available cores on the system. If multiprocessing is enabled in the 'mulitprocessingSheet', it checks if the requested number of cores exceeds the available cores. If so, it sets the number of cores to one less than the available cores and issues a warning. Otherwise, it sets the number of cores to the requested number. If multiprocessing is not enabled, it sets the number of cores to 1.
+#' @noRd
+setCores <- function(mulitprocessingSheet) {
+  availableCores <- parallel::detectCores()
+  if(mulitprocessingSheet$EnableMultiprocessing) {
+    requestedCores <- mulitprocessingSheet$MaximumJobs
+    if(requestedCores > availableCores) {
+      warning(paste0("Requested number of jobs exceeds available cores. Continuing run with ",availableCores," jobs."))
+      nCores <- availableCores - 1
+    } else {
+      nCores <- requestedCores
+    }
+  } else {
+    nCores <- 1
+  }
+  return(nCores)
+}
+
+
 
 #' Extract rasters from filepaths in a dataframe
 #'
@@ -857,17 +892,35 @@ contextualizeRaster <- function(rasterList) {
 
 }
 
-## MaxEnt model and training
-## TO DO: need to make one maxent model for each class, then merge into final prediction raster where
-## the predicted class is the one with the highest probability (and surpasses the threshold). If below
-## the threshold it is assigned a value of 0
+#' Train a Maxent Model with Hyperparameter Tuning
+#'
+#' @description
+#' This function trains a Maxent model using the `ENMevaluate` function with optional hyperparameter tuning.
+#' It evaluates multiple hyperparameter combinations and selects the best model based on the Continuous Boyce Index (CBI).
+#'
+#' @param allTrainData A dataframe containing the training data. The dataframe should include a column named 'presence' indicating the target variable.
+#' @param nCores An integer specifying the number of cores to use for parallel processing.
+#' @param isTuningOn A logical value indicating whether hyperparameter tuning should be performed.
+#' @return A list containing the best Maxent model and its variable importance.
+#'
+#' @details
+#' The function first splits the training data into presence and absence data based on the 'presence' column.
+#' If `isTuningOn` is TRUE, it evaluates multiple combinations of feature classes (`fc`) and regularization multipliers (`rm`).
+#' The best model is selected based on the highest Continuous Boyce Index (CBI). If `isTuningOn` is FALSE, default hyperparameters are used.
+#'
+#'
+#' @import ENMeval
+getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
 
-getMaxentModel <- function(allTrainData) {
-
-  ## TO DO: add full range of tuning parameters in parallel
-  tuneArgs <- list(fc = c("LQHP"),
-                   rm = seq(0.5, 1, 0.5))
-
+  ## Specifying feature classes and regularization parameters for Maxent
+  if (isTuningOn) {
+    tuneArgs <- list(fc = c("L", "Q", "P", "LQ", "H", "LQH", "LQHP"), 
+                     rm = seq(0.5, 3, 0.5))
+  } else {
+    tuneArgs <- list(fc = c("LQH"), 
+                     rm = 1)
+  }
+  
   absenceTrainData <- allTrainData[allTrainData$presence == 0, grep("presence|kfold", colnames(allTrainData), invert=T)]
   presenceTrainData <- allTrainData[allTrainData$presence == 1, grep("presence|kfold", colnames(allTrainData), invert=T)]
 
@@ -876,6 +929,8 @@ getMaxentModel <- function(allTrainData) {
                       tune.args = tuneArgs,
                       progbar = F,
                       partitions = "randomkfold",
+                      parallel = T,
+                      numCores = nCores,
                       quiet = T, ## silence messages but not errors
                       algorithm = 'maxent.jar')
 
@@ -937,7 +992,27 @@ getOptimalThreshold <- function(model, testingData, modelType = "Random Forest")
   return(optimalYouden)
 }
 
-getRandomForestModel <- function(allTrainData) {
+#' Train a Random Forest Model with Hyperparameter Tuning
+#'
+#' @description
+#' This function trains a random forest model using the `ranger` package with optional hyperparameter tuning.
+#' It evaluates multiple hyperparameter combinations in parallel and selects the best model based on the Out-of-Bag (OOB) error.
+#'
+#' @param allTrainData A dataframe containing the training data. The dataframe should include a column named 'presence' indicating the target variable.
+#' @param nCores An integer specifying the number of cores to use for parallel processing.
+#' @param isTuningOn A logical value indicating whether hyperparameter tuning should be performed.
+#' @return A list containing the best random forest model and its variable importance.
+#'
+#' @details
+#' The function first constructs a formula for the random forest model using all columns in `allTrainData` except 'presence' and 'kfold'.
+#' If `isTuningOn` is TRUE, it evaluates multiple combinations of hyperparameters (`mtry`, `maxDepth`, and `nTrees`) in parallel using the `foreach` and `doParallel` packages.
+#' The best model is selected based on the lowest OOB error. If `isTuningOn` is FALSE, default hyperparameters are used.
+#'
+#' @import ranger
+#' @import foreach
+#' @import doParallel
+#' @export
+getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   trainingVariables <-  grep("presence|kfold", colnames(allTrainData), invert=T, value=T)
 
   mainModel <- formula(sprintf("%s ~ %s",
@@ -945,13 +1020,48 @@ getRandomForestModel <- function(allTrainData) {
                                paste(trainingVariables,
                                      collapse = " + ")))
 
+   ## Specifying feature classes and regularization parameters for Maxent
+if (isTuningOn) {
+  tuneArgs <- list(mtry = c(1:6),  ## number of splits
+                   maxDepth = seq(0, 1, 0.2), ## regulariation amount
+                   nTrees = c(500, 1000, 2000)) ## number of trees
+  tuneArgsGrid <- expand.grid(tuneArgs)
+} else {
+  tuneArgs <- list(mtry = round(sqrt(length(trainingVariables)),0),  ## defaults
+                   maxDepth = 0,
+                   nTrees = 500)
+  tuneArgsGrid <- expand.grid(tuneArgs)
+}
+
+  results <- foreach(i = 1:nrow(tuneArgsGrid), .combine = rbind, .packages = "ranger") %dopar% {
   rf1 <-  ranger(mainModel,
                  data = allTrainData,
-                 mtry = 2,
+                 mtry = tuneArgsGrid$mtry[i],
+                 num.trees = tuneArgsGrid$nTrees[i],
+                 max.depth = tuneArgsGrid$maxDepth[i],
                  probability = TRUE,
                  importance = "impurity")
 
-  return(list(rf1, rf1$variable.importance))
+  oobError <- rf1$prediction.error
+  
+  modelResults <- tuneArgsGrid[i,]
+  modelResults[,"oobError"] <- oobError
+  modelResults
+ 
+}
+
+# Find the best model and train off of it
+bestModel <- ranger(mainModel,
+                    data = allTrainData,
+                    mtry = results[which.min(results$oobError), "mtry"],
+                    num.trees = results[which.min(results$oobError), "nTrees"],
+                    max.depth = results[which.min(results$oobError), "maxDepth"],
+                    num.threads = nCores,
+                    probability = TRUE,
+                    importance = "impurity")
+
+return(list(bestModel, bestModel$variable.importance))
+stopCluster(cl)
 }
 
 # function to reclassify ground truth rasters
@@ -965,4 +1075,3 @@ reclassifyGroundTruth <- function(groundTruthRasterList) {
     reclassifiedGroundTruthList <- c(reclassifiedGroundTruthList, groundTruthRaster)
   }
   return(reclassifiedGroundTruthList)
-}
