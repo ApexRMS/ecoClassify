@@ -1,7 +1,7 @@
 # load packages ---------------------------------------------------
 update.packages(repos='http://cran.us.r-project.org', ask = FALSE, oldPkgs = c("terra"))
 
-install.packages("reshape2", repos='http://cran.us.r-project.org')
+# install.packages("reshape2", repos='http://cran.us.r-project.org')
 
 library(rsyncrosim)
 library(tidyverse)
@@ -18,6 +18,7 @@ library(ENMeval)
 library(cvms)
 library(foreach)
 library(doParallel)
+
 
 # define functions ------------------------------------------------
 
@@ -135,7 +136,7 @@ extractRasters <- function(dataframe,
 
   # remove rows with NA values in the second column
   dataframe <- dataframe %>% filter(!is.na(dataframe[, column]))
-
+  
   # define timesteps
   timesteps <- unique(dataframe[, 1])
 
@@ -147,10 +148,18 @@ extractRasters <- function(dataframe,
 
     # subset based on timestep
     subsetData <- dataframe %>% filter(Timesteps == t)
+
     # list all files
     allFiles <- as.vector(subsetData[, column])
+
     # read in all files as a single raster
     subsetRaster <- rast(allFiles)
+
+    if (column == 3) {
+      # remove duplicated layers
+      subsetRaster <- subsetRaster[[1]]
+    }
+
     # add to main raster list
     rasterList <- c(rasterList, subsetRaster)
   }
@@ -968,7 +977,7 @@ getOptimalThreshold <- function(model, testingData, modelType = "Random Forest")
 
   ## predicting data
   if (modelType == "Random Forest") {
-    testingPredictions <- predict(model, testingData)$predictions[, 2] # TO DO use value instead of index?
+    testingPredictions <- predict(model, testingData)$predictions[, 2] # TO DO: use value instead of index?
   } else if (modelType == "MaxEnt") {
     testingPredictions <- predict(model, testingData, type = "logistic")
   } else {
