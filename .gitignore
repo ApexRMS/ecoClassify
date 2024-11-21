@@ -4,3 +4,4 @@ pysyncrosim-tutorial.py
 renv/
 renv.lock
 .Rprofile
+library/
