@@ -38,11 +38,11 @@ library(doParallel)
 #' This function is specifically designed for the the watchtower package
 #' @noRd
 assignVariables <- function(myScenario,
-                            inputRasterDataframe,
+                            trainingRasterDataframe,
                             column) {
 
-  # extract unique timesteps from inputRasterDataframe --------------------------
-  timestepList <- inputRasterDataframe %>%
+  # extract unique timesteps from trainingRasterDataframe --------------------------
+  timestepList <- trainingRasterDataframe %>%
     filter(!is.na(column)) %>%
     pull(Timesteps) %>%
     unique()
@@ -115,8 +115,6 @@ setCores <- function(mulitprocessingSheet) {
   return(nCores)
 }
 
-
-
 #' Extract rasters from filepaths in a dataframe
 #'
 #' @description
@@ -131,23 +129,31 @@ setCores <- function(mulitprocessingSheet) {
 #' timestep are combined into one raster using the terra package, and added
 #' to a list.
 #' @noRd
-extractRasters <- function(dataframe,
+extractRasters <- function(rasterDataframe,
+                           covariateDataframe,
                            column) {
 
-  # remove rows with NA values in the second column
-  dataframe <- dataframe %>% filter(!is.na(dataframe[, column]))
-  
+  if (dim(covariateDataframe)[1] > 0) {
+    # extract covariate data ---
+    # list all files
+    covariateFiles <- as.vector(covariateDataframe[, 1])
+
+    # read in all files as a single raster
+    covariateRaster <- rast(covariateFiles)
+  }
+
   # define timesteps
-  timesteps <- unique(dataframe[, 1])
+  timesteps <- unique(rasterDataframe[, 1])
 
   # create an empty list
   rasterList <- c()
 
+  # extract rasters for each timestep ---
   # loop through timesteps, combining rasters
   for (t in timesteps) {
 
     # subset based on timestep
-    subsetData <- dataframe %>% filter(Timesteps == t)
+    subsetData <- rasterDataframe %>% filter(rasterDataframe[, 1] == t)
 
     # list all files
     allFiles <- as.vector(subsetData[, column])
@@ -158,6 +164,10 @@ extractRasters <- function(dataframe,
     if (column == 3) {
       # remove duplicated layers
       subsetRaster <- subsetRaster[[1]]
+
+    } else if (column == 2 && dim(covariateDataframe)[1] > 0) {
+      # merge with covariate raster
+      subsetRaster <- c(subsetRaster, covariateRaster)
     }
 
     # add to main raster list
@@ -165,52 +175,6 @@ extractRasters <- function(dataframe,
   }
 
   return(rasterList)
-}
-
-#' Extract all rasters from the syncrosim library
-#'
-#' @description
-#' 'extractAllRasters' is a wrapper function to extract rasters from
-#' all input datasheets using the extractRasters function
-#'
-#' @param rasterTrainingDataframe dataframe of timesteps and filepaths
-#' for training data
-#' @param rasterGroundTruthDataframe dataframe of timesteps and filepaths
-#' for ground truth data
-#' @param rasterToClassifyDataframe dataframe of timesteps and filepaths
-#' for rasters to classify
-#' @return list of raster lists for each input dataframe (spatRasters)
-#'
-#' @details
-#' rasterToClassifyDataframe can be an empty dataframe and will return
-#' an empty list
-#' @noRd
-extractAllRasters <- function(inputRasterDataframe) {
-
-  if (modelType == "Random Forest") {
-    # extract training rasters
-    trainingRasterList <- extractRasters(inputRasterDataframe,
-                                         column = 2)
-
-    # extract ground truth rasters
-    groundTruthRasterList <- extractRasters(inputRasterDataframe,
-                                            column = 3)
-
-    # warning if training and ground truth rasters are different lengths
-    # if(length(rasterTrainingDataframe) != length(rasterGroundTruthDataframe)) stop('must have equal number of training and ground truth rasters')
-
-    return(list(trainingRasterList,
-                groundTruthRasterList))
-  } else if (modelType == "MaxEnt") {
-
-    # extract rasters to classify
-    toClassifyRasterList <- extractRasters(inputRasterDataframe,
-                                           column = 4)
-
-    return(toClassifyRasterList)
-
-  }
-
 }
 
 #' Decompose rasters for image classification
@@ -914,13 +878,13 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
 
   ## Specifying feature classes and regularization parameters for Maxent
   if (isTuningOn) {
-    tuneArgs <- list(fc = c("L", "Q", "P", "LQ", "H", "LQH", "LQHP"), 
+    tuneArgs <- list(fc = c("L", "Q", "P", "LQ", "H", "LQH", "LQHP"),
                      rm = seq(0.5, 3, 0.5))
   } else {
-    tuneArgs <- list(fc = c("LQH"), 
+    tuneArgs <- list(fc = c("LQH"),
                      rm = 1)
   }
-  
+
   absenceTrainData <- allTrainData[allTrainData$presence == 0, grep("presence|kfold", colnames(allTrainData), invert=T)]
   presenceTrainData <- allTrainData[allTrainData$presence == 1, grep("presence|kfold", colnames(allTrainData), invert=T)]
 
@@ -1020,19 +984,21 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
                                paste(trainingVariables,
                                      collapse = " + ")))
 
-   ## Specifying feature classes and regularization parameters for Maxent
-if (isTuningOn) {
-  tuneArgs <- list(mtry = c(1:6),  ## number of splits
-                   maxDepth = seq(0, 1, 0.2), ## regulariation amount
-                   nTrees = c(500, 1000, 2000)) ## number of trees
-  tuneArgsGrid <- expand.grid(tuneArgs)
-} else {
-  tuneArgs <- list(mtry = round(sqrt(length(trainingVariables)),0),  ## defaults
-                   maxDepth = 0,
-                   nTrees = 500)
-  tuneArgsGrid <- expand.grid(tuneArgs)
-}
-
+  ## Specifying feature classes and regularization parameters for Maxent
+  if (isTuningOn) {
+    tuneArgs <- list(mtry = c(1:6),  ## number of splits
+                    maxDepth = seq(0, 1, 0.2), ## regulariation amount
+                    nTrees = c(500, 1000, 2000)) ## number of trees
+    tuneArgsGrid <- expand.grid(tuneArgs)
+  } else {
+    tuneArgs <- list(mtry = round(sqrt(length(trainingVariables)),0),  ## defaults
+                    maxDepth = 0,
+                    nTrees = 500)
+    tuneArgsGrid <- expand.grid(tuneArgs)
+  }
+  
+  registerDoParallel(cores=nCores) # TO DO: confirm this is a good solution
+  
   results <- foreach(i = 1:nrow(tuneArgsGrid), .combine = rbind, .packages = "ranger") %dopar% {
   rf1 <-  ranger(mainModel,
                  data = allTrainData,
@@ -1043,7 +1009,7 @@ if (isTuningOn) {
                  importance = "impurity")
 
   oobError <- rf1$prediction.error
-  
+
   modelResults <- tuneArgsGrid[i,]
   modelResults[,"oobError"] <- oobError
   modelResults
@@ -1066,12 +1032,17 @@ stopCluster(cl)
 
 # function to reclassify ground truth rasters
 reclassifyGroundTruth <- function(groundTruthRasterList) {
+
   reclassifiedGroundTruthList <- c()
+
   for (i in seq_along(groundTruthRasterList)) {
     groundTruthRaster <- groundTruthRasterList[[i]]
     groundTruthRaster[groundTruthRaster == min(values(groundTruthRaster), na.rm = TRUE)] <- 0
     groundTruthRaster[groundTruthRaster == max(values(groundTruthRaster), na.rm = TRUE)] <- 1
-  
+
     reclassifiedGroundTruthList <- c(reclassifiedGroundTruthList, groundTruthRaster)
+
   }
+
   return(reclassifiedGroundTruthList)
+}

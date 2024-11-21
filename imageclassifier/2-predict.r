@@ -10,16 +10,19 @@ e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
 # Load raster input datasheets -----------------------------------------------
-inputRasterDataframe <- datasheet(myScenario,
-                                  name = "imageclassifier_InputRasters")
+predictingRasterDataframe <- datasheet(myScenario,
+                                       name = "imageclassifier_InputPredictingRasters")
+
+trainingCovariateDataframe <- datasheet(myScenario,
+                                        name = "imageclassifier_InputPredictingCovariates")
 
 modelObjectDataframe <- datasheet(myScenario,
                                   name = "imageclassifier_ModelObject")
 
 # Assign variables ----------------------------------------------------------
 inputVariables <- assignVariables(myScenario,
-                                  inputRasterDataframe,
-                                  inputRasterDataframe$RasterFileToClassify)
+                                  predictingRasterDataframe,
+                                  predictingRasterDataframe$predictingRasterFile)
 timestepList <- inputVariables[[1]]
 nObs <- inputVariables[[2]]
 filterResolution <- inputVariables[[3]]
@@ -33,7 +36,9 @@ model <- readRDS(modelObjectDataframe$Model)
 optimalThreshold <- modelObjectDataframe$OptimalThreshold
 
 # extract list of training, testing, and ground truth rasters ----------------
-toClassifyRasterList <- extractRasters(inputRasterDataframe, column = 4)
+predictRasterList <- extractRasters(predictingRasterDataframe,
+                                    trainingCovariateDataframe,
+                                    column = 2)
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 
@@ -46,20 +51,20 @@ classifiedRasterOutputDataframe <- data.frame(Timestep = numeric(0),
 classifiedRgbOutputDataframe <- data.frame(Timestep = numeric(0),
                                            RGBImage = character(0))
 
-# add contextualization for toclassify rasters if selected ---------------------
+# add contextualization for prediction rasters if selected ---------------------
 if (applyContextualization == TRUE) {
 
-  toClassifyRasterList <- contextualizeRaster(toClassifyRasterList) # change naming to avoid this
+  predictRasterList <- contextualizeRaster(predictRasterList) # change naming to avoid this
 
 }
 
 ## Predict presence for rasters to classify ------------------------------------
-for (t in seq_along(toClassifyRasterList)) {
+for (t in seq_along(predictRasterList)) {
 
   # get timestep for the current raster
   timestep <- timestepList[t]
 
-  classifiedRasters <- getPredictionRasters(toClassifyRasterList[[t]],
+  classifiedRasters <- getPredictionRasters(predictRasterList[[t]],
                                             model,
                                             optimalThreshold,
                                             modelType)
@@ -87,7 +92,7 @@ for (t in seq_along(toClassifyRasterList)) {
   saveFiles(classifiedPresence,
             groundTruth = NULL,
             classifiedProbability,
-            toClassifyRasterList,
+            predictRasterList,
             category = "forecasting",
             timestep,
             transferDir)

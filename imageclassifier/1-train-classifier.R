@@ -1,22 +1,23 @@
 # # set up library (remove after testing) -----------------------------------
 # library(rsyncrosim)
 # mySession <- session("C:/Program Files/SyncroSim Studio")
-# # libPath <- "library/image_classifier_testing.ssim"
-# libPath <- "C:/Users/HannahAdams/Documents/Projects/A332 UofT - UPA Mapping/UPA-testing.ssim"
+# libPath <- "library/image_classifier_testing.ssim"
+# # libPath <- "C:/Users/HannahAdams/Documents/Projects/A332 UofT - UPA Mapping/UPA-testing.ssim"
 
-myLibrary <- ssimLibrary(name = libPath,
-                         session = mySession)
+# myLibrary <- ssimLibrary(name = libPath,
+#                          session = mySession)
 
 # # define project
 # myProject <- rsyncrosim::project(myLibrary, project = 1)
 
 # # define scenario
 # scenario(myProject)
-# myScenario <- scenario(myProject, scenario = 27)
+# myScenario <- scenario(myProject, scenario = 202)
 
 # # view datasheets
 # datasheet(myScenario)
 # source("imageclassifier/workspace.r")
+
 # # transferDir <- ""
 # transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
 
@@ -34,14 +35,19 @@ myScenario <- scenario()  # Get the SyncroSim Scenario that is currently running
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
-# Load raster input datasheet ------------------------------------------------
-inputRasterDataframe <- datasheet(myScenario,
-                                  name = "imageclassifier_InputRasters")
+# Load raster input datasheets -----------------------------------------------
+trainingRasterDataframe <- datasheet(myScenario,
+                                     name = "imageclassifier_InputTrainingRasters")
 
+trainingCovariateDataframe <- datasheet(myScenario,
+                                        name = "imageclassifier_InputTrainingCovariates")
+ {
+  print("empty")
+}
 # Assign variables ----------------------------------------------------------
 inputVariables <- assignVariables(myScenario,
-                                  inputRasterDataframe,
-                                  inputRasterDataframe$TrainingRasterFile)
+                                  trainingRasterDataframe,
+                                  trainingRasterDataframe$TrainingRasterFile)
 timestepList <- inputVariables[[1]]
 nObs <- inputVariables[[2]]
 filterResolution <- inputVariables[[3]] # TO DO: give warnings for lower limits (must be >=1?)
@@ -61,8 +67,12 @@ nCores <- setCores(mulitprocessingSheet)
 #                rasterGroundTruthDataframe)
 
 # extract list of training, testing, and ground truth rasters ----------------
-trainingRasterList <- extractRasters(inputRasterDataframe, column = 2)
-groundTruthRasterList <- extractRasters(inputRasterDataframe, column = 3)
+trainingRasterList <- extractRasters(trainingRasterDataframe,
+                                     trainingCovariateDataframe,
+                                     column = 2)
+groundTruthRasterList <- extractRasters(trainingRasterDataframe,
+                                        trainingCovariateDataframe,
+                                        column = 3)
 
 # reclassify ground truth rasters --------------------------------------------
 groundTruthRasterList <- reclassifyGroundTruth(groundTruthRasterList)
@@ -101,10 +111,10 @@ allTestData <- splitData[[2]]
 
 ## Train model -----------------------------------------------------------------
 if (modelType == "MaxEnt") {
-  modelOut <- getMaxentModel(allTrainData, nCores, isTuningOn)
+  modelOut <- getMaxentModel(allTrainData, nCores, modelTuning)
   optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "MaxEnt")
 } else if (modelType == "Random Forest") {
-  modelOut <- getRandomForestModel(allTrainData, nCores, isTuningOn)
+  modelOut <- getRandomForestModel(allTrainData, nCores, modelTuning)
   optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "Random Forest")
 } else {
   stop("Model type not recognized")
@@ -119,12 +129,17 @@ saveRDS(model, file.path(transferDir, "model.rds"))
 modelObjectOutputDataframe <- data.frame(Model = file.path(transferDir, "model.rds"),
                                          OptimalThreshold = optimalThreshold)
 
-# extract variable importance plot ---------------------------------------------
+# extract variable importance plot and data frame ------------------------------
 variableImportanceOutput <- plotVariableImportance(variableImportance,
                                                    transferDir)
 
 variableImportancePlot <- variableImportanceOutput[[1]]
-varImportanceOutputDataframe <- variableImportanceOutput[[2]]
+varImportanceOutputImage <- variableImportanceOutput[[2]]
+
+# generate dataframe
+varImportanceOutputDataframe <- as.data.frame(variableImportance) %>%
+  tibble::rownames_to_column("Variable") %>%
+  rename(Importance = "variableImportance")
 
 ## Predict presence for training rasters in each timestep group ----------------
 for (t in seq_along(trainingRasterList)) {
@@ -180,6 +195,12 @@ confusionOutputDataframe <- outputDataframes[[1]]
 modelOutputDataframe <- outputDataframes[[2]]
 confusionMatrixPlot <- outputDataframes[[3]]
 
+# generate model chart dataframe ----------------------------------------------
+modelChartDataframe <- data.frame(Accuracy = modelOutputDataframe %>% filter(Statistic == "Accuracy") %>% pull(Value),
+                                  Precision = modelOutputDataframe %>% filter(Statistic == "Precision") %>% pull(Value),
+                                  Sensitivity = modelOutputDataframe %>% filter(Statistic == "Sensitivity") %>% pull(Value),
+                                  Specificity = modelOutputDataframe %>% filter(Statistic == "Specificity") %>% pull(Value))
+
 # make a confusion matrix output dataframe
 ggsave(filename = file.path(paste0(transferDir, "/ConfusionMatrixPlot.png")),
        confusionMatrixPlot)
@@ -217,7 +238,7 @@ saveDatasheet(myScenario,
               name = "imageclassifier_ModelStatistics")
 
 saveDatasheet(myScenario,
-              data = varImportanceOutputDataframe,
+              data = varImportanceOutputImage,
               name = "imageclassifier_VariableImportanceOutput")
 
 saveDatasheet(myScenario,
@@ -231,3 +252,11 @@ saveDatasheet(myScenario,
 saveDatasheet(myScenario,
               data = confusionMatrixPlotOutputDataframe,
               name = "imageclassifier_ConfusionMatrixPlotOutput")
+
+saveDatasheet(myScenario,
+              data = varImportanceOutputDataframe,
+              name = "imageclassifier_VariableImportanceOutputDataframe")
+
+saveDatasheet(myScenario,
+              data = modelChartDataframe,
+              name = "imageclassifier_ModelChartData")
