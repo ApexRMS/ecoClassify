@@ -7,7 +7,7 @@ permalink: /
 
 # **EcoClassify** SyncroSim Package
 <img align="right" style="padding: 13px" width="180" src="assets/images/logo/ecoClassify-sticker.png">
-[![GitHub release](https://img.shields.io/github/v/release/ApexRMS/A331-watchtower.svg?style=for-the-badge&color=d68a06)](https://github.com/ApexRMS/A331-watchtower/releases/)    <a href="https://github.com/ApexRMS/A331-watchtower"><img align="middle" style="padding: 1px" width="30" src="assets/images/logo/github-trans2.png">
+[![GitHub release](https://img.shields.io/github/v/release/ApexRMS/ecoClassify.svg?style=for-the-badge&color=d68a06)](https://github.com/ApexRMS/ecoClassify/releases/)    <a href="https://github.com/ApexRMS/ecoClassify"><img align="middle" style="padding: 1px" width="30" src="assets/images/logo/github-trans2.png">
 <br>
 
 ## Classify land cover with ease
@@ -31,15 +31,15 @@ The latest version of **ecoClassify** has the following requirements:
 
 ## Getting Started
 
-For a guided tutorial on **ecoClassify**, including installation, set up, model run, and output visualization, see the [Getting Started](https://apexrms.github.io/A331-watchtower/getting_started.html) page.
+For a guided tutorial on **ecoClassify**, including installation, set up, model run, and output visualization, see the [Getting Started](https://apexrms.github.io/ecoClassify/getting_started.html) page.
 
 <br>
 
 ## Key Links
 
-Browse source code for **ecoClassify** at <a href="http://github.com/ApexRMS/A331-watchtower/" target="_blank">http://github.com/ApexRMS/A331-watchtower/</a>. <br>
+Browse source code for **ecoClassify** at <a href="http://github.com/ApexRMS/ecoClassify/" target="_blank">http://github.com/ApexRMS/ecoClassify/</a>. <br>
 Report a bug or contribute an idea at
-<a href="http://github.com/ApexRMS/A331-watchtower/issues" target="_blank">http://github.com/ApexRMS/A331-watchtower/issues</a>. <br>
+<a href="http://github.com/ApexRMS/ecoClassify/issues" target="_blank">http://github.com/ApexRMS/ecoClassify/issues</a>. <br>
 
 <br>
 
@@ -53,7 +53,7 @@ Alex Filazzola (Author) <a href="https://orcid.org/0000-0001-6544-2035" target="
 
 ## Contributors
 
-The ecoClassify SyncroSim package was designed and developed by <a href="https://apexrms.com/" target="_blank">ApexRMS</a>. The development of ecoClassify has been generously supported by several groups, including:
+The **ecoClassify** SyncroSim package was designed and developed by <a href="https://apexrms.com/" target="_blank">ApexRMS</a>. The development of ecoClassify has been generously supported by several groups, including:
 \
 <a href="https://www.utemountainutetribe.com/" target="_blank"><img src="assets/images/ute-mountain-ute-seal.png" width="70px" alt="Ute Mountain Ute Tribe"></a><span style="font-size:12pt; padding-left:5px;">Ute Mountain Ute Tribe
 <a href="https://www.usgs.gov/" target="_blank"><img src="assets/images/usgs_logo.png" width="50px" alt="The U.S. Geological Survey"></a><span style="font-size:12pt; padding-left:5px;">The U.S. Geological Survey
