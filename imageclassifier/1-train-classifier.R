@@ -41,9 +41,7 @@ trainingRasterDataframe <- datasheet(myScenario,
 
 trainingCovariateDataframe <- datasheet(myScenario,
                                         name = "imageclassifier_InputTrainingCovariates")
- {
-  print("empty")
-}
+
 # Assign variables ----------------------------------------------------------
 inputVariables <- assignVariables(myScenario,
                                   trainingRasterDataframe,
@@ -66,16 +64,19 @@ nCores <- setCores(mulitprocessingSheet)
 #                rasterTrainingDataframe,
 #                rasterGroundTruthDataframe)
 
-# extract list of training, testing, and ground truth rasters ----------------
+# extract list of training and ground truth rasters ----------------
 trainingRasterList <- extractRasters(trainingRasterDataframe,
-                                     trainingCovariateDataframe,
                                      column = 2)
+
 groundTruthRasterList <- extractRasters(trainingRasterDataframe,
-                                        trainingCovariateDataframe,
                                         column = 3)
 
 # reclassify ground truth rasters --------------------------------------------
 groundTruthRasterList <- reclassifyGroundTruth(groundTruthRasterList)
+
+# add covariate data to training rasters -------------------------------------
+trainingRasterList <- addCovariates(trainingRasterList,
+                                    trainingCovariateDataframe)
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(Timestep = numeric(0),

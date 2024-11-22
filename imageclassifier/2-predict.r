@@ -13,7 +13,7 @@ transferDir <- e$TransferDirectory
 predictingRasterDataframe <- datasheet(myScenario,
                                        name = "imageclassifier_InputPredictingRasters")
 
-trainingCovariateDataframe <- datasheet(myScenario,
+predictingCovariateDataframe <- datasheet(myScenario,
                                         name = "imageclassifier_InputPredictingCovariates")
 
 modelObjectDataframe <- datasheet(myScenario,
@@ -37,8 +37,11 @@ optimalThreshold <- modelObjectDataframe$OptimalThreshold
 
 # extract list of training, testing, and ground truth rasters ----------------
 predictRasterList <- extractRasters(predictingRasterDataframe,
-                                    trainingCovariateDataframe,
                                     column = 2)
+
+# add covariate data to training rasters -------------------------------------
+predictRasterList <- addCovariates(predictRasterList,
+                                   predictingCovariateDataframe)
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 

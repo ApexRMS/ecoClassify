@@ -129,31 +129,23 @@ setCores <- function(mulitprocessingSheet) {
 #' timestep are combined into one raster using the terra package, and added
 #' to a list.
 #' @noRd
-extractRasters <- function(rasterDataframe,
-                           covariateDataframe,
+extractRasters <- function(dataframe,
                            column) {
 
-  if (dim(covariateDataframe)[1] > 0) {
-    # extract covariate data ---
-    # list all files
-    covariateFiles <- as.vector(covariateDataframe[, 1])
-
-    # read in all files as a single raster
-    covariateRaster <- rast(covariateFiles)
-  }
+  # remove rows with NA values in the second column
+  dataframe <- dataframe %>% filter(!is.na(dataframe[, column]))
 
   # define timesteps
-  timesteps <- unique(rasterDataframe[, 1])
+  timesteps <- unique(dataframe[, 1])
 
   # create an empty list
   rasterList <- c()
 
-  # extract rasters for each timestep ---
   # loop through timesteps, combining rasters
   for (t in timesteps) {
 
     # subset based on timestep
-    subsetData <- rasterDataframe %>% filter(rasterDataframe[, 1] == t)
+    subsetData <- dataframe %>% filter(Timesteps == t)
 
     # list all files
     allFiles <- as.vector(subsetData[, column])
@@ -164,10 +156,6 @@ extractRasters <- function(rasterDataframe,
     if (column == 3) {
       # remove duplicated layers
       subsetRaster <- subsetRaster[[1]]
-
-    } else if (column == 2 && dim(covariateDataframe)[1] > 0) {
-      # merge with covariate raster
-      subsetRaster <- c(subsetRaster, covariateRaster)
     }
 
     # add to main raster list
@@ -176,6 +164,74 @@ extractRasters <- function(rasterDataframe,
 
   return(rasterList)
 }
+
+# extractRasters <- function(dataframe,
+#                            covariateDataframe,
+#                            column) {
+
+#   # remove rows with NA values in the second column
+#   dataframe <- dataframe %>% filter(!is.na(dataframe[, column]))
+
+#   # define timesteps
+#   timesteps <- unique(dataframe[, 1])
+
+#   # create an empty list
+#   rasterList <- c()
+
+#   # list all covariate files
+#   covariateFiles <- as.vector(covariateDataframe[, 1])
+
+#   if (length(covariateFiles) > 0) {
+
+#     # read in all files as a single raster
+#     covariateRaster <- rast(covariateFiles)
+
+#     # loop through timesteps, combining rasters
+#     for (t in timesteps) {
+
+#       # subset based on timestep
+#       subsetData <- dataframe %>% filter(Timesteps == t)
+
+#       # list all files
+#       allFiles <- as.vector(subsetData[, column])
+
+#       # read in all files as a single raster
+#       subsetRaster <- rast(allFiles)
+
+#       if (column == 2) {
+#         # merge with covariate raster
+#         subsetRaster <- c(subsetRaster, covariateRaster)
+#       }
+
+#       # add to main raster list
+#       rasterList <- c(rasterList, subsetRaster)
+#     }
+
+#   } else if (length(covariateFiles) == 0) {
+    
+#     # loop through timesteps, combining rasters
+#     for (t in timesteps) {
+
+#       # subset based on timestep
+#       subsetData <- dataframe %>% filter(Timesteps == t)
+
+#       # list all files
+#       allFiles <- as.vector(subsetData[, column])
+
+#       # read in all files as a single raster
+#       subsetRaster <- rast(allFiles)
+
+#       if (column == 3) {
+#         # remove duplicated layers
+#         subsetRaster <- subsetRaster[[1]]
+#       }
+#       # add to main raster list
+#       rasterList <- c(rasterList, subsetRaster)
+#     }
+#   }
+
+#   return(rasterList)
+# }
 
 #' Decompose rasters for image classification
 #'
@@ -1045,4 +1101,29 @@ reclassifyGroundTruth <- function(groundTruthRasterList) {
   }
 
   return(reclassifiedGroundTruthList)
+}
+
+# add covariate rasters to training data
+addCovariates <- function(rasterList,
+                          covariateDataframe) {
+
+  # filter for NA values
+  covariateDataframe <- covariateDataframe %>% filter(!is.na(covariateDataframe[, 1]))
+
+  # list all covariate files
+  covariateFiles <- as.vector(covariateDataframe[, 1])
+
+  if (length(covariateFiles) > 1) {
+
+    # read in covariate rasters
+    covariateRaster <- rast(covariateFiles)
+
+    # Merge each raster in covariateFiles with each raster in trainingRasterList
+    for (i in seq_along(rasterList)) {
+        rasterList[[i]] <- stack(rasterList[[i]], covariateRaster)
+      }
+  }
+
+  return(rasterList)
+
 }
