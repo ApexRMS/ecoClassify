@@ -1,46 +1,24 @@
-# # set up library (remove after testing) -----------------------------------
-# library(rsyncrosim)
-# mySession <- session("C:/Program Files/SyncroSim Studio")
-# libPath <- "library/image_classifier_testing.ssim"
-# # libPath <- "C:/Users/HannahAdams/Documents/Projects/A332 UofT - UPA Mapping/UPA-testing.ssim"
+## -------------------------------
+## ecoClassify - Train Classifier
+## ApexRMS, November 2024
+## -------------------------------
 
-# myLibrary <- ssimLibrary(name = libPath,
-#                          session = mySession)
-
-# # define project
-# myProject <- rsyncrosim::project(myLibrary, project = 1)
-
-# # define scenario
-# scenario(myProject)
-# myScenario <- scenario(myProject, scenario = 202)
-
-# # view datasheets
-# datasheet(myScenario)
-# source("imageclassifier/workspace.r")
-
-# # transferDir <- ""
-# transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
-
-# START OF MODEL SCRIPT:
-## SKIP OUTSIDE GUI
 # set up workspace ---------------------------------------------------------
 packageDir <- (Sys.getenv("ssim_package_directory"))
-source(file.path(packageDir, "workspace.r"))
+source(file.path(packageDir, "0-helper-functions.r"))
 
-# Set up -------------------------------------------------------------------
 myScenario <- scenario()  # Get the SyncroSim Scenario that is currently running
 
 # Retrieve the transfer directory for storing output rasters
-## CONTINUE HERE
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
 # Load raster input datasheets -----------------------------------------------
 trainingRasterDataframe <- datasheet(myScenario,
-                                     name = "imageclassifier_InputTrainingRasters")
+                                     name = "ecoClassify_InputTrainingRasters")
 
 trainingCovariateDataframe <- datasheet(myScenario,
-                                        name = "imageclassifier_InputTrainingCovariates")
+                                        name = "ecoClassify_InputTrainingCovariates")
 
 # Assign variables ----------------------------------------------------------
 inputVariables <- assignVariables(myScenario,
@@ -58,11 +36,6 @@ modelTuning <- inputVariables[[8]]
 ## check if multiprocessing is selected
 mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
 nCores <- setCores(mulitprocessingSheet)
-
-# check timesteps were input correctly ---------------------------------------
-# checkTimesteps(timesteps,
-#                rasterTrainingDataframe,
-#                rasterGroundTruthDataframe)
 
 # extract list of training and ground truth rasters ----------------
 trainingRasterList <- extractRasters(trainingRasterDataframe,
@@ -214,50 +187,44 @@ filterOutputDataframe <- data.frame(applyFiltering = applyFiltering,
                                     filterResolution = filterResolution,
                                     filterPercent = filterPercent)
 
-# check data type for output dataframes before saving --------------------------
-checkOutputDataframes(rasterOutputDataframe,
-                      confusionOutputDataframe,
-                      modelOutputDataframe,
-                      rgbOutputDataframe)
-
 # Save dataframes back to SyncroSim library's output datasheets ----------------
 
 saveDatasheet(myScenario,
               data = filterOutputDataframe,
-              name = "imageclassifier_PostProcessingOptions")
+              name = "ecoClassify_PostProcessingOptions")
 
 saveDatasheet(myScenario,
               data = rasterOutputDataframe,
-              name = "imageclassifier_RasterOutput")
+              name = "ecoClassify_RasterOutput")
 
 saveDatasheet(myScenario,
               data = confusionOutputDataframe,
-              name = "imageclassifier_ConfusionMatrix")
+              name = "ecoClassify_ConfusionMatrix")
 
 saveDatasheet(myScenario,
               data = modelOutputDataframe,
-              name = "imageclassifier_ModelStatistics")
+              name = "ecoClassify_ModelStatistics")
 
 saveDatasheet(myScenario,
               data = varImportanceOutputImage,
-              name = "imageclassifier_VariableImportanceOutput")
+              name = "ecoClassify_VariableImportanceOutput")
 
 saveDatasheet(myScenario,
               data = rgbOutputDataframe,
-              name = "imageclassifier_RgbOutput")
+              name = "ecoClassify_RgbOutput")
 
 saveDatasheet(myScenario,
               data = modelObjectOutputDataframe,
-              name = "imageclassifier_ModelObject")
+              name = "ecoClassify_ModelObject")
 
 saveDatasheet(myScenario,
               data = confusionMatrixPlotOutputDataframe,
-              name = "imageclassifier_ConfusionMatrixPlotOutput")
+              name = "ecoClassify_ConfusionMatrixPlotOutput")
 
 saveDatasheet(myScenario,
               data = varImportanceOutputDataframe,
-              name = "imageclassifier_VariableImportanceOutputDataframe")
+              name = "ecoClassify_VariableImportanceOutputDataframe")
 
 saveDatasheet(myScenario,
               data = modelChartDataframe,
-              name = "imageclassifier_ModelChartData")
+              name = "ecoClassify_ModelChartData")

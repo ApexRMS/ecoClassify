@@ -1,6 +1,11 @@
+## ---------------------------------------
+## ecoClassify - Predict Using Classifier
+## ApexRMS, November 2024
+## ---------------------------------------
+
 # set up workspace ---------------------------------------------------------
 packageDir <- (Sys.getenv("ssim_package_directory"))
-source(file.path(packageDir, "workspace.r"))
+source(file.path(packageDir, "0-helper-functions.r"))
 
 # Set up -------------------------------------------------------------------
 myScenario <- scenario()  # Get the SyncroSim Scenario that is currently running
@@ -11,13 +16,13 @@ transferDir <- e$TransferDirectory
 
 # Load raster input datasheets -----------------------------------------------
 predictingRasterDataframe <- datasheet(myScenario,
-                                       name = "imageclassifier_InputPredictingRasters")
+                                       name = "ecoClassify_InputPredictingRasters")
 
 predictingCovariateDataframe <- datasheet(myScenario,
-                                        name = "imageclassifier_InputPredictingCovariates")
+                                        name = "ecoClassify_InputPredictingCovariates")
 
 modelObjectDataframe <- datasheet(myScenario,
-                                  name = "imageclassifier_ModelObject")
+                                  name = "ecoClassify_ModelObject")
 
 # Assign variables ----------------------------------------------------------
 inputVariables <- assignVariables(myScenario,
@@ -79,7 +84,7 @@ for (t in seq_along(predictRasterList)) {
                                                              classifiedPresence,
                                                              filterResolution,
                                                              filterPercent,
-                                                             category = "forecasting",
+                                                             category = "training",
                                                              timestep,
                                                              transferDir,
                                                              classifiedRasterOutputDataframe,
@@ -87,7 +92,7 @@ for (t in seq_along(predictRasterList)) {
 
   # define RGB data frame
   classifiedRgbOutputDataframe <- getRgbDataframe(classifiedRgbOutputDataframe,
-                                                  category = "forecasting",
+                                                  category = "training",
                                                   timestep,
                                                   transferDir)
 
@@ -96,7 +101,7 @@ for (t in seq_along(predictRasterList)) {
             groundTruth = NULL,
             classifiedProbability,
             predictRasterList,
-            category = "forecasting",
+            category = "training",
             timestep,
             transferDir)
 }
@@ -105,8 +110,8 @@ for (t in seq_along(predictRasterList)) {
 
 saveDatasheet(myScenario,
               data = classifiedRasterOutputDataframe,
-              name = "imageclassifier_ClassifiedRasterOutput")
+              name = "ecoClassify_ClassifiedRasterOutput")
 
 saveDatasheet(myScenario,
               data = classifiedRgbOutputDataframe,
-              name = "imageclassifier_ClassifiedRgbOutput")
+              name = "ecoClassify_ClassifiedRgbOutput")

@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<package name="imageclassifier" displayName="Image Classifier" description="Image classifier using semantic image segmentation" version="1.0.4" url="https://apexrms.github.io/imageclassifier/">
+<package name="ecoClassify" displayName="ecoClassify" description="Image classifier using semantic image segmentation" version="1.0.0" url="https://apexrms.github.io/ecoClassify/">
 
-    
     <!--Project Level-->
     <dataSheet name="Terminology" isSingleRow="True" dataScope="Project">
         <column name="bandNames" dataType="String" displayName="Training Raster Band Names" isExternalFile="True"/>
@@ -11,7 +10,6 @@
 
     <!--Scenario Level-->
     <!--Input-->
-            
     <dataSheet name="InputTrainingRasters" displayName="Training Rasters">
         <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
         <column name="TrainingRasterFile" dataType="String" displayName="Training Raster" isExternalFile="True"/>
@@ -105,7 +103,7 @@
     </dataSheet>
 
     <!--Transformer 1: training classifier-->
-    <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="watchtower-conda.yml" condaEnvVersion="12">
+    <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1">
         <dataSheet name="InputTrainingRasters" type="Input"/>
         <dataSheet name="InputPredictingRasters" type="Input"/>
         <dataSheet name="InputTrainingCovariates" type="Input"/>
@@ -122,7 +120,7 @@
     </transformer>
 
     <!--Transformer 2: predicting-->
-    <transformer name="Predict" displayName="2-Predict" programName="Rscript" programArguments="2-predict.R" condaEnv="watchtower-conda.yml" condaEnvVersion="12">
+    <transformer name="Predict" displayName="2-Predict" programName="Rscript" programArguments="2-predict.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1">
         <dataSheet name="InputPredictingRasters" type="Input"/>
         <dataSheet name="InputPredictingCovariates" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Input"/>
@@ -137,12 +135,16 @@
     <transformer name="ModelStatisticsExport" dataSheet="ModelStatistics" isExport="True"/>
     <transformer name="PredictedUnfilteredExport" dataSheet="RasterOutput" column="PredictedUnfiltered" isRasterExport="True"/>
     <transformer name="PredictedFilteredExport" dataSheet="RasterOutput" column="PredictedFiltered" isRasterExport="True"/>
+    <transformer name="ProbabilityExport" dataSheet="RasterOutput" column="Probability" isRasterExport="True"/>
     <transformer name="GroundTruthExport" dataSheet="RasterOutput" column="GroundTruth" isRasterExport="True"/>
     <transformer name="VariableImportanceOutputExport" dataSheet="VariableImportanceOutput" column="VariableImportance" isExport="True"/>
     <transformer name="VariableImportanceOutputDataframeExport" dataSheet="VariableImportanceOutputDataframe" isExport="True"/>
     <transformer name="ConfusionMatrixPlotExport" dataSheet="ConfusionMatrixPlotOutput" column="ConfusionMatrixPlot" isExport="True"/>
     <transformer name="RgbOutputExport" dataSheet="RgbOutput" column="RGBImage" isExport="True"/>
     <transformer name="ClassifiedRgbOutputExport" dataSheet="ClassifiedRgbOutput" column="RGBImage" isExport="True"/>
+    <transformer name="ClassifiedUnfilteredExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedUnfiltered" isRasterExport="True"/>
+    <transformer name="ClassifiedFilteredExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedFiltered" isRasterExport="True"/>
+    <transformer name="ClassifiedProbabilityExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedProbability" isRasterExport="True"/>
 
     <!--Scenario Layout-->
     <layout type="Scenario">
@@ -211,9 +213,17 @@
             <item name="VariableImportanceOutputDataframeExport" displayName="Variable Importance"/>
         </group>
         <group name="MapExport" displayName="Map Outputs">
-            <item name="PredictedUnfilteredExport" displayName="Unfiltered Prediction"/>
-            <item name="PredictedFilteredExport" displayName="Filtered Prediction"/>
-            <item name="GroundTruthExport" displayName="Ground Truth"/>
+            <group name="TrainingMapExport" displayName="Training">
+                <item name="PredictedUnfilteredExport" displayName="Unfiltered Prediction"/>
+                <item name="PredictedFilteredExport" displayName="Filtered Prediction"/>
+                <item name="ProbabilityExport" displayName="Probability"/>
+                <item name="GroundTruthExport" displayName="Ground Truth"/>
+            </group>
+            <group name="PredictingMapExport" displayName="Prediction">
+                <item name="ClassifiedUnfilteredExport" displayName="Unfiltered Prediction"/>
+                <item name="ClassifiedFilteredExport" displayName="Filtered Prediction"/>
+                <item name="ClassifiedProbabilityExport" displayName="Probability"/>
+            </group>
         </group>
         <group name="ImageExport" displayName="Image Outputs">
             <item name="VariableImportanceOutputExport" displayName="Variable Importance Plot"/>

@@ -1,8 +1,10 @@
-# load packages ---------------------------------------------------
+## -------------------------------
+## ecoClassify - Helper Functions
+## ApexRMS, November 2024
+## -------------------------------
+
+## load packages ---------------------------------------------------
 update.packages(repos='http://cran.us.r-project.org', ask = FALSE, oldPkgs = c("terra"))
-
-# install.packages("reshape2", repos='http://cran.us.r-project.org')
-
 library(rsyncrosim)
 library(tidyverse)
 library(terra)
@@ -19,20 +21,22 @@ library(cvms)
 library(foreach)
 library(doParallel)
 
+## define functions ------------------------------------------------
 
-# define functions ------------------------------------------------
-
-#' Assign objects froma a datasheet of variables
+#' Assign objects froma a datasheet of input variables ---
 #'
 #' @description
 #' 'assignVariables' extracts variables from datashseets in the specified
 #' syncrosim scenario and assigns them to an object.
 #'
 #' @param myScenario syncrosim scenario object
+#' @param trainingRasterDataframe dataframe with input variables
+#' @param column integer specifying the column to extract
 #' @return list of objects (timesteps = numeric, nObs = numeric,
 #' filterresolution = numeric, filterPercent = numeric,
-#' applyFiltering = boolean) that have been extracted from the syncrosim
-#' datasheet
+#' applyFiltering = boolean, applyContextualization = boolean,
+#' modelType = String ("Random Forest" or "MaxENt"), modelTuning = boolean)
+#' that have been extracted from the syncrosim datasheet
 #'
 #' @details
 #' This function is specifically designed for the the watchtower package
@@ -49,7 +53,7 @@ assignVariables <- function(myScenario,
 
   # Load classifier options datasheet
   classifierOptionsDataframe <- datasheet(myScenario,
-                                          name = "imageclassifier_ClassifierOptions")
+                                          name = "ecoClassify_ClassifierOptions")
 
   # Extract model input values
   nObs <- classifierOptionsDataframe$nObs
@@ -59,7 +63,7 @@ assignVariables <- function(myScenario,
 
   # Load post-processing options datasheet
   postProcessingDataframe <- datasheet(myScenario,
-                                       name = "imageclassifier_PostProcessingOptions")
+                                       name = "ecoClassify_PostProcessingOptions")
 
   # Extract post-processing values
   filterResolution <- postProcessingDataframe$filterResolution
@@ -86,18 +90,24 @@ assignVariables <- function(myScenario,
               modelTuning))
 }
 
-## Set cores
-
-#' Set the number of cores for multiprocessing
+#' Set the number of cores for multiprocessing ---
 #'
 #' @description
-#' 'setCores' determines the number of cores to use for multiprocessing based on the available cores and user settings.
+#' 'setCores' determines the number of cores to use for multiprocessing
+#' based on the available cores and user settings.
 #'
-#' @param mulitprocessingSheet A dataframe containing multiprocessing settings. It should have the columns 'EnableMultiprocessing' (logical) and 'MaximumJobs' (integer).
+#' @param mulitprocessingSheet A dataframe containing multiprocessing settings.
+#' It should have the columns 'EnableMultiprocessing' (logical) and
+#' 'MaximumJobs' (integer).
 #' @return The number of cores to use for multiprocessing (integer).
 #'
 #' @details
-#' The function first detects the number of available cores on the system. If multiprocessing is enabled in the 'mulitprocessingSheet', it checks if the requested number of cores exceeds the available cores. If so, it sets the number of cores to one less than the available cores and issues a warning. Otherwise, it sets the number of cores to the requested number. If multiprocessing is not enabled, it sets the number of cores to 1.
+#' The function first detects the number of available cores on the system.
+#' If multiprocessing is enabled in the 'mulitprocessingSheet', it checks if
+#' the requested number of cores exceeds the available cores. If so, it sets
+#' the number of cores to one less than the available cores and issues a warning.
+#' Otherwise, it sets the number of cores to the requested number. If
+#' multiprocessing is not enabled, it sets the number of cores to 1.
 #' @noRd
 setCores <- function(mulitprocessingSheet) {
   availableCores <- parallel::detectCores()
@@ -115,13 +125,14 @@ setCores <- function(mulitprocessingSheet) {
   return(nCores)
 }
 
-#' Extract rasters from filepaths in a dataframe
+#' Extract rasters from filepaths in a dataframe ---
 #'
 #' @description
 #' 'extractRasters' takes a dataframe of raster filepaths and creates
 #' a list with one raster for each timestep
 #'
 #' @param dataframe column 1 = timestep, column 2 = filepath (dataframe)
+#' @param column integer specifying the column to extract
 #' @return list of rasters (spatRaster), one for each timestep
 #'
 #' @details
@@ -165,75 +176,7 @@ extractRasters <- function(dataframe,
   return(rasterList)
 }
 
-# extractRasters <- function(dataframe,
-#                            covariateDataframe,
-#                            column) {
-
-#   # remove rows with NA values in the second column
-#   dataframe <- dataframe %>% filter(!is.na(dataframe[, column]))
-
-#   # define timesteps
-#   timesteps <- unique(dataframe[, 1])
-
-#   # create an empty list
-#   rasterList <- c()
-
-#   # list all covariate files
-#   covariateFiles <- as.vector(covariateDataframe[, 1])
-
-#   if (length(covariateFiles) > 0) {
-
-#     # read in all files as a single raster
-#     covariateRaster <- rast(covariateFiles)
-
-#     # loop through timesteps, combining rasters
-#     for (t in timesteps) {
-
-#       # subset based on timestep
-#       subsetData <- dataframe %>% filter(Timesteps == t)
-
-#       # list all files
-#       allFiles <- as.vector(subsetData[, column])
-
-#       # read in all files as a single raster
-#       subsetRaster <- rast(allFiles)
-
-#       if (column == 2) {
-#         # merge with covariate raster
-#         subsetRaster <- c(subsetRaster, covariateRaster)
-#       }
-
-#       # add to main raster list
-#       rasterList <- c(rasterList, subsetRaster)
-#     }
-
-#   } else if (length(covariateFiles) == 0) {
-    
-#     # loop through timesteps, combining rasters
-#     for (t in timesteps) {
-
-#       # subset based on timestep
-#       subsetData <- dataframe %>% filter(Timesteps == t)
-
-#       # list all files
-#       allFiles <- as.vector(subsetData[, column])
-
-#       # read in all files as a single raster
-#       subsetRaster <- rast(allFiles)
-
-#       if (column == 3) {
-#         # remove duplicated layers
-#         subsetRaster <- subsetRaster[[1]]
-#       }
-#       # add to main raster list
-#       rasterList <- c(rasterList, subsetRaster)
-#     }
-#   }
-
-#   return(rasterList)
-# }
-
-#' Decompose rasters for image classification
+#' Decompose rasters for image classification ---
 #'
 #' @description
 #' 'decomposedRaster' samples data from a training and ground truth raster,
@@ -270,7 +213,7 @@ decomposedRaster <- function(predRast,
   return(trainData)
 }
 
-#' Plot variable importance from random forest model
+#' Plot variable importance from random forest model ---
 #'
 #' @description
 #' 'plotVariableImportance' creates and writes variable importance plot
@@ -315,7 +258,7 @@ plotVariableImportance <- function(importanceData,
   return(list(variableImportancePlot, varImportanceOutputDataframe))
 }
 
-#' Split image data for training and testing
+#' Split image data for training and testing ---
 #'
 #' @description
 #' 'splitTrainTest' is a wrapper for the decomposeRaster function,
@@ -365,7 +308,7 @@ splitTrainTest <- function(trainingRasterList,
               allTestData))
 }
 
-#' Predict presence over area
+#' Predict presence over area ---
 #'
 #' @description
 #' 'predictRanger' uses a random forest model to predict presence
@@ -395,7 +338,7 @@ predictRanger <- function(raster,
   return(predictionRaster)
 }
 
-#' Predict presence and generate probability values over area
+#' Predict presence and generate probability values over area ---
 #'
 #' @description
 #' 'getPredictionRasters' is a wrapper function for predictRanger,
@@ -440,7 +383,7 @@ reclassifyRaster <- function(raster, threshold) {
   return(raster)
 }
 
-#' Filter prediction raster
+#' Filter prediction raster ---
 #'
 #' @description
 #' 'filterFun' filters out presence cells in input raster based on the classification
@@ -472,7 +415,7 @@ filterFun <- function(raster,
   }
 }
 
-#' Generate raster output dataframe
+#' Generate raster output dataframe ---
 #'
 #' @description
 #' 'generateRasterDataframe' saves output raster files and generates output dataframe
@@ -642,13 +585,14 @@ generateRasterDataframe <- function(applyFiltering,
   return(OutputDataframe)
 }
 
-#' Generate RGB output dataframe
+#' Generate RGB output dataframe ---
 #'
 #' @description
 #' 'getRgbDataframe' generates output dataframe for RgbOutput syncrosim datasheet.
 #'
 #' @param rgbOutputDataframe RGB dataframe to be added to (dataframe)
-#' @param t iteration (integer)
+#' @param category category for RGB image for file naming ("predicting" or "training" (character) 
+#' @param timestep timestep value (integer)
 #' @param trandferDir directory for saving files (character)
 #' @return filtered raster (spatRaster)
 #'
@@ -675,7 +619,7 @@ getRgbDataframe <- function(rgbOutputDataframe,
 
 }
 
-#' Save raster and image files
+#' Save raster and image files ---
 #'
 #' @description
 #' 'saveFiles' saves raster and images files to transfer directory so they can be
@@ -685,7 +629,7 @@ getRgbDataframe <- function(rgbOutputDataframe,
 #' @param groundTruth ground truth raster (spatRaster)
 #' @param probabilityRaster probability raster (spatRaster)
 #' @param trainingRasterList list of training rasters for generating RGB image ( list of spatRasters)
-#' @param t iteration (integer)
+#' @param timestep timestep (integer)
 #' @param trandferDir directory for saving files (character)
 #'
 #' @noRd
@@ -739,10 +683,10 @@ saveFiles <- function(predictedPresence,
   dev.off()
 }
 
-#' Calculate statistics from random forest model predictions
+#' Calculate statistics from random forest model predictions ---
 #'
 #' @description
-#' 'calculateStatistics' predicts presence based on all test data and 
+#' 'calculateStatistics' predicts presence based on all test data and
 #' calculates a confusion matrix and other key statistics
 #'
 #' @param model random forest model (random forest object)
@@ -820,55 +764,6 @@ calculateStatistics <- function(model,
   return(list(confusionOutputDataframe,
               modelOutputDataframe,
               confusionMatrixPlot))
-}
-
-# check for issues with data structure -----------------------------
-checkTimesteps <- function(timesteps,
-                           rasterTrainingDataframe,
-                           rasterGroundTruthDataframe) {
-
-  # check if all timesteps are included in both dataframes
-  trainingTimesteps <- rasterTrainingDataframe %>%
-    pull(Timesteps) %>%
-    unique()
-
-  groundTruthTimesteps <- rasterGroundTruthDataframe %>%
-    pull(Timesteps) %>%
-    unique()
-
-  # convert timesteps to numeric
-  timestepsNumeric <- as.numeric(timesteps)
-
-  if (!identical(trainingTimesteps, groundTruthTimesteps)) stop("must have same timesteps for training and ground truth raster input datasheets")
-  if (!identical(timestepsNumeric, trainingTimesteps)) warning('timestep range does not match training raster input datasheet')
-  if (!identical(timestepsNumeric, groundTruthTimesteps)) warning('timestep range does not match ground truth raster input datasheet')
-
-}
-
-checkOutputDataframes <- function(rasterOutputDataframe,
-                                  confusionOutputDataframe,
-                                  modelOutputDataframe,
-                                  rgbOutputDataframe) {
-
-  # check that rasterOutputDataframe has the correct data types
-  if (!is.numeric(rasterOutputDataframe$Timestep)) warning('Incorrect data type for Timestep in raster output datasheet')
-  if (!is.character(rasterOutputDataframe$PredictedUnfiltered)) warning('Incorrect data type for unfiltered prediction filepath in raster output datasheet')
-  if (!is.character(rasterOutputDataframe$PredictedFiltered)) warning('Incorrect data type for filtered prediction filepath in raster output datasheet')
-  if (!is.character(rasterOutputDataframe$GroundTruth)) warning('Incorrect data type for ground truth filepath in raster output datasheet')
-  if (!is.character(rasterOutputDataframe$Probability)) warning('Incorrect data type for probability filepath in raster output datasheet')
-
-  # check that confusionOutputDatafram has the correct data types
-  if (!is.numeric(confusionOutputDataframe$Prediction)) warning('Incorrect data type for Prediction in confusion matrix output')
-  if (!is.numeric(confusionOutputDataframe$Reference)) warning('Incorrect data type for Reference in confusion matrix output')
-  if (!is.numeric(confusionOutputDataframe$Frequency)) warning('Incorrect data type for Frequency in confusion matrix output')
-
-  # check that modelOutputDataframe has the correct data types
-  if (!is.character(modelOutputDataframe$Statistic)) warning('Incorrect data type for Statistic in model statistics output')
-  if (!is.numeric(modelOutputDataframe$Value)) warning('Incorrect data type for Value in model statistics output')
-
-  # check that rgbOutputDataframe has the correct data types
-  if (!is.numeric(rgbOutputDataframe$Timestep)) warning('Incorrect data type for Timestep in RBG raster output')
-  if (!is.character(rgbOutputDataframe$RGBImage)) warning('Incorrect data type for RGBImage in RBG raster output')
 }
 
 # context functions ------------------------------
@@ -1113,15 +1008,15 @@ addCovariates <- function(rasterList,
   # list all covariate files
   covariateFiles <- as.vector(covariateDataframe[, 1])
 
-  if (length(covariateFiles) > 1) {
+  if (length(covariateFiles) > 0) {
 
     # read in covariate rasters
     covariateRaster <- rast(covariateFiles)
 
     # Merge each raster in covariateFiles with each raster in trainingRasterList
     for (i in seq_along(rasterList)) {
-        rasterList[[i]] <- stack(rasterList[[i]], covariateRaster)
-      }
+      rasterList[[i]] <- c(rasterList[[i]], covariateRaster)
+    }
   }
 
   return(rasterList)
