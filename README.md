@@ -5,4 +5,4 @@
 * See the [Home page](https://apexrms.github.io/ecoClassify/) for an overview of **ecoClassify**
 * See the [Getting Started](https://apexrms.github.io/ecoClassify/getting_started.html) page to get up and running quickly
 
-The ongoing development of **ecoClassify** has been generously supported by several agencies, including the <a href="https://www.usgs.gov/" target="_blank">U.S. Geological Survey</a>, the [Ute Mountain Ute Tribe](https://www.utemountainutetribe.com/), the [University of Toronto](https://www.utoronto.ca/), and [Western University](https://www.uwo.ca/index.html). As a result, **ecoClassify** is available as a free download.
+The ongoing development of **ecoClassify** has been generously supported by several agencies, including the <a href="https://www.usgs.gov/" target="_blank">U.S. Geological Survey</a>, the [Ute Mountain Ute Tribe](https://www.utemountainutetribe.com/){:target="_blank"}, the [University of Toronto](https://www.utoronto.ca/), and [Western University](https://www.uwo.ca/index.html). As a result, **ecoClassify** is available as a free download.
