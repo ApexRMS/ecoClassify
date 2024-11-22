@@ -1,6 +1,2 @@
-\docs
-testing.r
-pysyncrosim-tutorial.py
-renv/
-renv.lock
-.Rprofile
+docs/
+dev/
