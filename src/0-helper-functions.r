@@ -5,6 +5,9 @@
 
 ## load packages ---------------------------------------------------
 update.packages(repos='http://cran.us.r-project.org', ask = FALSE, oldPkgs = c("terra"))
+
+install.packages("reshape2", repos='http://cran.us.r-project.org')
+
 library(rsyncrosim)
 library(tidyverse)
 library(terra)

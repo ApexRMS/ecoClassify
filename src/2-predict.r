@@ -35,12 +35,13 @@ filterPercent <- inputVariables[[4]]
 applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
 modelType <- inputVariables[[7]]
+modelTuning <- inputVariables[[8]]
 
 # load model and threshold
 model <- readRDS(modelObjectDataframe$Model)
 optimalThreshold <- modelObjectDataframe$OptimalThreshold
 
-# extract list of training, testing, and ground truth rasters ----------------
+# extract list of testing rasters --------------------------------------------
 predictRasterList <- extractRasters(predictingRasterDataframe,
                                     column = 2)
 
@@ -84,7 +85,7 @@ for (t in seq_along(predictRasterList)) {
                                                              classifiedPresence,
                                                              filterResolution,
                                                              filterPercent,
-                                                             category = "training",
+                                                             category = "predicting",
                                                              timestep,
                                                              transferDir,
                                                              classifiedRasterOutputDataframe,
@@ -92,7 +93,7 @@ for (t in seq_along(predictRasterList)) {
 
   # define RGB data frame
   classifiedRgbOutputDataframe <- getRgbDataframe(classifiedRgbOutputDataframe,
-                                                  category = "training",
+                                                  category = "predicting",
                                                   timestep,
                                                   transferDir)
 
@@ -101,7 +102,7 @@ for (t in seq_along(predictRasterList)) {
             groundTruth = NULL,
             classifiedProbability,
             predictRasterList,
-            category = "training",
+            category = "predicting",
             timestep,
             transferDir)
 }
