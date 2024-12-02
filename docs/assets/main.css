@@ -201,7 +201,7 @@ table td { border: 1px solid #e8e8e8; }
 /* Links */
 a { color: var(--apexOrange); }
 
-.site-title::before { content: url("images/logo/ecoclassify-logo.png"); display: inline-block; position: relative; padding-right: 10px; padding-top: 17px; vertical-align: middle; }
+.site-title::before { content: url("images/logo/ecoclassify-logo.png"); width: 250px; display: inline-block; position: relative; padding-right: 10px; padding-top: 17px; vertical-align: middle; }
 
 .site-header { background-color: #f0f0f0; padding-right: 15%; padding-left: 10%; }
 
