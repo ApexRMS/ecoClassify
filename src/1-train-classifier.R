@@ -32,6 +32,7 @@ applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
 modelType <- inputVariables[[7]]
 modelTuning <- inputVariables[[8]]
+normalizeRasters <- inputVariables[[9]]
 
 ## check if multiprocessing is selected
 mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
@@ -44,6 +45,11 @@ trainingRasterList <- extractRasters(trainingRasterDataframe,
 groundTruthRasterList <- extractRasters(trainingRasterDataframe,
                                         column = 3)
 
+# normalize training rasters if selected -------------------------------------
+if (normalizeRasters == TRUE) {
+  trainingRasterList <- normalizeRaster(trainingRasterList)
+}
+writeRaster(trainingRasterList[[1]], "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing/JuneNormalized.tif")
 # reclassify ground truth rasters --------------------------------------------
 groundTruthRasterList <- reclassifyGroundTruth(groundTruthRasterList)
 

@@ -63,6 +63,7 @@ assignVariables <- function(myScenario,
   applyContextualization <- classifierOptionsDataframe$applyContextualization
   modelType <- as.character(classifierOptionsDataframe$modelType)
   modelTuning <- classifierOptionsDataframe$modelTuning
+  normalizeRasters <- classifierOptionsDataframe$normalizeRasters
 
   # Load post-processing options datasheet
   postProcessingDataframe <- datasheet(myScenario,
@@ -90,7 +91,8 @@ assignVariables <- function(myScenario,
               applyFiltering,
               applyContextualization,
               modelType,
-              modelTuning))
+              modelTuning,
+              normalizeRasters))
 }
 
 #' Set the number of cores for multiprocessing ---
@@ -1023,5 +1025,30 @@ addCovariates <- function(rasterList,
   }
 
   return(rasterList)
+}
 
+# normalize raster values between 0 and 1 ------------------------------
+# Normalize bands ---
+normalizeBand <- function(band) {
+  min_val <- min(values(band), na.rm = TRUE)
+  max_val <- max(values(band), na.rm = TRUE)
+  (band - min_val) / (max_val - min_val)
+}
+
+# use normalizeBand function to normalize all bands in a raster --------
+normalizeRaster <- function(rasterList) {
+
+  # make an empty list for normalized rasters
+  normalizedRasterList <- c()
+
+  for (raster in rasterList) {
+    # normalize bands for each raster in rasterList
+    normalizedRaster <- lapply(1:nlyr(raster),
+                               function(i) normalizeBand(raster[[i]])) %>% rast()
+    
+    # append to normalizedRasterList
+    normalizedRasterList <- c(normalizedRasterList, normalizedRaster)
+  }
+
+  return(normalizedRasterList)
 }
