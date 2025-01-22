@@ -36,6 +36,7 @@ applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
 modelType <- inputVariables[[7]]
 modelTuning <- inputVariables[[8]]
+normalizeRasters <- inputVariables[[9]]
 
 # load model and threshold
 model <- readRDS(modelObjectDataframe$Model)
@@ -44,6 +45,11 @@ optimalThreshold <- modelObjectDataframe$OptimalThreshold
 # extract list of testing rasters --------------------------------------------
 predictRasterList <- extractRasters(predictingRasterDataframe,
                                     column = 2)
+
+# normalize training rasters if selected -------------------------------------
+if (normalizeRasters == TRUE) {
+  predictRasterList <- normalizeRaster(predictRasterList)
+}
 
 # add covariate data to training rasters -------------------------------------
 predictRasterList <- addCovariates(predictRasterList,
