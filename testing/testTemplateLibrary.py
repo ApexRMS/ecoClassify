@@ -4,11 +4,13 @@ import os
 import argparse
 from urllib.parse import urlparse
 import re
+import urllib.request
+import tempfile
+import zipfile
 
-def version_to_tag(version):
-    return version.replace(".", "-")
 
-def update_metadata(file_path, new_version):
+
+def update_metadata(file_path):
     tree = ET.parse(file_path)
     root = tree.getroot()
 
@@ -29,17 +31,6 @@ def run_console_command(args):
         return False
     return True
 
-import urllib.request
-import tempfile
-import zipfile
-
-import zipfile
-import tempfile
-import urllib.request
-import subprocess
-import os
-import re
-from urllib.parse import urlparse
 
 def list_scenarios(console_path, lib_path, results_only=False):
     result = subprocess.run(
@@ -197,12 +188,11 @@ def run_libraries(root, console_path, temp_dir=None):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("meta", help="Path to meta-data.xml")
-    parser.add_argument("--version", required=True, help="New package version (e.g., 4.3.7)")
     parser.add_argument("--console", default="SyncroSim.Console.exe", help="Path to SyncroSim console")
     parser.add_argument("--tempdir", default=None, help="Temporary directory")
     args = parser.parse_args()
 
-    tree, root = update_metadata(args.meta, args.version)
+    tree, root = update_metadata(args.meta)
     run_libraries(root, args.console, args.tempdir)
 
 if __name__ == "__main__":
