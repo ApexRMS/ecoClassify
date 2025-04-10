@@ -108,7 +108,7 @@ def update_library(console_path, lib_path):
         print(f"❌ Failed to update library: {result.stderr}")
         return []
 
-    # Parse scenario IDs using regex
+    # Parse scenario IDs 
     sids = re.findall(r"\bID: (\d+)", result.stdout)
     print("✅ Library successfully updated.")
     return sids
@@ -174,7 +174,7 @@ def run_libraries(root, console_path, temp_dir=None):
         sid_str = ",".join(sids)
         print(f"▶️ Running scenarios {sid_str} in: {lib_path}")
 
-        start_time = time.time()  # ⏱ Start timer
+        start_time = time.time() 
 
         result = subprocess.run(
             [console_path, "--run", f"--lib={lib_path}", f"--sids={sid_str}"],
@@ -182,7 +182,7 @@ def run_libraries(root, console_path, temp_dir=None):
             text=True
         )
 
-        elapsed = time.time() - start_time  # ⏱ Stop timer
+        elapsed = time.time() - start_time 
 
         if result.returncode != 0:
             print(f"❌ Scenario run failed after {elapsed:.2f} seconds:\n{result.stderr}")
