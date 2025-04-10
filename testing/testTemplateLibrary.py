@@ -7,6 +7,7 @@ import re
 import urllib.request
 import tempfile
 import zipfile
+import time
 
 
 
@@ -172,16 +173,21 @@ def run_libraries(root, console_path, temp_dir=None):
         # Run only the listed scenario IDs
         sid_str = ",".join(sids)
         print(f"▶️ Running scenarios {sid_str} in: {lib_path}")
+
+        start_time = time.time()  # ⏱ Start timer
+
         result = subprocess.run(
-            [console_path, "--run", f"--lib={lib_path}", f"--sids={sid_str}" ],
+            [console_path, "--run", f"--lib={lib_path}", f"--sids={sid_str}"],
             capture_output=True,
             text=True
         )
 
+        elapsed = time.time() - start_time  # ⏱ Stop timer
+
         if result.returncode != 0:
-            print(f"❌ Scenario run failed:\n{result.stderr}")
+            print(f"❌ Scenario run failed after {elapsed:.2f} seconds:\n{result.stderr}")
         else:
-            print(f"✅ Scenario run completed:\n{result.stdout}")
+            print(f"✅ Scenario run completed in {elapsed:.2f} seconds:\n{result.stdout}")
 
 
 

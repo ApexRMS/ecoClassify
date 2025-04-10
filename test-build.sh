@@ -10,4 +10,4 @@ python testing/reinstallPackage.py \
 
 
   
-python testing/testTemplateLibrary.py testing/metadata.xml --console "/c/Program Files/SyncroSim/SyncroSim.Console.exe"
+python testing/testTemplateLibrary.py testing/metadata.xml --console "/c/Program Files/SyncroSim/SyncroSim.Console.exe" --tempdir scratch/
