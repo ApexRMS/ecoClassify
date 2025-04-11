@@ -2,14 +2,15 @@
 name = "raster-decompose"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.70"  # Optional, helps CI and crates.io
 
 [dependencies]
-clap = { version = "4.4", features = ["derive"] }
-rayon = "1.8"
+clap = { version = "4.5", features = ["derive"] }
+rayon = "1.10"
 ndarray = "0.15"
 ndarray-stats = "0.5"
 linfa = "0.7"
 linfa-reduction = "0.7"
-tiff =  "0.8"
-csv = "1.1"
+tiff= "0.7"
+csv = "1.3"
 thiserror = "1.0"

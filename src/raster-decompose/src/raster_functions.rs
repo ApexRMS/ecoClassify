@@ -1,4 +1,5 @@
-use std::fs::File;
+// Rust raster utilities using GDAL for maximum compatibility
+
 use std::path::Path;
 use tiff::decoder::{Decoder, DecodingResult};
 use ndarray::{Array2, s};
@@ -7,54 +8,56 @@ use linfa::traits::{Fit, Transformer};
 use linfa::DatasetBase;
 use linfa_reduction::Pca;
 use csv::Writer;
-
+use std::fs::File;
 
 #[derive(Error, Debug)]
 pub enum TiffReadError {
     #[error("TIFF decoding error: {0}")]
     DecodeError(#[from] tiff::TiffError),
 
-    #[error("Shape mismatch or conversion error: {0}")]
+    #[error("Shape error: {0}")]
     ShapeError(#[from] ndarray::ShapeError),
-
-    #[error("Unsupported pixel format in TIFF")]
-    UnsupportedPixelFormat,
 
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+
+    #[error("Unsupported pixel format in TIFF")]
+    UnsupportedPixelFormat,
 }
+
 
 pub fn read_bands<P: AsRef<Path>>(path: P) -> Result<Vec<Array2<f64>>, TiffReadError> {
     let file = File::open(path)?;
     let mut decoder = Decoder::new(file)?;
+    let (width, height) = decoder.dimensions()?;
     let mut bands = Vec::new();
 
-    loop {
-        let (width, height) = decoder.dimensions()?;
-        let band: Array2<f64> = match decoder.read_image()? {
-            DecodingResult::U8(buf) => {
-                Array2::from_shape_vec((height as usize, width as usize), buf.into_iter().map(|v| v as f64).collect())?
-            }
-            DecodingResult::U16(buf) => {
-                Array2::from_shape_vec((height as usize, width as usize), buf.into_iter().map(|v| v as f64).collect())?
-            }
-            DecodingResult::F32(buf) => {
-                Array2::from_shape_vec((height as usize, width as usize), buf.into_iter().map(|v| v as f64).collect())?
-            }
-            _ => return Err(TiffReadError::UnsupportedPixelFormat),
-        };
-        bands.push(band);
-
-        let has_more = decoder.more_images();
-        if has_more {
-            decoder.next_image()?; 
-        } else {
-            break;
+    match decoder.read_image()? {
+        DecodingResult::U8(buf) => {
+            let data = buf.into_iter().map(|v| v as f64).collect();
+            bands.push(Array2::from_shape_vec((height as usize, width as usize), data)?);
         }
+        DecodingResult::U16(buf) => {
+            let data = buf.into_iter().map(|v| v as f64).collect();
+            bands.push(Array2::from_shape_vec((height as usize, width as usize), data)?);
+        }
+        DecodingResult::U32(buf) => {
+            let data = buf.into_iter().map(|v| v as f64).collect();
+            bands.push(Array2::from_shape_vec((height as usize, width as usize), data)?);
+        }
+        DecodingResult::F32(buf) => {
+            let data = buf.into_iter().map(|v| v as f64).collect();
+            bands.push(Array2::from_shape_vec((height as usize, width as usize), data)?);
+        }
+        DecodingResult::F64(buf) => {
+            bands.push(Array2::from_shape_vec((height as usize, width as usize), buf)?);
+        }
+        _ => return Err(TiffReadError::UnsupportedPixelFormat),
     }
 
     Ok(bands)
 }
+
 
 pub fn normalize_band(band: &Array2<f64>) -> Array2<f64> {
     let mean = band.mean().unwrap();

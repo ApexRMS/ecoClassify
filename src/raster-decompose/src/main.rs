@@ -2,7 +2,7 @@ use clap::Parser;
 use rayon::prelude::*;
 mod raster_functions;
 use raster_functions::*;
-
+use crate::raster_functions::read_bands;
 
 #[derive(Parser)]
 #[command(name = "geotiff-decomposer")]
