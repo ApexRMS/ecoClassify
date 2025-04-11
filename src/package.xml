@@ -1,236 +1,236 @@
 <?xml version="1.0" encoding="utf-8"?>
 <package name="ecoClassify" displayName="ecoClassify" description="Image classifier using semantic image segmentation" version="1.0.3" url="https://apexrms.github.io/ecoClassify/">
 
-    <!--Project Level-->
+    
     <dataSheet name="Terminology" isSingleRow="True" dataScope="Project">
-        <column name="bandNames" dataType="String" displayName="Training Raster Band Names" isExternalFile="True"/>
-        <column name="timestepName" dataType="String" displayName="Raster Group Name"/>
-        <record columns="timestepName" values="Timestep"/>
+        <column name="bandNames" dataType="String" displayName="Training Raster Band Names" isExternalFile="True" />
+        <column name="timestepName" dataType="String" displayName="Raster Group Name" />
+        <record columns="timestepName" values="Timestep" />
     </dataSheet>
 
-    <!--Scenario Level-->
-    <!--Input-->
+    
+    
     <dataSheet name="InputTrainingRasters" displayName="Training Rasters">
-        <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
-        <column name="TrainingRasterFile" dataType="String" displayName="Training Raster" isExternalFile="True"/>
-        <column name="GroundTruthRasterFile" dataType="String" displayName="Ground Truth Raster" isExternalFile="True"/>
+        <column name="Timesteps" dataType="Integer" displayName="Timestep" />
+        <column name="TrainingRasterFile" dataType="String" displayName="Training Raster" isExternalFile="True" />
+        <column name="GroundTruthRasterFile" dataType="String" displayName="Ground Truth Raster" isExternalFile="True" />
     </dataSheet>
 
     <dataSheet name="InputPredictingRasters" displayName="Predicting Rasters">
-        <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
-        <column name="predictingRasterFile" dataType="String" displayName="Predicting Raster" isExternalFile="True"/>
+        <column name="Timesteps" dataType="Integer" displayName="Timestep" />
+        <column name="predictingRasterFile" dataType="String" displayName="Predicting Raster" isExternalFile="True" />
     </dataSheet>
 
     <dataSheet name="InputTrainingCovariates" displayName="Covariates">
-        <column name="trainingCovariateRasterFile" dataType="String" displayName="Covariate Raster" isExternalFile="True"/>
+        <column name="trainingCovariateRasterFile" dataType="String" displayName="Covariate Raster" isExternalFile="True" />
     </dataSheet>
 
     <dataSheet name="InputPredictingCovariates" displayName="Covariates">
-        <column name="predictingCovariateRasterFile" dataType="String" displayName="Covariate Raster" isExternalFile="True"/>
+        <column name="predictingCovariateRasterFile" dataType="String" displayName="Covariate Raster" isExternalFile="True" />
     </dataSheet>
 
     <dataSheet name="ClassifierOptions" displayName="Classifier Options" isSingleRow="True">
-        <column name="nObs" dataType="Integer" displayName="Sample Size"/>
-        <column name="normalizeRasters" dataType="Boolean" displayName="Normalize Rasters"/>
-        <column name="modelType" displayName="Model Type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt" isOptional="True"/>
-        <column name="modelTuning" displayName="Enable Automated Tuning" dataType="Boolean"/>
-        <column name="applyContextualization" dataType="Boolean" displayName="Apply Contextualization"/>
+        <column name="nObs" dataType="Integer" displayName="Sample Size" />
+        <column name="normalizeRasters" dataType="Boolean" displayName="Normalize Rasters" />
+        <column name="modelType" displayName="Model Type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt" isOptional="True" />
+        <column name="modelTuning" displayName="Enable Automated Tuning" dataType="Boolean" />
+        <column name="applyContextualization" dataType="Boolean" displayName="Apply Contextualization" />
     </dataSheet>
 
     <dataSheet name="PostProcessingOptions" displayName="Post-processing options" isSingleRow="True">
-        <column name="applyFiltering" dataType="Boolean" displayName="Apply filtering"/>
-        <column name="filterResolution" dataType="Double" displayName="Filter Resolution (optional)"/>
-        <column name="filterPercent" dataType="Double" displayName="Filter Threshold (optional)"/>
+        <column name="applyFiltering" dataType="Boolean" displayName="Apply filtering" />
+        <column name="filterResolution" dataType="Double" displayName="Filter Resolution (optional)" />
+        <column name="filterPercent" dataType="Double" displayName="Filter Threshold (optional)" />
     </dataSheet>
 
-    <!--Output-->
+    
     <dataSheet name="RasterOutput" displayName="Training Rasters" hasTimestep="True">
-        <column name="PredictedUnfiltered" dataType="String" displayName="Predicted" isExternalFile="True" isRaster="True" bandColumn="Band"/>
-        <column name="PredictedFiltered" dataType="String" displayName="Predicted Filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
-        <column name="GroundTruth" dataType="String" displayName="Ground Truth" isExternalFile="True" isRaster="True"/>
-        <column name="Probability" dataType="String" displayName="Probability" isExternalFile="True" isRaster="True"/>
-        <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True"/>
+        <column name="PredictedUnfiltered" dataType="String" displayName="Predicted" isExternalFile="True" isRaster="True" bandColumn="Band" />
+        <column name="PredictedFiltered" dataType="String" displayName="Predicted Filtered" isExternalFile="True" isRaster="True" bandColumn="Band" />
+        <column name="GroundTruth" dataType="String" displayName="Ground Truth" isExternalFile="True" isRaster="True" />
+        <column name="Probability" dataType="String" displayName="Probability" isExternalFile="True" isRaster="True" />
+        <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True" />
     </dataSheet>
 
     <dataSheet name="ClassifiedRasterOutput" displayName="Classified Rasters" hasTimestep="True">
-        <column name="ClassifiedUnfiltered" dataType="String" displayName="Classified" isExternalFile="True" isRaster="True" bandColumn="Band"/>
-        <column name="ClassifiedFiltered" dataType="String" displayName="Classified Filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
-        <column name="ClassifiedProbability" dataType="String" displayName="Probability" isExternalFile="True" isRaster="True"/>
-        <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True"/>
+        <column name="ClassifiedUnfiltered" dataType="String" displayName="Classified" isExternalFile="True" isRaster="True" bandColumn="Band" />
+        <column name="ClassifiedFiltered" dataType="String" displayName="Classified Filtered" isExternalFile="True" isRaster="True" bandColumn="Band" />
+        <column name="ClassifiedProbability" dataType="String" displayName="Probability" isExternalFile="True" isRaster="True" />
+        <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True" />
     </dataSheet>
 
     <dataSheet name="ConfusionMatrix" displayName="Confusion Matrix">
-        <column name="Prediction" dataType="Integer" displayName="Prediction"/>
-        <column name="Reference" dataType="Integer" displayName="Reference"/>
-        <column name="Frequency" dataType="Double" displayName="Frequency"/>
+        <column name="Prediction" dataType="Integer" displayName="Prediction" />
+        <column name="Reference" dataType="Integer" displayName="Reference" />
+        <column name="Frequency" dataType="Double" displayName="Frequency" />
     </dataSheet>
 
     <dataSheet name="ModelStatistics" displayName="Statistics">
-        <column name="Statistic" dataType="String" displayName="Statistic"/>
-        <column name="Value" dataType="Double" displayName="Value"/>
+        <column name="Statistic" dataType="String" displayName="Statistic" />
+        <column name="Value" dataType="Double" displayName="Value" />
     </dataSheet>
 
     <dataSheet name="VariableImportanceOutput" displayName="Variable Importance">
-	    <column name="VariableImportance" dataType="String" isExternalFile="True" isImage="True"/>
+	    <column name="VariableImportance" dataType="String" isExternalFile="True" isImage="True" />
     </dataSheet>
 
     <dataSheet name="VariableImportanceOutputDataframe" displayName="Variable Importance Data">
-	    <column name="Variable" dataType="String"/>
-        <column name="Importance" dataType="Double"/>
+	    <column name="Variable" dataType="String" />
+        <column name="Importance" dataType="Double" />
     </dataSheet>
 
     <dataSheet name="ConfusionMatrixPlotOutput" displayName="Confusion Matrix">
-	    <column name="ConfusionMatrixPlot" dataType="String" isExternalFile="True" isImage="True"/>
+	    <column name="ConfusionMatrixPlot" dataType="String" isExternalFile="True" isImage="True" />
     </dataSheet>
 
     <dataSheet name="RgbOutput" displayName="RGB Images" hasTimestep="True">
-	    <column name="RGBImage" dataType="String" isExternalFile="True" isImage="True"/>
+	    <column name="RGBImage" dataType="String" isExternalFile="True" isImage="True" />
     </dataSheet>
 
     <dataSheet name="ClassifiedRgbOutput" displayName="RGB Images" hasTimestep="True">
-	    <column name="RGBImage" dataType="String" isExternalFile="True" isImage="True"/>
+	    <column name="RGBImage" dataType="String" isExternalFile="True" isImage="True" />
     </dataSheet>
 
     <dataSheet name="ModelObject" displayName="Model">
-	    <column name="Model" dataType="String" isExternalFile="True"/>
-        <column name="OptimalThreshold" dataType="Double"/>
+	    <column name="Model" dataType="String" isExternalFile="True" />
+        <column name="OptimalThreshold" dataType="Double" />
     </dataSheet>
 
     <dataSheet name="ModelChartData" displayName="Model Chart Data">
-	    <column name="Accuracy" dataType="Double"/>
-        <column name="Precision" dataType="Double"/>
-        <column name="Sensitivity" dataType="Double"/>
-        <column name="Specificity" dataType="Double"/>
+	    <column name="Accuracy" dataType="Double" />
+        <column name="Precision" dataType="Double" />
+        <column name="Sensitivity" dataType="Double" />
+        <column name="Specificity" dataType="Double" />
     </dataSheet>
 
-    <!--Transformer 1: training classifier-->
-    <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.1">
-        <dataSheet name="InputTrainingRasters" type="Input"/>
-        <dataSheet name="InputPredictingRasters" type="Input"/>
-        <dataSheet name="InputTrainingCovariates" type="Input"/>
-        <dataSheet name="ClassifierOptions" type="Input"/>
-        <dataSheet name="PostProcessingOptions" type="Input"/>
-        <dataSheet name="RasterOutput" type="Output"/>
-        <dataSheet name="ConfusionMatrix" type="Output"/>
-        <dataSheet name="ModelStatistics" type="Output"/>
-        <dataSheet name="VariableImportanceOutput" type="Output"/>
-        <dataSheet name="ConfusionMatrixPlotOutput" type="Output"/>
-        <dataSheet name="RgbOutput" type="Output"/>
-        <dataSheet name="ModelObject" type="Output"/>
-        <dataSheet name="ModelChartData" type="Output"/>
+    
+    <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="2.1">
+        <dataSheet name="InputTrainingRasters" type="Input" />
+        <dataSheet name="InputPredictingRasters" type="Input" />
+        <dataSheet name="InputTrainingCovariates" type="Input" />
+        <dataSheet name="ClassifierOptions" type="Input" />
+        <dataSheet name="PostProcessingOptions" type="Input" />
+        <dataSheet name="RasterOutput" type="Output" />
+        <dataSheet name="ConfusionMatrix" type="Output" />
+        <dataSheet name="ModelStatistics" type="Output" />
+        <dataSheet name="VariableImportanceOutput" type="Output" />
+        <dataSheet name="ConfusionMatrixPlotOutput" type="Output" />
+        <dataSheet name="RgbOutput" type="Output" />
+        <dataSheet name="ModelObject" type="Output" />
+        <dataSheet name="ModelChartData" type="Output" />
     </transformer>
 
-    <!--Transformer 2: predicting-->
-    <transformer name="Predict" displayName="2-Predict" programName="Rscript" programArguments="2-predict.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.1">
-        <dataSheet name="InputPredictingRasters" type="Input"/>
-        <dataSheet name="InputPredictingCovariates" type="Input"/>
-        <dataSheet name="ClassifierOptions" type="Input"/>
-        <dataSheet name="PostProcessingOptions" type="Input"/>
-        <dataSheet name="ModelObject" type="Input"/>
-        <dataSheet name="ClassifiedRasterOutput" type="Output"/>
-        <dataSheet name="ClassifiedRgbOutput" type="Output"/>
+    
+    <transformer name="Predict" displayName="2-Predict" programName="Rscript" programArguments="2-predict.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="2.1">
+        <dataSheet name="InputPredictingRasters" type="Input" />
+        <dataSheet name="InputPredictingCovariates" type="Input" />
+        <dataSheet name="ClassifierOptions" type="Input" />
+        <dataSheet name="PostProcessingOptions" type="Input" />
+        <dataSheet name="ModelObject" type="Input" />
+        <dataSheet name="ClassifiedRasterOutput" type="Output" />
+        <dataSheet name="ClassifiedRgbOutput" type="Output" />
     </transformer>
 
-    <!--Export transformers-->
-    <transformer name="ConfusionMatrixExport" dataSheet="ConfusionMatrix" isExport="True"/>
-    <transformer name="ModelStatisticsExport" dataSheet="ModelStatistics" isExport="True"/>
-    <transformer name="PredictedUnfilteredExport" dataSheet="RasterOutput" column="PredictedUnfiltered" isRasterExport="True"/>
-    <transformer name="PredictedFilteredExport" dataSheet="RasterOutput" column="PredictedFiltered" isRasterExport="True"/>
-    <transformer name="ProbabilityExport" dataSheet="RasterOutput" column="Probability" isRasterExport="True"/>
-    <transformer name="GroundTruthExport" dataSheet="RasterOutput" column="GroundTruth" isRasterExport="True"/>
-    <transformer name="VariableImportanceOutputExport" dataSheet="VariableImportanceOutput" column="VariableImportance" isExport="True"/>
-    <transformer name="VariableImportanceOutputDataframeExport" dataSheet="VariableImportanceOutputDataframe" isExport="True"/>
-    <transformer name="ConfusionMatrixPlotExport" dataSheet="ConfusionMatrixPlotOutput" column="ConfusionMatrixPlot" isExport="True"/>
-    <transformer name="RgbOutputExport" dataSheet="RgbOutput" column="RGBImage" isExport="True"/>
-    <transformer name="ClassifiedRgbOutputExport" dataSheet="ClassifiedRgbOutput" column="RGBImage" isExport="True"/>
-    <transformer name="ClassifiedUnfilteredExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedUnfiltered" isRasterExport="True"/>
-    <transformer name="ClassifiedFilteredExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedFiltered" isRasterExport="True"/>
-    <transformer name="ClassifiedProbabilityExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedProbability" isRasterExport="True"/>
+    
+    <transformer name="ConfusionMatrixExport" dataSheet="ConfusionMatrix" isExport="True" />
+    <transformer name="ModelStatisticsExport" dataSheet="ModelStatistics" isExport="True" />
+    <transformer name="PredictedUnfilteredExport" dataSheet="RasterOutput" column="PredictedUnfiltered" isRasterExport="True" />
+    <transformer name="PredictedFilteredExport" dataSheet="RasterOutput" column="PredictedFiltered" isRasterExport="True" />
+    <transformer name="ProbabilityExport" dataSheet="RasterOutput" column="Probability" isRasterExport="True" />
+    <transformer name="GroundTruthExport" dataSheet="RasterOutput" column="GroundTruth" isRasterExport="True" />
+    <transformer name="VariableImportanceOutputExport" dataSheet="VariableImportanceOutput" column="VariableImportance" isExport="True" />
+    <transformer name="VariableImportanceOutputDataframeExport" dataSheet="VariableImportanceOutputDataframe" isExport="True" />
+    <transformer name="ConfusionMatrixPlotExport" dataSheet="ConfusionMatrixPlotOutput" column="ConfusionMatrixPlot" isExport="True" />
+    <transformer name="RgbOutputExport" dataSheet="RgbOutput" column="RGBImage" isExport="True" />
+    <transformer name="ClassifiedRgbOutputExport" dataSheet="ClassifiedRgbOutput" column="RGBImage" isExport="True" />
+    <transformer name="ClassifiedUnfilteredExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedUnfiltered" isRasterExport="True" />
+    <transformer name="ClassifiedFilteredExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedFiltered" isRasterExport="True" />
+    <transformer name="ClassifiedProbabilityExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedProbability" isRasterExport="True" />
 
-    <!--Scenario Layout-->
+    
     <layout type="Scenario">
 
         <group name="AllInputs" displayName="Input">
-            <item name="ClassifierOptions"/>
-            <item name="PostProcessingOptions"/>
+            <item name="ClassifierOptions" />
+            <item name="PostProcessingOptions" />
             <group name="InputRasters" displayName="Rasters">
                 <group name="trainingRasters" displayName="Training">
-                    <item name="InputTrainingRasters"/>
-                    <item name="InputTrainingCovariates"/>
+                    <item name="InputTrainingRasters" />
+                    <item name="InputTrainingCovariates" />
                 </group>
                 <group name="predictingRasters" displayName="Predicting">
-                    <item name="InputPredictingRasters"/>
-                    <item name="InputPredictingCovariates"/>
+                    <item name="InputPredictingRasters" />
+                    <item name="InputPredictingCovariates" />
                 </group>
             </group>
         </group>
 
         <group name="AllOutputs" displayName="Output">
-            <item name="ModelStatistics"/>
+            <item name="ModelStatistics" />
         </group>
 
     </layout>
 
-    <!--Chart Layout-->
+    
 	<layout type="Chart">
         <group name="modelFitChart" displayName="Model Fit">
-            <item name="modelAccuracy" displayName="Accuracy" dataSheet="ModelChartData" column="Accuracy"/>
-            <item name="modelPrecision" displayName="Precision" dataSheet="ModelChartData" column="Precision"/>
-            <item name="modelSensitivity" displayName="Sensitivity" dataSheet="ModelChartData" column="Sensitivity"/>
-            <item name="modelSpecificity" displayName="Specificity" dataSheet="ModelChartData" column="Specificity"/>
+            <item name="modelAccuracy" displayName="Accuracy" dataSheet="ModelChartData" column="Accuracy" />
+            <item name="modelPrecision" displayName="Precision" dataSheet="ModelChartData" column="Precision" />
+            <item name="modelSensitivity" displayName="Sensitivity" dataSheet="ModelChartData" column="Sensitivity" />
+            <item name="modelSpecificity" displayName="Specificity" dataSheet="ModelChartData" column="Specificity" />
       </group>
     </layout>
 
-    <!--Map Layout-->
+    
 	<layout type="Map">
         <group name="PredictionMaps" displayName="Training Predictions">
-		    <item name="PredictedUnfilteredMap" displayName="Unfiltered" dataSheet="RasterOutput" column="PredictedUnfiltered"/>
-            <item name="PredictedFilteredMap" displayName="Filtered" dataSheet="RasterOutput" column="PredictedFiltered"/>
-            <item name="ProbabilityMap" displayName="Probability" dataSheet="RasterOutput" column="Probability"/>
-            <item name="GroundTruthMap" displayName="Ground Truth" dataSheet="RasterOutput" column="GroundTruth"/>
+		    <item name="PredictedUnfilteredMap" displayName="Unfiltered" dataSheet="RasterOutput" column="PredictedUnfiltered" />
+            <item name="PredictedFilteredMap" displayName="Filtered" dataSheet="RasterOutput" column="PredictedFiltered" />
+            <item name="ProbabilityMap" displayName="Probability" dataSheet="RasterOutput" column="Probability" />
+            <item name="GroundTruthMap" displayName="Ground Truth" dataSheet="RasterOutput" column="GroundTruth" />
         </group>
         <group name="ClassifiedPredictionMaps" displayName="Predictions">
-		    <item name="ClassifiedUnfilteredMap" displayName="Unfiltered" dataSheet="ClassifiedRasterOutput" column="ClassifiedUnfiltered"/>
-            <item name="ClassifiedFilteredMap" displayName="Filtered" dataSheet="ClassifiedRasterOutput" column="ClassifiedFiltered"/>
-            <item name="ClassifiedProbabilityMap" displayName="Probability" dataSheet="ClassifiedRasterOutput" column="ClassifiedProbability"/>
+		    <item name="ClassifiedUnfilteredMap" displayName="Unfiltered" dataSheet="ClassifiedRasterOutput" column="ClassifiedUnfiltered" />
+            <item name="ClassifiedFilteredMap" displayName="Filtered" dataSheet="ClassifiedRasterOutput" column="ClassifiedFiltered" />
+            <item name="ClassifiedProbabilityMap" displayName="Probability" dataSheet="ClassifiedRasterOutput" column="ClassifiedProbability" />
         </group>
     </layout>
 
-    <!--Image Layout-->
+    
     <layout type="Image">	
-        <item name="VariableImportancePlot" displayName="Variable Importance Plot" dataSheet="VariableImportanceOutput" column="VariableImportance"/>
-        <item name="ConfusionMatrixPlotOutputImage" displayName="Confusion Matrix" dataSheet="ConfusionMatrixPlotOutput" column="ConfusionMatrixPlot"/>
+        <item name="VariableImportancePlot" displayName="Variable Importance Plot" dataSheet="VariableImportanceOutput" column="VariableImportance" />
+        <item name="ConfusionMatrixPlotOutputImage" displayName="Confusion Matrix" dataSheet="ConfusionMatrixPlotOutput" column="ConfusionMatrixPlot" />
         <group name="RGBImagePlots" displayName="RGB Images">
-            <item name="TrainingRGBImagePlots" displayName="Training" dataSheet="RgbOutput" column="RGBImage"/>
-            <item name="ClassifiedRGBImagePlots" displayName="Predicting" dataSheet="ClassifiedRgbOutput" column="RGBImage"/>
+            <item name="TrainingRGBImagePlots" displayName="Training" dataSheet="RgbOutput" column="RGBImage" />
+            <item name="ClassifiedRGBImagePlots" displayName="Predicting" dataSheet="ClassifiedRgbOutput" column="RGBImage" />
         </group>
     </layout>
 
-    <!--Export Layout-->
+    
     <layout type="Export">
         <group name="TableExport" displayName="CSV Outputs">
-            <item name="ConfusionMatrixExport" displayName="Confusion Matrix"/>
-            <item name="ModelStatisticsExport" displayName="Model Statistics"/>
-            <item name="VariableImportanceOutputDataframeExport" displayName="Variable Importance"/>
+            <item name="ConfusionMatrixExport" displayName="Confusion Matrix" />
+            <item name="ModelStatisticsExport" displayName="Model Statistics" />
+            <item name="VariableImportanceOutputDataframeExport" displayName="Variable Importance" />
         </group>
         <group name="MapExport" displayName="Map Outputs">
             <group name="TrainingMapExport" displayName="Training">
-                <item name="PredictedUnfilteredExport" displayName="Unfiltered Prediction"/>
-                <item name="PredictedFilteredExport" displayName="Filtered Prediction"/>
-                <item name="ProbabilityExport" displayName="Probability"/>
-                <item name="GroundTruthExport" displayName="Ground Truth"/>
+                <item name="PredictedUnfilteredExport" displayName="Unfiltered Prediction" />
+                <item name="PredictedFilteredExport" displayName="Filtered Prediction" />
+                <item name="ProbabilityExport" displayName="Probability" />
+                <item name="GroundTruthExport" displayName="Ground Truth" />
             </group>
             <group name="PredictingMapExport" displayName="Prediction">
-                <item name="ClassifiedUnfilteredExport" displayName="Unfiltered Prediction"/>
-                <item name="ClassifiedFilteredExport" displayName="Filtered Prediction"/>
-                <item name="ClassifiedProbabilityExport" displayName="Probability"/>
+                <item name="ClassifiedUnfilteredExport" displayName="Unfiltered Prediction" />
+                <item name="ClassifiedFilteredExport" displayName="Filtered Prediction" />
+                <item name="ClassifiedProbabilityExport" displayName="Probability" />
             </group>
         </group>
         <group name="ImageExport" displayName="Image Outputs">
-            <item name="VariableImportanceOutputExport" displayName="Variable Importance Plot"/>
-            <item name="ConfusionMatrixPlotExport" displayName="Confusion Matrix Plot"/>
-            <item name="RgbOutputExport" displayName="RGB Training Images"/>
-            <item name="ClassifiedRgbOutputExport" displayName="RGB Predicting Images"/>
+            <item name="VariableImportanceOutputExport" displayName="Variable Importance Plot" />
+            <item name="ConfusionMatrixPlotExport" displayName="Confusion Matrix Plot" />
+            <item name="RgbOutputExport" displayName="RGB Training Images" />
+            <item name="ClassifiedRgbOutputExport" displayName="RGB Predicting Images" />
         </group>
     </layout>
 

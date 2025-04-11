@@ -1,8 +1,7 @@
 name: ecoClassify-1
 channels:
-  - r
   - conda-forge
-  - defaults
+  - r
 dependencies:
   - _r-mutex=1.0.0=anacondar_1
   - bzip2=1.0.8=h2466b09_7
