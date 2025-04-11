@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<package name="ecoClassify" displayName="ecoClassify" description="Image classifier using semantic image segmentation" version="1.0.2" url="https://apexrms.github.io/ecoClassify/">
+<package name="ecoClassify" displayName="ecoClassify" description="Image classifier using semantic image segmentation" version="1.0.3" url="https://apexrms.github.io/ecoClassify/">
 
     <!--Project Level-->
     <dataSheet name="Terminology" isSingleRow="True" dataScope="Project">
