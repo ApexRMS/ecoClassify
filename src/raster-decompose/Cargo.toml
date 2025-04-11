@@ -1,0 +1,15 @@
+[package]
+name = "raster-decompose"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { version = "4.4", features = ["derive"] }
+rayon = "1.8"
+ndarray = "0.15"
+ndarray-stats = "0.5"
+linfa = "0.7"
+linfa-reduction = "0.7"
+tiff =  "0.8"
+csv = "1.1"
+thiserror = "1.0"

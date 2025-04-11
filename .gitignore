@@ -2,3 +2,15 @@ docs/
 dev/
 dev2/
 scratch/
+
+
+## Rust ignore
+**/target/**
+**/*.exe
+**/*.dll
+**/*.so
+**/*.dylib
+
+# Build artifacts and lock files
+Cargo.lock
+*.log
