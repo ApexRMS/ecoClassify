@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='utf-8'?>
-<package name="ecoClassify" displayName="ecoClassify" description="Image classifier using semantic image segmentation" version="1.0.2" url="https://apexrms.github.io/ecoClassify/" location="https://github.com/ApexRMS/ecoClassify/releases/download/v1.0.2/ecoClassify-1-0-2.ssimpkg">
+<package name="ecoClassify" displayName="ecoClassify" description="Image classifier using semantic image segmentation" version="1.0.3" url="https://apexrms.github.io/ecoClassify/" location="https://github.com/ApexRMS/ecoClassify/releases/download/v1.0.3/ecoClassify-1-0-3.ssimpkg">
 	<onlineLibrary name="Snow Classifier (Jumpingpound Mountain, Alberta)" displayName="Snow Classifier (Jumpingpound Mountain, Alberta)" description="This template library for the ecoClassify SyncroSim package showcases how to develop a straightforward image classifier that identifies snow cover from satellite imagery for Jumpingpound Mountain in Alberta, Canada." libraryLocation="https://s3.us-west-2.amazonaws.com/apexrms.com.syncrosim.templates/ecoclassify/v1.0.0/snow-classifier.ssimbak" imageLocation="https://s3.us-west-2.amazonaws.com/apexrms.com.syncrosim.templates/ecoclassify/v1.0.0/spatial-example.png">
 	</onlineLibrary>
 
