@@ -49,7 +49,7 @@ groundTruthRasterList <- extractRasters(trainingRasterDataframe,
 if (normalizeRasters == TRUE) {
   trainingRasterList <- normalizeRaster(trainingRasterList)
 }
-writeRaster(trainingRasterList[[1]], "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing/JuneNormalized.tif")
+
 # reclassify ground truth rasters --------------------------------------------
 groundTruthRasterList <- reclassifyGroundTruth(groundTruthRasterList)
 
