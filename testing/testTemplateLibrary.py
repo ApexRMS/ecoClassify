@@ -23,6 +23,13 @@ def update_metadata(file_path):
     tree.write(file_path, encoding="utf-8", xml_declaration=True)
     return tree, root
 
+def get_package_info_from_metadata(metadata_path):
+    tree = ET.parse(metadata_path)
+    root = tree.getroot()
+    package_name = root.attrib["name"]
+    package_version = root.attrib["version"]
+    return package_name, package_version
+
 
 def run_console_command(args):
     result = subprocess.run(args, capture_output=True, text=True)
@@ -31,6 +38,86 @@ def run_console_command(args):
         print("❌ Console error:", result.stderr)
         return False
     return True
+
+def get_installed_package_version(console_path, lib_path, package_name):
+    import re
+
+    result = subprocess.run(
+        [console_path, "--list", "--packages", f"--lib={lib_path}"],
+        capture_output=True,
+        text=True
+    )
+
+    if result.returncode != 0:
+        print("❌ Failed to list packages:", result.stderr)
+        return None
+
+    lines = result.stdout.splitlines()
+
+    # Step 1: Find the second header (Version, Schema, Status)
+    header_idx = None
+    for i, line in enumerate(lines):
+        if "Version" in line and "Status" in line:
+            header_idx = i
+            break
+
+    if header_idx is None:
+        print("⚠️ Could not find expected package column headers.")
+        return None
+
+    data_lines = lines[header_idx + 1:]
+
+    for line in data_lines:
+        if not line.strip():
+            continue
+
+        # Extract the first non-empty token as the package name
+        tokens = re.split(r"\s{2,}", line.strip())  # split on double+ spaces
+        if not tokens:
+            continue
+
+        name = tokens[0].strip()
+        version = tokens[1].strip() if len(tokens) > 1 else ""
+
+        print(f"🔍 Checking line → Name: {name}, Version: {version}")
+
+        if name == package_name:
+            return version
+
+    print(f"⚠️ Package {package_name} not found in list.")
+    return None
+
+
+def sync_library_package_version(console_path, metadata_path, lib_path):
+    package_name, expected_version = get_package_info_from_metadata(metadata_path)
+    print(f"📦 Expected package: {package_name} v{expected_version}")
+
+    installed_version = get_installed_package_version(console_path, lib_path, package_name)
+    if installed_version is None:
+        print(f"⚠️ Package {package_name} is not installed in library.")
+        print("📥 Adding correct version...")
+        subprocess.run([
+            console_path,
+            "--add", "--package",
+            f"--pkg={package_name}",
+            f'ver="{expected_version}"',
+            f"--lib={lib_path}"
+        ])
+        print(f"✅ Package {package_name} v{expected_version} added.")
+    elif installed_version != expected_version:
+
+
+        print("📥 Re-adding correct version...")
+        subprocess.run([
+            console_path,
+            "--add", "--package",
+            f"--pkg={package_name}",
+            f"--ver={expected_version}",
+            f"--lib={lib_path}"
+        ])
+        print(f"✅ Package {package_name} v{expected_version} added.")
+    else:
+        print(f"✅ Package {package_name} is up to date (v{installed_version}).")
 
 
 def list_scenarios(console_path, lib_path, results_only=False):
@@ -115,7 +202,7 @@ def update_library(console_path, lib_path):
 
 
  
-def run_libraries(root, console_path, temp_dir=None):
+def run_libraries(root, console_path,  metadata_path, temp_dir=None): 
     for lib in root.findall("onlineLibrary"):
         if temp_dir is None:
             temp_dir = tempfile.gettempdir()
@@ -170,6 +257,9 @@ def run_libraries(root, console_path, temp_dir=None):
             print(f"⚠️  No scenarios found in {lib_path}")
             continue
 
+        print(f"\n🔍 Checking package versions in: {lib_path}")
+        sync_library_package_version(console_path, metadata_path, lib_path)
+
         # Run only the listed scenario IDs
         sid_str = ",".join(sids)
         print(f"▶️ Running scenarios {sid_str} in: {lib_path}")
@@ -199,7 +289,7 @@ def main():
     args = parser.parse_args()
 
     tree, root = update_metadata(args.meta)
-    run_libraries(root, args.console, args.tempdir)
+    run_libraries(root, args.console, args.meta,  args.tempdir)
 
 if __name__ == "__main__":
     main()
