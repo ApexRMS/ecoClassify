@@ -205,7 +205,7 @@ decomposedRaster <- function(predRast,
                              na.rm = TRUE,
                              as.points = TRUE,
                              replace = FALSE,
-                             method = "stratified")
+                             method = "random")
 
   # extract values from the training and ground truth rasters
   randomPoints <- unique(randomPoints)
@@ -942,7 +942,7 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
 
   ## Specifying feature classes and regularization parameters for Maxent
   if (isTuningOn) {
-    tuneArgs <- list(mtry = c(1:6),  ## number of splits
+    tuneArgs <- list(mtry = 1:min(6, length(trainingVariables)),  ## number of splits
                     maxDepth = seq(0, 1, 0.2), ## regulariation amount
                     nTrees = c(500, 1000, 2000)) ## number of trees
     tuneArgsGrid <- expand.grid(tuneArgs)
