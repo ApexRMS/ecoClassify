@@ -3,10 +3,32 @@
 ## ApexRMS, November 2024
 ## -------------------------------
 
+# suppress additional warnings -------------------------------------
+quiet <- function(expr) {
+  sink(tempfile())  # divert output to temporary file
+  on.exit(sink())   # reset on exit
+  invisible(capture.output(result <- tryCatch(expr, error = function(e) stop(e$message))))
+  result
+}
+
+quiet({
+  suppressPackageStartupMessages({
+    library(terra)
+    library(tidyverse)
+    library(caret)
+    library(magrittr)
+    library(ENMeval)
+    library(foreach)
+    library(iterators)
+    library(parallel)
+  })
+
 ## load packages ---------------------------------------------------
 update.packages(repos='http://cran.us.r-project.org', ask = FALSE, oldPkgs = c("terra"))
 
-install.packages("reshape2", repos='http://cran.us.r-project.org')
+if (!requireNamespace("reshape2", quietly = TRUE)) {
+  install.packages("reshape2", repos='http://cran.us.r-project.org')
+}
 
 library(rsyncrosim)
 library(tidyverse)
@@ -23,6 +45,7 @@ library(ENMeval)
 library(cvms)
 library(foreach)
 library(doParallel)
+})
 
 ## define functions ------------------------------------------------
 
@@ -63,6 +86,8 @@ assignVariables <- function(myScenario,
   applyContextualization <- classifierOptionsDataframe$applyContextualization
   modelType <- as.character(classifierOptionsDataframe$modelType)
   modelTuning <- classifierOptionsDataframe$modelTuning
+  setManualThreshold <- classifierOptionsDataframe$setManualThreshold
+  manualThreshold <- classifierOptionsDataframe$manualThreshold
   normalizeRasters <- classifierOptionsDataframe$normalizeRasters
 
   # Load post-processing options datasheet
@@ -83,6 +108,14 @@ assignVariables <- function(myScenario,
     filterPercent <- 0.25
   }
 
+  # stop if manual threshold is missing or outside of possible range
+  if (setManualThreshold == TRUE) {
+    if (is.null(manualThreshold) || length(manualThreshold) == 0 || is.na(manualThreshold)) {
+      stop("Set probability threshold was selected but probability threshold value is missing")
+    } else if (manualThreshold < 0 || manualThreshold > 1) {
+      stop("Manual threshold outside of acceptable range; select a value between 0 and 1")
+    }
+  }
   # return as a list
   return(list(timestepList,
               nObs,
@@ -92,6 +125,8 @@ assignVariables <- function(myScenario,
               applyContextualization,
               modelType,
               modelTuning,
+              setManualThreshold,
+              manualThreshold,
               normalizeRasters))
 }
 
@@ -942,7 +977,7 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
 
   ## Specifying feature classes and regularization parameters for Maxent
   if (isTuningOn) {
-    tuneArgs <- list(mtry = 1:min(6, length(trainingVariables)),  ## number of splits
+    tuneArgs <- list(mtry = seq_len(min(6, length(trainingVariables))),  ## number of splits
                     maxDepth = seq(0, 1, 0.2), ## regulariation amount
                     nTrees = c(500, 1000, 2000)) ## number of trees
     tuneArgsGrid <- expand.grid(tuneArgs)

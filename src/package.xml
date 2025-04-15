@@ -34,6 +34,8 @@
         <column name="normalizeRasters" dataType="Boolean" displayName="Normalize Rasters"/>
         <column name="modelType" displayName="Model Type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt" isOptional="True"/>
         <column name="modelTuning" displayName="Enable Automated Tuning" dataType="Boolean"/>
+        <column name="setManualThreshold" displayName="Set Probability Threshold" dataType="Boolean"/>
+        <column name="manualThreshold" displayName="Probability Threshold" dataType="Double" isOptional="True"/>
         <column name="applyContextualization" dataType="Boolean" displayName="Apply Contextualization"/>
     </dataSheet>
 
@@ -93,7 +95,7 @@
 
     <dataSheet name="ModelObject" displayName="Model">
 	    <column name="Model" dataType="String" isExternalFile="True"/>
-        <column name="OptimalThreshold" dataType="Double"/>
+        <column name="Threshold" dataType="Double"/>
     </dataSheet>
 
     <dataSheet name="ModelChartData" displayName="Model Chart Data">

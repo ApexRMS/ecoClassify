@@ -32,7 +32,9 @@ applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
 modelType <- inputVariables[[7]]
 modelTuning <- inputVariables[[8]]
-normalizeRasters <- inputVariables[[9]]
+setManualThreshold <- inputVariables[[9]]
+manualThreshold <- inputVariables[[10]]
+normalizeRasters <- inputVariables[[11]]
 
 ## check if multiprocessing is selected
 mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
@@ -88,14 +90,22 @@ splitData <- splitTrainTest(trainingRasterList,
                             nObs)
 allTrainData <- splitData[[1]]
 allTestData <- splitData[[2]]
-
+head(allTestData)
 ## Train model -----------------------------------------------------------------
 if (modelType == "MaxEnt") {
   modelOut <- getMaxentModel(allTrainData, nCores, modelTuning)
-  optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "MaxEnt")
+  if (setManualThreshold == FALSE) {
+    threshold <- getOptimalThreshold(modelOut[[1]], allTestData, "MaxEnt")
+  } else {
+    threshold <- manualThreshold
+  }
 } else if (modelType == "Random Forest") {
   modelOut <- getRandomForestModel(allTrainData, nCores, modelTuning)
-  optimalThreshold <-  getOptimalThreshold(modelOut[[1]], allTestData, "Random Forest")
+  if (setManualThreshold == FALSE) {
+    threshold <- getOptimalThreshold(modelOut[[1]], allTestData, "Random Forest")
+  } else {
+    threshold <- manualThreshold
+  }
 } else {
   stop("Model type not recognized")
 }
@@ -107,7 +117,7 @@ saveRDS(model, file.path(transferDir, "model.rds"))
 
 # add to output datasheet
 modelObjectOutputDataframe <- data.frame(Model = file.path(transferDir, "model.rds"),
-                                         OptimalThreshold = optimalThreshold)
+                                         Threshold = threshold)
 
 # extract variable importance plot and data frame ------------------------------
 variableImportanceOutput <- plotVariableImportance(variableImportance,
@@ -129,7 +139,7 @@ for (t in seq_along(trainingRasterList)) {
 
   predictionRasters <- getPredictionRasters(trainingRasterList[[t]],
                                             model,
-                                            optimalThreshold,
+                                            threshold,
                                             modelType)
   predictedPresence <- predictionRasters[[1]]
   probabilityRaster <- predictionRasters[[2]]
@@ -167,7 +177,7 @@ for (t in seq_along(trainingRasterList)) {
 # calculate mean values for model statistics -----------------------------------
 outputDataframes <- calculateStatistics(model,
                                         allTestData,
-                                        optimalThreshold,
+                                        threshold,
                                         confusionOutputDataframe,
                                         modelOutputDataframe)
 
@@ -193,11 +203,23 @@ filterOutputDataframe <- data.frame(applyFiltering = applyFiltering,
                                     filterResolution = filterResolution,
                                     filterPercent = filterPercent)
 
+classifierOptionsOutputDataframe <- data.frame(nObs = nObs,
+                                               normalizeRasters = normalizeRasters,
+                                               modelType = modelType,
+                                               modelTuning = modelTuning,
+                                               setManualThreshold = setManualThreshold,
+                                               manualThreshold = threshold,
+                                               applyContextualization = applyContextualization)
+
 # Save dataframes back to SyncroSim library's output datasheets ----------------
 
 saveDatasheet(myScenario,
               data = filterOutputDataframe,
               name = "ecoClassify_PostProcessingOptions")
+
+saveDatasheet(myScenario,
+              data = classifierOptionsOutputDataframe,
+              name = "ecoClassify_ClassifierOptions")
 
 saveDatasheet(myScenario,
               data = rasterOutputDataframe,

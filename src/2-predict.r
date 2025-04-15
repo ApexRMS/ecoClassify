@@ -36,11 +36,13 @@ applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
 modelType <- inputVariables[[7]]
 modelTuning <- inputVariables[[8]]
-normalizeRasters <- inputVariables[[9]]
+setManualThreshold <- inputVariables[[9]]
+manualThreshold <- inputVariables[[10]]
+normalizeRasters <- inputVariables[[11]]
 
 # load model and threshold
 model <- readRDS(modelObjectDataframe$Model)
-optimalThreshold <- modelObjectDataframe$OptimalThreshold
+threshold <- modelObjectDataframe$Threshold
 
 # extract list of testing rasters --------------------------------------------
 predictRasterList <- extractRasters(predictingRasterDataframe,
@@ -81,7 +83,7 @@ for (t in seq_along(predictRasterList)) {
 
   classifiedRasters <- getPredictionRasters(predictRasterList[[t]],
                                             model,
-                                            optimalThreshold,
+                                            threshold,
                                             modelType)
   classifiedPresence <- classifiedRasters[[1]]
   classifiedProbability <- classifiedRasters[[2]]
