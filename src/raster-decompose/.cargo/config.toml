@@ -2,8 +2,7 @@
 target = "x86_64-pc-windows-msvc"
 
 [env]
-GDAL_INCLUDE_DIR = "C:/Users/alexf/anaconda3/Library/include"  
-GDAL_LIB_DIR     = "C:/Users/alexf/anaconda3/Library/lib"  
-GDAL_STATIC      = "TRUE"  
-GDAL_NO_PKG_CONFIG = "TRUE"  
-GDAL_VERSION     = "3.10.3"    # (Replace with your GDAL version)
+GDAL_STATIC = "true"
+GDAL_INCLUDE_DIR = "D:/gdal/gdal"
+GDAL_LIB_DIR = "D:/gdal/gdal/build"
+GDAL_VERSION = "3.10.0"

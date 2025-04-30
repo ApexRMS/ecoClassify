@@ -1,16 +1,17 @@
 [package]
 name = "raster-decompose"
 version = "0.1.0"
-edition = "2021"
-rust-version = "1.70"  # Optional, helps CI and crates.io
+edition = "2024"
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
-rayon = "1.10"
-ndarray = "0.15"
-ndarray-stats = "0.5"
-linfa = "0.7"
-linfa-reduction = "0.7"
-tiff= "0.7"
-csv = "1.3"
-thiserror = "1.0"
+csv = "1.3.1"
+gdal = "0.18.0"
+linfa = "0.7.1"
+linfa-reduction = "0.7.1"
+ndarray = "0.15.6"
+ndarray-stats = "0.6.0"
+rayon = "1.10.0"
+thiserror = "2.0.12"
+
+

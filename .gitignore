@@ -14,3 +14,6 @@ scratch/
 # Build artifacts and lock files
 Cargo.lock
 *.log
+
+src/raster-decompose/gdal/*
+src/raster-decompose/gdal2/*

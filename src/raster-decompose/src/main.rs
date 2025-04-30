@@ -5,33 +5,31 @@ use raster_functions::*;
 use crate::raster_functions::read_bands;
 
 #[derive(Parser)]
-#[command(name = "geotiff-decomposer")]
+#[clap(name = "geotiff-decomposer")]
 struct Args {
-    #[arg(short, long)]
+    #[clap(short, long)]
     input: String,
 
-    #[arg(short, long)]
+    #[clap(short, long)]
     output: String,
 
-    #[arg(long, default_value = "3")]
+    #[clap(long, default_value = "3")]
     pca_components: usize,
 
-    #[arg(long, default_value = "3")]
+    #[clap(long, default_value = "3")]
     texture_kernel: usize,
 
-    #[arg(long, default_value = "4")]
+    #[clap(long, default_value = "4")]
     jobs: usize,
 }
-
-
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = Args::parse();
     rayon::ThreadPoolBuilder::new().num_threads(args.jobs).build_global()?;
 
     // Load and normalize bands
-    let bands = read_bands(&args.input)?;
-    let normalized: Vec<_> = bands.iter()
+    let band_data = read_bands(&args.input)?; // <-- returns BandData now
+    let normalized: Vec<_> = band_data.bands.iter()
         .map(|b| normalize_band(b))
         .collect();
 
@@ -51,7 +49,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Concatenate all tables
     let final_table = ndarray::concatenate![ndarray::Axis(1), base_table, pca_table, texture_table];
 
-    // Save
-    write_csv(&final_table, &args.output)?;
+    // Create final headers
+    let mut headers = Vec::new();
+
+    // 1. Original normalized band names
+    headers.extend(band_data.names.iter().map(|n| format!("{}_norm", n)));
+
+    // 2. PCA component names
+    for i in 1..=args.pca_components {
+        headers.push(format!("PCA_{}", i));
+    }
+
+    // 3. Texture feature names (mean)
+    headers.extend(band_data.names.iter().map(|n| format!("{}_localmean", n)));
+
+    // Save with headers
+    write_csv(&final_table, &headers, &args.output)?;
     Ok(())
 }

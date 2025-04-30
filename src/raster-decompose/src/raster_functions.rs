@@ -1,63 +1,55 @@
 // Rust raster utilities using GDAL for maximum compatibility
-
 use std::path::Path;
-use tiff::decoder::{Decoder, DecodingResult};
+use gdal::{Dataset, Metadata};
 use ndarray::{Array2, s};
 use thiserror::Error;
 use linfa::traits::{Fit, Transformer};
 use linfa::DatasetBase;
 use linfa_reduction::Pca;
 use csv::Writer;
-use std::fs::File;
 
 #[derive(Error, Debug)]
 pub enum TiffReadError {
-    #[error("TIFF decoding error: {0}")]
-    DecodeError(#[from] tiff::TiffError),
+    #[error("Error reading the raster file")]
+    GdalReadError(#[from] gdal::errors::GdalError),
 
     #[error("Shape error: {0}")]
     ShapeError(#[from] ndarray::ShapeError),
-
-    #[error("IO error: {0}")]
-    IoError(#[from] std::io::Error),
-
-    #[error("Unsupported pixel format in TIFF")]
-    UnsupportedPixelFormat,
 }
 
+/// Struct to hold band data and names
+pub struct BandData {
+    pub bands: Vec<Array2<f64>>,
+    pub names: Vec<String>,
+}
 
-pub fn read_bands<P: AsRef<Path>>(path: P) -> Result<Vec<Array2<f64>>, TiffReadError> {
-    let file = File::open(path)?;
-    let mut decoder = Decoder::new(file)?;
-    let (width, height) = decoder.dimensions()?;
+pub fn read_bands<P: AsRef<Path>>(path: P) -> Result<BandData, TiffReadError> {
+    let dataset = Dataset::open(path)?;
+    let size = dataset.raster_size();
+
     let mut bands = Vec::new();
+    let mut names = Vec::new();
 
-    match decoder.read_image()? {
-        DecodingResult::U8(buf) => {
-            let data = buf.into_iter().map(|v| v as f64).collect();
-            bands.push(Array2::from_shape_vec((height as usize, width as usize), data)?);
-        }
-        DecodingResult::U16(buf) => {
-            let data = buf.into_iter().map(|v| v as f64).collect();
-            bands.push(Array2::from_shape_vec((height as usize, width as usize), data)?);
-        }
-        DecodingResult::U32(buf) => {
-            let data = buf.into_iter().map(|v| v as f64).collect();
-            bands.push(Array2::from_shape_vec((height as usize, width as usize), data)?);
-        }
-        DecodingResult::F32(buf) => {
-            let data = buf.into_iter().map(|v| v as f64).collect();
-            bands.push(Array2::from_shape_vec((height as usize, width as usize), data)?);
-        }
-        DecodingResult::F64(buf) => {
-            bands.push(Array2::from_shape_vec((height as usize, width as usize), buf)?);
-        }
-        _ => return Err(TiffReadError::UnsupportedPixelFormat),
+    for i in 1..=dataset.raster_count() {
+        let band = dataset.rasterband(i)?;
+        let buffer = band.read_as::<f32>((0, 0), size, size, None)?;
+        let (width, height) = size;
+
+        // Band name: use description if available, else "Band {i}"
+        let name = band.description().unwrap_or_else(|_| format!("Band_{}", i));
+        names.push(name);
+        
+
+        // Convert flat buffer to 2D Array2<f64>
+        let data: Array2<f64> = Array2::from_shape_fn((height, width), |(y, x)| {
+            buffer.data()[y * width + x] as f64
+        });
+
+        bands.push(data);
     }
 
-    Ok(bands)
+    Ok(BandData { bands, names })
 }
-
 
 pub fn normalize_band(band: &Array2<f64>) -> Array2<f64> {
     let mean = band.mean().unwrap();
@@ -95,11 +87,18 @@ pub fn local_mean(band: &Array2<f64>, k: usize) -> Array2<f64> {
     out
 }
 
-pub fn write_csv(data: &Array2<f64>, path: &str) -> Result<(), Box<dyn std::error::Error>> {
+pub fn write_csv(data: &Array2<f64>, headers: &[String], path: &str) -> Result<(), Box<dyn std::error::Error>> {
     let mut wtr = Writer::from_path(path)?;
+
+    // Write headers
+    wtr.write_record(headers)?;
+
+    // Write rows
     for row in data.rows() {
-        wtr.serialize(row.to_vec())?;
+        let record: Vec<String> = row.iter().map(|v| v.to_string()).collect();
+        wtr.write_record(&record)?;
     }
+
     wtr.flush()?;
     Ok(())
 }
