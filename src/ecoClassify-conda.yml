@@ -2,11 +2,10 @@ name: ecoClassify-1
 channels:
   - r
   - conda-forge
-  - defaults
 dependencies:
   - _r-mutex=1.0.0=anacondar_1
   - bzip2=1.0.8=h2466b09_7
-  - ca-certificates=2024.8.30=h56e8100_0
+  - ca-certificates=2025.4.26=h4c7d964_0
   - cairo=1.18.0=h91e5215_2
   - font-ttf-dejavu-sans-mono=2.37=hab24e00_0
   - font-ttf-inconsolata=3.000=h77eed37_0
@@ -73,7 +72,7 @@ dependencies:
   - mkl=2024.2.2=h66d3029_14
   - msys2-conda-epoch=20160418=1
   - openjdk=22.0.1=h57928b3_1
-  - openssl=3.4.0=h2466b09_0
+  - openssl=3.5.0=ha4e3fda_0
   - pandoc=2.19.2=h57928b3_2
   - pcre2=10.44=h3d7b363_2
   - pixman=0.43.4=h63175ca_0
@@ -295,7 +294,7 @@ dependencies:
   - r-rprojroot=2.0.3=r41hc72bb7e_1
   - r-rsqlite=2.3.4=r41ha856d6a_0
   - r-rstudioapi=0.14=r41hc72bb7e_1
-  - r-rsyncrosim=2.0.0=r41hd8ed1ab_0
+  - r-rsyncrosim=2.1.1=r41hd8ed1ab_0
   - r-rvertnet=0.8.2=r41hc72bb7e_1
   - r-rvest=1.0.3=r41hc72bb7e_1
   - r-s2=1.1.6=r41h9b1ec75_0
