@@ -880,6 +880,21 @@ calculateStatistics <- function(
   ))
 }
 
+getPCAFromRaster <- function(r, pcaSample = 100000) {
+  if (nlyr(r) < 2) {
+    stop("Need ≥2 layers for PCA")
+  }
+  # sample a data.frame of values
+  sampleDF <- spatSample(
+    r,
+    size = min(pcaSample, ncell(r)),
+    method = "random",
+    na.rm = TRUE
+  )
+  # run PCA
+  prcomp(sampleDF, scale. = TRUE)
+}
+
 # context functions ------------------------------
 #’ Compute 8‐neighbour mean and first 2 PCA components for a multi‐layer image
 #’
@@ -891,35 +906,38 @@ addRasterAdjacencyValues <- function(
   adjacencyWindow = 3,
   pcaSample = 100000
 ) {
-  # ensure terra object
-  r <- rast(rasterIn)
-
   # 1) 8‐neighbour mean (exclude the centre pixel)
   w <- matrix(1, adjacencyWindow, adjacencyWindow)
   w[2, 2] <- 0
   adj <- focal(
-    r,
+    rasterIn,
     w = w,
     fun = "mean",
     na.rm = TRUE,
     filename = "", # empty means process in blocks
     overwrite = TRUE
   )
-  names(adj) <- paste0(names(r), "_adj")
+  names(adj) <- paste0(names(rasterIn), "_adj")
 
   # 2) build PCA model on a random sample of pixels
-  #    (scale = TRUE to center & scale predictors)
-  vals <- values(r, mat = FALSE) # fetch as matrix
-  nonNA <- complete.cases(vals)
-  sampIdx <- sample(which(nonNA), min(pcaSample, sum(nonNA)))
-  pca <- prcomp(vals[sampIdx, ], scale. = TRUE)
+  vals <- values(rasterIn, mat = TRUE)
+  keep <- complete.cases(vals)
+  samp <- sample(which(keep), min(pcaSample, sum(keep)))
+  pcaMod <- prcomp(vals[samp, ])
 
-  # 3) predict PC1 & PC2 back onto the raster, in blocks
-  pcs <- predict(r, model = pca, index = 1:2, filename = "", overwrite = TRUE)
+  # 3) predict PC1 & PC2 back onto the full Raster in blocks
+  pcs <- predict(
+    rasterIn,
+    model = pcaMod,
+    index = 1:2,
+    filename = "",
+    overwrite = TRUE
+  )
   names(pcs) <- c("PC1", "PC2")
 
   # 4) combine all layers
-  c(r, adj, pcs)
+  rasterOut <- c(rasterIn, adj, pcs)
+  return(rasterOut)
 }
 
 contextualizeRaster <- function(rasterList) {
@@ -1136,7 +1154,7 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
     mtry = results[which.min(results$oobError), "mtry"],
     num.trees = results[which.min(results$oobError), "nTrees"],
     max.depth = results[which.min(results$oobError), "maxDepth"],
-    num.threads = nCores,
+    num.threads = 1,
     probability = TRUE,
     importance = "impurity"
   )
