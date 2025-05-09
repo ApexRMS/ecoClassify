@@ -47,7 +47,7 @@ normalizeRasters <- inputVariables[[11]]
 
 # load model and threshold
 if (modelType == "CNN") {
-  model <- torch::torch_load("onebyonecnn.pt")
+  model <- torch::torch_load(modelObjectDataframe$Model)
 } else {
   model <- readRDS(modelObjectDataframe$Model)
 }

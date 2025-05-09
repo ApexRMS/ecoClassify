@@ -135,18 +135,25 @@ model <- modelOut[[1]]
 variableImportance <- modelOut[[2]]
 
 # save model
+modelPath <- ifelse(
+  modelType == "CNN",
+  file.path(transferDir, "model.pt"),
+  file.path(transferDir, "model.rds")
+)
 if (modelType == "CNN") {
-  torch::torch_save(net, file.path(transferDir, "model.pt"))
+  torch::torch_save(model, modelPath)
 } else {
-  saveRDS(model, file.path(transferDir, "model.rds"))
+  saveRDS(model, modelPath)
 }
+
 # add to output datasheet
 modelObjectOutputDataframe <- data.frame(
-  Model = file.path(transferDir, "model.rds"),
+  Model = modelPath,
   Threshold = threshold
 )
 
-# extract variable importance plot and data frame ------------------------------
+
+# save model object to output datasheet
 variableImportanceOutput <- plotVariableImportance(
   variableImportance,
   transferDir

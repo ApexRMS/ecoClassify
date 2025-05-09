@@ -287,39 +287,51 @@ decomposedRaster <- function(predRast, responseRast, nobs) {
 #' transferDir is defined based on the ssim session.
 #' @noRd
 plotVariableImportance <- function(importanceData, transferDir) {
-  # extract variable importance
-  variableImportance <- data.frame(importanceData) %>%
-    tibble::rownames_to_column("variable") %>%
-    rename(value = 2)
+  if (is.null(names(importanceData))) {
+    stop("`importanceData` must be a named numeric vector.")
+  }
+  df <- tibble::tibble(
+    variable = names(importanceData),
+    value = as.numeric(importanceData)
+  )
 
-  # make a variable importance plot for specified model
-  variableImportancePlot <- ggplot(
-    variableImportance,
-    aes(x = reorder(variable, value), y = value, fill = value)
+  p <- ggplot2::ggplot(
+    df,
+    aes(
+      x = reorder(variable, value),
+      y = value,
+      fill = value
+    )
   ) +
-    geom_bar(stat = "identity", width = 0.8) +
-    coord_flip() +
-    ylab("Variable Importance") +
-    xlab("Variable") +
-    ggtitle("Information Value Summary") +
-    theme_classic(base_size = 26) +
-    scale_fill_gradientn(colours = c("#424352"), guide = "none")
+    ggplot2::geom_col(width = 0.8) +
+    ggplot2::coord_flip() +
+    ggplot2::labs(
+      x = "Variable",
+      y = "Variable Importance",
+      title = "Information Value Summary"
+    ) +
+    ggplot2::theme_classic(base_size = 26) +
+    ggplot2::scale_fill_gradientn(
+      colours = "#424352",
+      guide = "none"
+    )
 
-  # save variable importance plot
-  ggsave(
-    filename = file.path(paste0(transferDir, "/VariableImportance.png")),
-    variableImportancePlot
+  outfile <- file.path(transferDir, "VariableImportance.png")
+  ggplot2::ggsave(
+    filename = outfile,
+    plot = p,
+    width = 7,
+    height = 7,
+    units = "in"
   )
 
-  # Generate dataframe
-  varImportanceOutputDataframe <- data.frame(
-    VariableImportance = file.path(paste0(
-      transferDir,
-      "/VariableImportance.png"
-    ))
-  )
-
-  return(list(variableImportancePlot, varImportanceOutputDataframe))
+  return(list(
+    plot = p,
+    dataFrame = data.frame(
+      VariableImportance = outfile,
+      stringsAsFactors = FALSE
+    )
+  ))
 }
 
 #' Split image data for training and testing ---
@@ -1377,4 +1389,38 @@ normalizeRaster <- function(rasterList) {
   }
 
   return(normalizedRasterList)
+}
+
+
+# Save only the model’s state_dict (weights) as plain R arrays
+saveTorchCNNasRDS <- function(model, path) {
+  # 1a) pull out the state dict (a named list of torch_tensors)
+  sd <- model$state_dict()
+  # 1b) move everything to CPU and convert to plain R arrays
+  sd_r <- lapply(sd, function(x) as.array(x$to(device = torch_device("cpu"))))
+  # 1c) write to disk
+  saveRDS(sd_r, path)
+}
+
+
+loadTorchCNNfromRDS <- function(path, n_feat, hidden_chs = 16, device = "cpu") {
+  # 2a) read the plain‐R list of arrays
+  sd_r <- readRDS(path)
+
+  # 2b) rebuild your module skeleton
+  model <- OneByOneCNN(n_feat = n_feat, hidden_chs = hidden_chs)
+
+  # 2c) turn the arrays back into torch_tensors
+  sd_t <- lapply(sd_r, function(a) torch_tensor(a, dtype = torch_float()))
+  # ensure names line up
+  names(sd_t) <- names(sd_r)
+
+  # 2d) load into the model
+  model$load_state_dict(sd_t)
+
+  # 2e) move to desired device & eval mode
+  dev <- if (device == "cpu") torch_device("cpu") else torch_device(device)
+  model <- model$to(device = dev)$eval()
+
+  return(model)
 }
