@@ -85,13 +85,15 @@ modelOutputDataframe <- data.frame(Statistic = character(0), Value = numeric(0))
 rgbOutputDataframe <- data.frame(Timestep = numeric(0), RGBImage = character(0))
 
 
+# add contextualization for prediction rasters if selected ---------------------
+if (applyContextualization == TRUE) {
+  trainingRasterList <- contextualizeRaster(trainingRasterList) # change naming to avoid this
+}
+
+
 # separate training and testing data -------------------------------------------
 splitData <- splitTrainTest(
-  ifelse(
-    applyContextualization == FALSE,
-    trainingRasterList,
-    contextualizeRaster(trainingRasterList) ## add contextualization if selected
-  ),
+  trainingRasterList,
   groundTruthRasterList,
   nObs
 )
