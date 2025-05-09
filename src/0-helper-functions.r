@@ -819,11 +819,11 @@ calculateStatistics <- function(
   modelOutputDataframe
 ) {
   if (inherits(model, "ranger")) {
-    testingPredictions <- predict(model, testData)$predictions[, 2]
+    prediction <- predict(model, testData)$predictions[, 2]
   } else if (inherits(model, "torchCNN")) {
-    testingPredictions <- predictCNN(model, testData, isRaster = FALSE)
+    prediction <- predictCNN(model, testData, isRaster = FALSE)
   } else {
-    testingPredictions <- predict(model, testData, type = "logistic")
+    prediction <- predict(model, testData, type = "logistic")
   }
 
   prediction <- as.factor(ifelse(prediction >= threshold, 1, 0))
