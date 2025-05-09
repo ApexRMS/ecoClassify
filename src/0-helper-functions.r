@@ -1210,19 +1210,17 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
       self$fc1 <- nn_linear(16, 2)
     },
     forward = function(x) {
-      # x comes in [batch, features]
-      x <- x$unsqueeze(3) # → [batch, features, length=1]
-      x <- self$conv1(x) # → [batch, 16, 1]
+      x <- x$unsqueeze(3)
+      x <- self$conv1(x)
       x <- nnf_relu(x)
-      x <- x$squeeze(3) # → [batch, 16]
-      x <- self$fc1(x) # → [batch, 2]
+      x <- x$squeeze(3)
+      x <- self$fc1(x)
       x
     }
   )(n_feat)
 
   # 4) train it
-  device <- if (cuda_is_available()) torch_device("cuda") else
-    torch_device("cpu")
+  device <- torch_device("cpu")
   net <- net$to(device = device)
   opt <- optim_adam(net$parameters, lr = 1e-3)
   lossf <- nn_cross_entropy_loss()
