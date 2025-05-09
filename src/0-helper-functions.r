@@ -819,9 +819,11 @@ calculateStatistics <- function(
   modelOutputDataframe
 ) {
   if (inherits(model, "ranger")) {
-    prediction <- predict(model, testData)$predictions[, 2] # TODO update for multiclass
+    testingPredictions <- predict(model, testData)$predictions[, 2]
+  } else if (inherits(model, "torchCNN")) {
+    testingPredictions <- predictCNN(model, testData, isRaster = FALSE)
   } else {
-    prediction <- predict(model, testData, type = "logistic")
+    testingPredictions <- predict(model, testData, type = "logistic")
   }
 
   prediction <- as.factor(ifelse(prediction >= threshold, 1, 0))
@@ -1273,10 +1275,9 @@ predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
     )
   }
 
-  # 2) sanity check: same number of features the model was built with
-  #    the model’s first_conv layer has weight shape [out, in, k]
+  ## check input layers
   conv1_wt <- model$conv1$weight$data()
-  n_in <- conv1_wt$size()[2] # in_channels
+  n_in <- conv1_wt$size()[2]
   if (ncol(vals) != n_in) {
     stop(sprintf(
       "Wrong number of predictors: model expects %d but you passed %d",
@@ -1285,13 +1286,11 @@ predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
     ))
   }
 
-  # 3) to torch
   X <- torch_tensor(vals, dtype = torch_float())
   dev <- if (cuda_is_available()) torch_device("cuda") else torch_device("cpu")
   model <- model$to(device = dev)$eval()
   X <- X$to(device = dev)
 
-  # 4) forward + softmax
   probs_t <- with_no_grad({
     logits <- model(X) # [N, 2]
     nnf_softmax(logits, dim = 2)$to(device = torch::torch_device("cpu"))
@@ -1299,9 +1298,7 @@ predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
   mat <- as.matrix(probs_t) # base R matrix
   colnames(mat) <- c("absent", "presence")
 
-  # 5) return in the right shape
   if (isRaster) {
-    # inject the 'presence' col back into a one‐layer SpatRaster
     outR <- newdata[[1]]
     terra::values(outR) <- mat[, "presence"]
     names(outR) <- "presence"
@@ -1310,6 +1307,8 @@ predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
     return(mat[, "presence"])
   }
 }
+
+
 # function to reclassify ground truth rasters
 reclassifyGroundTruth <- function(groundTruthRasterList) {
   reclassifiedGroundTruthList <- c()
