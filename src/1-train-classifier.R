@@ -135,8 +135,11 @@ model <- modelOut[[1]]
 variableImportance <- modelOut[[2]]
 
 # save model
-saveRDS(model, file.path(transferDir, "model.rds"))
-
+if (modelType == "CNN") {
+  torch::torch_save(net, file.path(transferDir, "model.pt"))
+} else {
+  saveRDS(model, file.path(transferDir, "model.rds"))
+}
 # add to output datasheet
 modelObjectOutputDataframe <- data.frame(
   Model = file.path(transferDir, "model.rds"),
