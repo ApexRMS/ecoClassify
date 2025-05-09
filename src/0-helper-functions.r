@@ -23,6 +23,8 @@ quiet({
     library(foreach)
     library(iterators)
     library(parallel)
+    library(torch)
+    library(coro)
   })
 
   ## load packages ---------------------------------------------------
@@ -404,7 +406,7 @@ predictRanger <- function(raster, model) {
 #' of probabilities
 #'
 #' @param trainingRaster training raster for predictRanger (spatRaster)
-#' @param model predictive model for generating probability values (random forest or maxent object)
+#' @param model predictive model for generating probability values (random forest, maxent, or CNN object)
 #' @param threshold threshold for converted results into binary outcomes (numeric)
 #' @param modelType type of model used (character)
 #' @return raster of predicted presence and probability values (spatRaster)
@@ -422,6 +424,8 @@ getPredictionRasters <- function(
   if (modelType == "Random Forest") {
     # generate probabilities for each raster using ranger
     probabilityRaster <- predictRanger(raster, model)
+  } else if (modelType == "CNN") {
+    probabilityRaster <- predictCNN(model, raster)
   } else if (modelType == "MaxEnt") {
     probabilityRaster <- predict(model, raster, type = "logistic")
   } else {
@@ -906,9 +910,9 @@ addRasterAdjacencyValues <- function(
   adjacencyWindow = 3,
   pcaSample = 100000
 ) {
-  # 1) 8‐neighbour mean (exclude the centre pixel)
+  # 1) 8‐neighbour mean
   w <- matrix(1, adjacencyWindow, adjacencyWindow)
-  w[2, 2] <- 0
+
   adj <- focal(
     rasterIn,
     w = w,
@@ -1054,6 +1058,8 @@ getOptimalThreshold <- function(
     testingPredictions <- predict(model, testingData)$predictions[, 2] # TO DO: use value instead of index?
   } else if (modelType == "MaxEnt") {
     testingPredictions <- predict(model, testingData, type = "logistic")
+  } else if (modelType == "CNN") {
+    testingPredictions <- predictCNN(model, testingData, isRaster = FALSE)
   } else {
     stop("Model type not recognized")
   }
@@ -1163,6 +1169,147 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   stopCluster(cl)
 }
 
+
+getCNNModel <- function(allTrainData, nCores, isTuningOn) {
+  torch_set_num_threads(nCores)
+
+  # 1) pull out data
+  X_df <- subset(allTrainData, select = -c(presence, kfold))
+  y_raw <- allTrainData$presence
+  y_int <- if (is.factor(y_raw)) as.integer(y_raw) - 1L else as.integer(y_raw)
+
+  X <- as.matrix(X_df) # [n_samples, n_features]
+  n_feat <- ncol(X)
+
+  # 2) dataset + loader
+  ds <- dataset(
+    initialize = function(X, y) {
+      self$X <- torch_tensor(X, dtype = torch_float())
+      self$y <- torch_tensor(y + 1L, dtype = torch_long())
+    },
+    .getitem = function(i) list(x = self$X[i, ], y = self$y[i]),
+    .length = function() self$X$size()[1]
+  )(X, y_int)
+
+  batch_size <- if (isTuningOn) 64 else 32
+  epochs <- if (isTuningOn) 50 else 20
+  dl <- dataloader(ds, batch_size = batch_size, shuffle = TRUE)
+
+  # 3) define a 1×1 “CNN”
+  net <- nn_module(
+    "OneByOneCNN",
+    initialize = function(n_feat) {
+      # treat each predictor as its own channel, but length=1
+      self$conv1 <- nn_conv1d(
+        in_channels = n_feat,
+        out_channels = 16,
+        kernel_size = 1
+      )
+      self$fc1 <- nn_linear(16, 2)
+    },
+    forward = function(x) {
+      # x comes in [batch, features]
+      x <- x$unsqueeze(3) # → [batch, features, length=1]
+      x <- self$conv1(x) # → [batch, 16, 1]
+      x <- nnf_relu(x)
+      x <- x$squeeze(3) # → [batch, 16]
+      x <- self$fc1(x) # → [batch, 2]
+      x
+    }
+  )(n_feat)
+
+  # 4) train it
+  device <- if (cuda_is_available()) torch_device("cuda") else
+    torch_device("cpu")
+  net <- net$to(device = device)
+  opt <- optim_adam(net$parameters, lr = 1e-3)
+  lossf <- nn_cross_entropy_loss()
+
+  for (ep in seq_len(epochs)) {
+    net$train()
+    coro::loop(
+      for (b in dl) {
+        opt$zero_grad()
+        x_b <- b$x$to(device = device)
+        y_b <- b$y$to(device = device)
+
+        logits <- net(x_b)
+        loss <- lossf(logits, y_b)
+        loss$backward()
+        opt$step()
+      }
+    )
+  }
+
+  # 5) variable importance (abs sum of conv1 weights)
+  w1 <- net$conv1$weight$data()$abs()$sum(dim = c(2, 3))$to(device = "cpu")
+  vimp <- as.numeric(w1)
+  names(vimp) <- colnames(X_df)
+
+  class(net) <- c("torchCNN", class(net))
+  list(net, vimp)
+}
+
+## Predict presence using a trained CNN model
+#' @param model A trained CNN model (torchCNN object).
+#' @param newdata A SpatRaster object containing the data to predict on.
+#' @param ... Additional arguments (not used).
+predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
+  # 1) pull out the raw feature matrix
+  if (isRaster) {
+    # get a numeric matrix ncell × nfeat
+    vals <- terra::values(newdata, mat = TRUE)
+  } else if (is.data.frame(newdata) || is.matrix(newdata)) {
+    df <- as.data.frame(newdata, stringsAsFactors = FALSE)
+    # drop any 'presence' or 'kfold' columns if they exist
+    drop <- intersect(c("presence", "kfold"), names(df))
+    if (length(drop)) df <- df[, setdiff(names(df), drop), drop = FALSE]
+    # coerce everything to numeric
+    vals <- as.matrix(df)
+    storage.mode(vals) <- "double"
+  } else {
+    stop(
+      "`newdata` must be a SpatRaster or a data.frame / matrix of predictors"
+    )
+  }
+
+  # 2) sanity check: same number of features the model was built with
+  #    the model’s first_conv layer has weight shape [out, in, k]
+  conv1_wt <- model$conv1$weight$data()
+  n_in <- conv1_wt$size()[2] # in_channels
+  if (ncol(vals) != n_in) {
+    stop(sprintf(
+      "Wrong number of predictors: model expects %d but you passed %d",
+      n_in,
+      ncol(vals)
+    ))
+  }
+
+  # 3) to torch
+  X <- torch_tensor(vals, dtype = torch_float())
+  dev <- if (cuda_is_available()) torch_device("cuda") else torch_device("cpu")
+  model <- model$to(device = dev)$eval()
+  X <- X$to(device = dev)
+
+  # 4) forward + softmax
+  probs_t <- with_no_grad({
+    logits <- model(X) # [N, 2]
+    nnf_softmax(logits, dim = 2)$to(device = torch::torch_device("cpu"))
+  })
+  mat <- as.matrix(probs_t) # base R matrix
+  colnames(mat) <- c("absent", "presence")
+
+  # 5) return in the right shape
+  if (isRaster) {
+    # inject the 'presence' col back into a one‐layer SpatRaster
+    outR <- newdata[[1]]
+    terra::values(outR) <- mat[, "presence"]
+    names(outR) <- "presence"
+    return(outR)
+  } else {
+    return(mat[, "presence"])
+  }
+}
 # function to reclassify ground truth rasters
 reclassifyGroundTruth <- function(groundTruthRasterList) {
   reclassifiedGroundTruthList <- c()
