@@ -1,16 +1,6 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<package
-  name="ecoClassify"
-  version="1.1.0"
-  description="ecoClassify package for image classification"
-  url="https://apexrms.github.io/ecoClassify/"
-  location="https://github.com/ApexRMS/ecoClassify/releases/download/v1.1.0/ecoClassify-1-1-0.ssimpkg">
+<?xml version='1.0' encoding='utf-8'?>
+<package name="ecoClassify" version="1.1.0" description="ecoClassify package for image classification" url="https://apexrms.github.io/ecoClassify/" location="https://github.com/ApexRMS/ecoClassify/releases/download/v1.1.0/ecoClassify-1-1-0.ssimpkg">
 
-  <onlineLibrary 
-    name="ecoclassify-example" 
-    displayName="EcoClassify Example"
-    description="Example library for the EcoClassify SyncroSim package showcases how to develop an image classifier for snow cover"
-    libraryLocation="https://s3.us-west-2.amazonaws.com/apexrms.com.syncrosim.templates/ecoclassify/v1.1.0/EcoClassify%20Example.ssimbak"
-    imageLocation="https://s3.us-west-2.amazonaws.com/apexrms.com.syncrosim.templates/ecoclassify/v1.1.0/spatial-example.png">
+  <onlineLibrary name="ecoclassify-example" displayName="EcoClassify Example" description="Example library for the EcoClassify SyncroSim package showcases how to develop an image classifier for snow cover" libraryLocation="https://s3.us-west-2.amazonaws.com/apexrms.com.syncrosim.templates/ecoclassify/v1.1.0/EcoClassify%20Example.ssimbak" imageLocation="https://s3.us-west-2.amazonaws.com/apexrms.com.syncrosim.templates/ecoclassify/v1.1.0/spatial-example.png">
   </onlineLibrary>
 </package>
