@@ -22,10 +22,10 @@ quiet <- function(expr) {
 }
 
 quiet({
-  pkgs <- c("terra", "tidyverse", "caret", "magrittr", "ENMeval", "foreach",
-            "iterators", "parallel", "torch", "coro", "reshape2", "rsyncrosim",
+  pkgs <- c("terra", "tidyverse", "magrittr", "ENMeval", "foreach",
+            "iterators", "parallel", "torch", "coro", "rsyncrosim",
             "sf", "ranger", "gtools", "codetools", "rJava", "ecospat", "cvms",
-            "doParallel")
+            "doParallel", "tidymodels", "ggimage", "rsvg") 
 
   invisible(lapply(pkgs, load_pkg))
 })
@@ -822,64 +822,60 @@ calculateStatistics <- function(
   model,
   testData,
   threshold,
-  confusionOutputDataframe,
-  modelOutputDataframe
+  confusionOutputDataFrame,
+  modelOutputDataFrame
 ) {
+  # Predict probabilities
   if (inherits(model, "ranger")) {
-    prediction <- predict(model, testData)$predictions[, 2]
+    probs <- predict(model, testData)$predictions[, 2]
   } else if (inherits(model, "torchCNN")) {
-    prediction <- predictCNN(model, testData, isRaster = FALSE)
+    probs <- predictCNN(model, testData, isRaster = FALSE)
   } else {
-    prediction <- predict(model, testData, type = "logistic")
+    probs <- predict(model, testData, type = "logistic")
   }
 
-  prediction <- as.factor(ifelse(prediction >= threshold, 1, 0))
+  # Binary classification based on threshold
+  predicted <- ifelse(probs >= threshold, 1, 0)
 
-  confusionMatrix <- confusionMatrix(prediction, testData$presence)
+  # Prepare evaluation data
+  evalData <- tibble(
+    truth = factor(testData$presence, levels = c(0, 1)),
+    prediction = factor(predicted, levels = c(0, 1))
+  )
 
-  # reformat and add to output datasheets
-  confusion_matrix <- data.frame(confusionMatrix$table) %>%
-    rename("Frequency" = "Freq")
+  # Confusion matrix
+  confMatrix <- conf_mat(evalData, truth = truth, estimate = prediction)
 
-  overall_stats <- data.frame(confusionMatrix$overall) %>%
-    rename(Value = 1) %>%
-    drop_na(Value)
+  # Format confusion matrix table
+  confusionMatrix <- as.data.frame(confMatrix$table)
+  colnames(confusionMatrix) <- c("Prediction", "Reference", "Frequency")
 
-  class_stats <- data.frame(confusionMatrix$byClass) %>%
-    rename(Value = 1) %>%
-    drop_na(Value)
+  # Collect metrics
+  metricsData <- bind_rows(
+    accuracy(evalData, truth, prediction),
+    sens = sensitivity(evalData, truth, prediction),
+    spec = specificity(evalData, truth, prediction),
+    precision(evalData, truth, prediction),
+    recall(evalData, truth, prediction),
+    f_meas(evalData, truth, prediction)
+  ) %>%
+    select(.metric, .estimate) %>%
+    rename(Statistic = .metric, Value = .estimate)
 
-  model_stats <- rbind(overall_stats, class_stats) %>%
-    tibble::rownames_to_column("Statistics") %>%
-    mutate(
-      Statistic = case_when(
-        Statistics == "AccuracyLower" ~ "Accuracy (lower)",
-        Statistics == "AccuracyUpper" ~ "Accuracy (upper)",
-        Statistics == "AccuracyNull" ~ "Accuracy (null)",
-        Statistics == "AccuracyPValue" ~ "Accuracy P Value",
-        Statistics == "McnemarPValue" ~ "Mcnemar P value",
-        Statistics == "Neg Pred Value" ~ "Negative Predictive Value",
-        Statistics == "Pos Pred Value" ~ "Positive Predictive Value",
-        TRUE ~ Statistics
-      )
-    ) %>%
-    select(-Statistics)
+  # Append to output dataframes
+  confusionOutputDataFrame <- addRow(confusionOutputDataFrame, confusionMatrix)
+  modelOutputDataFrame <- addRow(modelOutputDataFrame, metricsData)
 
-  # add confusion matrix and model statistics to dataframe
-  confusionOutputDataframe <- addRow(confusionOutputDataframe, confusion_matrix)
-
-  modelOutputDataframe <- addRow(modelOutputDataframe, model_stats)
-
-  # make a confusion matrix plot
+  # Confusion matrix plot
   confusionMatrixPlot <- plot_confusion_matrix(
-    as_tibble(confusion_matrix),
-    target_col = "Reference",
-    prediction_col = "Prediction",
-    counts_col = "Frequency",
-    font_counts = font(size = 15),
-    font_normalized = font(size = 6),
-    font_row_percentages = font(size = 6),
-    font_col_percentages = font(size = 6),
+  confusionMatrix,
+  target_col = "Reference",
+  prediction_col = "Prediction",
+  counts_col = "Frequency",
+  font_counts = font(size = 15),
+  font_normalized = font(size = 6),
+  font_row_percentages = font(size = 6),
+  font_col_percentages = font(size = 6)
   ) +
     ggplot2::theme(
       axis.title = element_text(size = 25),
@@ -887,8 +883,8 @@ calculateStatistics <- function(
     )
 
   return(list(
-    confusionOutputDataframe,
-    modelOutputDataframe,
+    confusionOutputDataFrame,
+    modelOutputDataFrame,
     confusionMatrixPlot
   ))
 }
@@ -1042,13 +1038,18 @@ getMaxentImportance <- function(varImp) {
 ## find sensitivity and specificity values
 getSensSpec <- function(probs, actual, threshold) {
   predicted <- ifelse(probs >= threshold, 1, 0)
-  confMatrix <- confusionMatrix(as.factor(predicted), as.factor(actual))
 
-  sensitivity <- confMatrix$byClass['Sensitivity']
-  specificity <- confMatrix$byClass['Specificity']
+  evalData <- tibble(
+    truth = factor(actual, levels = c(0, 1)),
+    prediction = factor(predicted, levels = c(0, 1))
+  )
 
-  return(c(sensitivity, specificity))
+  sens <- sensitivity(evalData, truth, prediction)$.estimate
+  spec <- specificity(evalData, truth, prediction)$.estimate
+
+  return(c(sens, spec))
 }
+
 
 ## find optimal threshold between sensitivity and specificity
 getOptimalThreshold <- function(

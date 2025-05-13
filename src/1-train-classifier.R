@@ -243,16 +243,16 @@ confusionMatrixPlot <- outputDataframes[[3]]
 # generate model chart dataframe ----------------------------------------------
 modelChartDataframe <- data.frame(
   Accuracy = modelOutputDataframe %>%
-    filter(Statistic == "Accuracy") %>%
+    filter(Statistic == "accuracy") %>%
     pull(Value),
   Precision = modelOutputDataframe %>%
-    filter(Statistic == "Precision") %>%
+    filter(Statistic == "precision") %>%
     pull(Value),
   Sensitivity = modelOutputDataframe %>%
-    filter(Statistic == "Sensitivity") %>%
+    filter(Statistic == "sensitivity") %>%
     pull(Value),
   Specificity = modelOutputDataframe %>%
-    filter(Statistic == "Specificity") %>%
+    filter(Statistic == "specificity") %>%
     pull(Value)
 )
 
