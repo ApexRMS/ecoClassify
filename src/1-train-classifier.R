@@ -269,7 +269,7 @@ filterOutputDataframe <- data.frame(
 )
 
 classifierOptionsOutputDataframe <- data.frame(
-  nObs = nObs,
+  nObs = format(nObs, scientific = FALSE),
   normalizeRasters = normalizeRasters,
   modelType = modelType,
   modelTuning = modelTuning,
