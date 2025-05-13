@@ -65,7 +65,7 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   normalizeRasters <- classifierOptionsDataframe$normalizeRasters
 
   # assign value of 3 to contextualizationWindowSize if not specified
-  if (is.na(contextualizationWindowSize)) {
+  if (is.null(contextualizationWindowSize) || isTRUE(is.na(contextualizationWindowSize))) {
     contextualizationWindowSize <- 3
   } else if (contextualizationWindowSize %% 2 == 0) {
     stop(
