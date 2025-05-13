@@ -51,7 +51,12 @@ if (modelType == "CNN") {
 } else {
   model <- readRDS(modelObjectDataframe$Model)
 }
-threshold <- modelObjectDataframe$Threshold
+
+if (setManualThreshold == FALSE) {
+  threshold <- modelObjectDataframe$Threshold
+} else {
+  threshold <- manualThreshold
+}
 
 # extract list of testing rasters --------------------------------------------
 predictRasterList <- extractRasters(predictingRasterDataframe, column = 2)
