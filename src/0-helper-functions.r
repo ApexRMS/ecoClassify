@@ -3,56 +3,22 @@
 ## ApexRMS, November 2024
 ## -------------------------------
 
-# suppress additional warnings -------------------------------------
-quiet <- function(expr) {
-  sink(tempfile()) # divert output to temporary file
-  on.exit(sink()) # reset on exit
-  invisible(capture.output(
-    result <- tryCatch(expr, error = function(e) stop(e$message))
-  ))
-  result
+## load packages ---------------------------------------------------
+# suppress additional warnings ----
+load_pkg <- function(pkg) {
+  if (!requireNamespace(pkg, quietly = TRUE)) {
+    install.packages(pkg, repos = 'http://cran.us.r-project.org')
+  }
+  suppressPackageStartupMessages(library(pkg, character.only = TRUE))
 }
 
 quiet({
-  suppressPackageStartupMessages({
-    library(terra)
-    library(tidyverse)
-    library(caret)
-    library(magrittr)
-    library(ENMeval)
-    library(foreach)
-    library(iterators)
-    library(parallel)
-    library(torch)
-    library(coro)
-  })
+  pkgs <- c("terra", "tidyverse", "caret", "magrittr", "ENMeval", "foreach",
+            "iterators", "parallel", "torch", "coro", "reshape2", "rsyncrosim",
+            "sf", "ranger", "gtools", "codetools", "rJava", "ecospat", "cvms",
+            "doParallel")
 
-  ## load packages ---------------------------------------------------
-  update.packages(
-    repos = 'http://cran.us.r-project.org',
-    ask = FALSE,
-    oldPkgs = c("terra")
-  )
-
-  if (!requireNamespace("reshape2", quietly = TRUE)) {
-    install.packages("reshape2", repos = 'http://cran.us.r-project.org')
-  }
-
-  library(rsyncrosim)
-  library(tidyverse)
-  library(terra)
-  library(sf)
-  library(ranger)
-  library(caret)
-  library(gtools)
-  library(codetools)
-  library(ENMeval)
-  library(rJava)
-  library(ecospat)
-  library(ENMeval)
-  library(cvms)
-  library(foreach)
-  library(doParallel)
+  invisible(lapply(pkgs, load_pkg))
 })
 
 ## define functions ------------------------------------------------
@@ -91,11 +57,28 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   # Extract model input values
   nObs <- classifierOptionsDataframe$nObs
   applyContextualization <- classifierOptionsDataframe$applyContextualization
+  contextualizationWindowSize <- classifierOptionsDataframe$contextualizationWindowSize
   modelType <- as.character(classifierOptionsDataframe$modelType)
   modelTuning <- classifierOptionsDataframe$modelTuning
   setManualThreshold <- classifierOptionsDataframe$setManualThreshold
   manualThreshold <- classifierOptionsDataframe$manualThreshold
   normalizeRasters <- classifierOptionsDataframe$normalizeRasters
+
+  # assign value of 3 to contextualizationWindowSize if not specified
+  if (is.na(contextualizationWindowSize)) {
+    contextualizationWindowSize <- 3
+  } else if (contextualizationWindowSize %% 2 == 0) {
+    stop(
+      "Contextualization window size must be an odd number; please specify a odd value greater than 1"
+    )
+  }
+
+  # give a warning if contextualization window is specified but applyContextualization is FALSE
+  if (contextualizationWindowSize > 0 && applyContextualization == FALSE) {
+    warning(
+      "Contextualization window size was supplied but applyContextualization is set to FALSE; no contextualization will be applied"
+    )
+  }
 
   # Load post-processing options datasheet
   postProcessingDataframe <- datasheet(
@@ -141,6 +124,7 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
     filterPercent,
     applyFiltering,
     applyContextualization,
+    contextualizationWindowSize,
     modelType,
     modelTuning,
     setManualThreshold,
@@ -921,7 +905,7 @@ getPCAFromRaster <- function(r, pcaSample = 100000) {
 #’ @return A SpatRaster with N adjacent‐means plus 2 PC layers
 addRasterAdjacencyValues <- function(
   rasterIn,
-  adjacencyWindow = 3,
+  adjacencyWindow = contextualizationWindowSize,
   pcaSample = 100000
 ) {
   # 1) 8‐neighbour mean
@@ -1145,7 +1129,7 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   registerDoParallel(cores = nCores) # TO DO: confirm this is a good solution
 
   results <- foreach(
-    i = 1:nrow(tuneArgsGrid),
+    i = seq_len(nrow(tuneArgsGrid)),
     .combine = rbind,
     .packages = "ranger"
   ) %dopar%

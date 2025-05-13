@@ -36,11 +36,12 @@ filterResolution <- inputVariables[[3]] # TO DO: give warnings for lower limits 
 filterPercent <- inputVariables[[4]]
 applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
-modelType <- inputVariables[[7]]
-modelTuning <- inputVariables[[8]]
-setManualThreshold <- inputVariables[[9]]
-manualThreshold <- inputVariables[[10]]
-normalizeRasters <- inputVariables[[11]]
+contextualizationWindowSize <- inputVariables[[7]]
+modelType <- inputVariables[[8]]
+modelTuning <- inputVariables[[9]]
+setManualThreshold <- inputVariables[[10]]
+manualThreshold <- inputVariables[[11]]
+normalizeRasters <- inputVariables[[12]]
 
 ## check if multiprocessing is selected
 mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
@@ -89,7 +90,6 @@ rgbOutputDataframe <- data.frame(Timestep = numeric(0), RGBImage = character(0))
 if (applyContextualization == TRUE) {
   trainingRasterList <- contextualizeRaster(trainingRasterList) # change naming to avoid this
 }
-
 
 # separate training and testing data -------------------------------------------
 splitData <- splitTrainTest(

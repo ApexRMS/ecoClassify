@@ -37,6 +37,7 @@
         <column name="setManualThreshold" displayName="Set Probability Threshold" dataType="Boolean"/>
         <column name="manualThreshold" displayName="Probability Threshold" dataType="Double" isOptional="True"/>
         <column name="applyContextualization" dataType="Boolean" displayName="Apply Contextualization"/>
+        <column name="contextualizationWindowSize" dataType="Integer" displayName="Contextualization Window Size" isOptional="True"/>
     </dataSheet>
 
     <dataSheet name="PostProcessingOptions" displayName="Post-processing options" isSingleRow="True">

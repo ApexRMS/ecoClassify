@@ -39,11 +39,12 @@ filterResolution <- inputVariables[[3]]
 filterPercent <- inputVariables[[4]]
 applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
-modelType <- inputVariables[[7]]
-modelTuning <- inputVariables[[8]]
-setManualThreshold <- inputVariables[[9]]
-manualThreshold <- inputVariables[[10]]
-normalizeRasters <- inputVariables[[11]]
+contextualizationWindowSize <- inputVariables[[7]]
+modelType <- inputVariables[[8]]
+modelTuning <- inputVariables[[9]]
+setManualThreshold <- inputVariables[[10]]
+manualThreshold <- inputVariables[[11]]
+normalizeRasters <- inputVariables[[12]]
 
 # load model and threshold
 if (modelType == "CNN") {
