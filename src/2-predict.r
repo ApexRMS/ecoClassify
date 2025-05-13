@@ -35,7 +35,7 @@ inputVariables <- assignVariables(
 )
 timestepList <- inputVariables[[1]]
 nObs <- inputVariables[[2]]
-filterResolution <- inputVariables[[3]]
+filterResolution <- inputVariables[[3]] # TO DO: give warnings for lower limits (must be >=1?)
 filterPercent <- inputVariables[[4]]
 applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
@@ -45,6 +45,7 @@ modelTuning <- inputVariables[[9]]
 setManualThreshold <- inputVariables[[10]]
 manualThreshold <- inputVariables[[11]]
 normalizeRasters <- inputVariables[[12]]
+rasterDecimalPlaces <- inputVariables[[13]]
 
 # load model and threshold
 if (modelType == "CNN") {
@@ -62,19 +63,26 @@ if (setManualThreshold == FALSE) {
 # extract list of testing rasters --------------------------------------------
 predictRasterList <- extractRasters(predictingRasterDataframe, column = 2)
 
-# normalize training rasters if selected -------------------------------------
+# normalize predicting rasters if selected -------------------------------------
 if (normalizeRasters == TRUE) {
   predictRasterList <- normalizeRaster(predictRasterList)
 }
 
-# add covariate data to training rasters -------------------------------------
+# add covariate data to predicting rasters -------------------------------------
 predictRasterList <- addCovariates(
   predictRasterList,
   predictingCovariateDataframe
 )
 
-# Setup empty dataframes to accept output in SyncroSim datasheet format ------
+# round rasters to integer if selected ----------------------------------
+if (is.numeric(rasterDecimalPlaces) && length(rasterDecimalPlaces) > 0 && !is.na(rasterDecimalPlaces)) {
+  roundedRasters <- lapply(predictRasterList, function(r) {
+    return(app(r, fun = function(x) round(x, rasterDecimalPlaces)))
+  })
+  predictRasterList <- roundedRasters
+}
 
+# Setup empty dataframes to accept output in SyncroSim datasheet format ------
 classifiedRasterOutputDataframe <- data.frame(
   Timestep = numeric(0),
   ClassifiedUnfiltered = character(0),

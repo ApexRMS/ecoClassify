@@ -12,6 +12,15 @@ load_pkg <- function(pkg) {
   suppressPackageStartupMessages(library(pkg, character.only = TRUE))
 }
 
+quiet <- function(expr) {
+  sink(tempfile())               # Redirect output to a temp file
+  on.exit(sink())                # Ensure sink is reset on exit
+  invisible(capture.output(
+    result <- tryCatch(expr, error = function(e) stop(e$message))
+  ))
+  result
+}
+
 quiet({
   pkgs <- c("terra", "tidyverse", "caret", "magrittr", "ENMeval", "foreach",
             "iterators", "parallel", "torch", "coro", "reshape2", "rsyncrosim",
@@ -63,6 +72,7 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   setManualThreshold <- classifierOptionsDataframe$setManualThreshold
   manualThreshold <- classifierOptionsDataframe$manualThreshold
   normalizeRasters <- classifierOptionsDataframe$normalizeRasters
+  rasterDecimalPlaces <- classifierOptionsDataframe$rasterDecimalPlaces
 
   # assign value of 3 to contextualizationWindowSize if not specified
   if (is.null(contextualizationWindowSize) || isTRUE(is.na(contextualizationWindowSize))) {
@@ -129,7 +139,8 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
     modelTuning,
     setManualThreshold,
     manualThreshold,
-    normalizeRasters
+    normalizeRasters,
+    rasterDecimalPlaces
   ))
 }
 
