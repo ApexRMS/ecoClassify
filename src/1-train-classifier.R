@@ -99,7 +99,7 @@ splitData <- splitTrainTest(
 )
 allTrainData <- splitData[[1]]
 allTestData <- splitData[[2]]
-head(allTestData)
+
 ## Train model -----------------------------------------------------------------
 if (modelType == "MaxEnt") {
   modelOut <- getMaxentModel(allTrainData, nCores, modelTuning)
@@ -153,7 +153,6 @@ modelObjectOutputDataframe <- data.frame(
   Model = modelPath,
   Threshold = threshold
 )
-
 
 # save model object to output datasheet
 variableImportanceOutput <- plotVariableImportance(

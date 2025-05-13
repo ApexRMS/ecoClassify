@@ -1254,7 +1254,7 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   }
 
   # 5) variable importance (abs sum of conv1 weights)
-  w1 <- net$conv1$weight$data()$abs()$sum(dim = c(2, 3))$to(device = "cpu")
+  w1 <- net$conv1$weight$data()$abs()$sum(dim = c(1, 3))$to(device = "cpu")
   vimp <- as.numeric(w1)
   names(vimp) <- colnames(X_df)
 

@@ -76,7 +76,6 @@ classifiedRasterOutputDataframe <- data.frame(
   ClassifiedProbability = character(0)
 )
 
-
 classifiedRgbOutputDataframe <- data.frame(
   Timestep = numeric(0),
   RGBImage = character(0)
@@ -135,7 +134,6 @@ for (t in seq_along(predictRasterList)) {
 }
 
 # Save dataframes back to SyncroSim library's output datasheets ----------------
-
 saveDatasheet(
   myScenario,
   data = classifiedRasterOutputDataframe,
