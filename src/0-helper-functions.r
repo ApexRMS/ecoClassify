@@ -23,12 +23,48 @@ quiet <- function(expr) {
 
 quiet({
   pkgs <- c("terra", "tidyverse", "magrittr", "ENMeval", "foreach",
-            "iterators", "parallel", "torch", "coro", "rsyncrosim",
+            "iterators", "parallel", "coro", "rsyncrosim",
             "sf", "ranger", "gtools", "codetools", "rJava", "ecospat", "cvms",
-            "doParallel", "tidymodels", "ggimage", "rsvg") 
+            "doParallel", "tidymodels", "ggimage", "rsvg")
 
   invisible(lapply(pkgs, load_pkg))
 })
+
+install_and_load_torch <- function(max_attempts = 3, wait_seconds = 5) {
+  if (!requireNamespace("torch", quietly = TRUE)) {
+    install.packages("torch", repos = 'http://cran.us.r-project.org')
+  }
+
+  Sys.setenv(TORCH_INSTALL = "1")
+
+  if (!torch::torch_is_installed()) {
+    torch::install_torch()
+  }
+
+  # Try loading backend up to `max_attempts` times
+  attempt <- 1
+  while (attempt <= max_attempts) {
+    try({
+      suppressPackageStartupMessages(library(torch))
+      torch::torch_tensor(1)  # forces backend to load
+      message("Torch is ready.")
+      return(invisible(TRUE))
+    }, silent = TRUE)
+
+    message(sprintf("Attempt %d failed to load torch backend. Retrying in %d seconds...", attempt, wait_seconds))
+    Sys.sleep(wait_seconds)
+    attempt <- attempt + 1
+  }
+
+  # If it still fails, now it's safe to assume it's broken
+  message("Torch backend still not ready. Reinstalling...")
+  unlink(torch::torch_home(), recursive = TRUE, force = TRUE)
+  torch::install_torch()
+  suppressPackageStartupMessages(library(torch))
+  torch::torch_tensor(1)
+}
+
+install_and_load_torch()
 
 ## define functions ------------------------------------------------
 
@@ -77,6 +113,9 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   # assign value of 3 to contextualizationWindowSize if not specified
   if (is.null(contextualizationWindowSize) || isTRUE(is.na(contextualizationWindowSize))) {
     contextualizationWindowSize <- 3
+    warning(
+      "Contextualization window size was supplied but applyContextualization is set to FALSE; no contextualization will be applied"
+    )
   } else if (contextualizationWindowSize %% 2 == 0) {
     stop(
       "Contextualization window size must be an odd number; please specify a odd value greater than 1"
