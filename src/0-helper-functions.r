@@ -5,6 +5,7 @@
 
 ## load packages ---------------------------------------------------
 # suppress additional warnings ----
+
 load_pkg <- function(pkg) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
     install.packages(pkg, repos = 'http://cran.us.r-project.org')
@@ -13,19 +14,14 @@ load_pkg <- function(pkg) {
 }
 
 quiet <- function(expr) {
-  sink(tempfile())               # Redirect output to a temp file
-  on.exit(sink())                # Ensure sink is reset on exit
-  invisible(capture.output(
-    result <- tryCatch(expr, error = function(e) stop(e$message))
-  ))
-  result
+  suppressPackageStartupMessages(expr)
 }
 
 quiet({
   pkgs <- c("terra", "tidyverse", "magrittr", "ENMeval", "foreach",
             "iterators", "parallel", "coro", "rsyncrosim",
             "sf", "ranger", "gtools", "codetools", "rJava", "ecospat", "cvms",
-            "doParallel", "tidymodels", "ggimage", "rsvg")
+            "doParallel", "tidymodels")
 
   invisible(lapply(pkgs, load_pkg))
 })
@@ -47,18 +43,16 @@ install_and_load_torch <- function(max_attempts = 3, wait_seconds = 5) {
     try({
       suppressPackageStartupMessages(library(torch))
       torch::torch_tensor(1)  # forces backend to load
-      message("Torch is ready.")
       return(invisible(TRUE))
     }, silent = TRUE)
 
-    message(sprintf("Attempt %d failed to load torch backend. Retrying in %d seconds...", attempt, wait_seconds))
+    updateRunLog(sprintf("Attempt %d failed to load torch backend. Retrying in %d seconds...", attempt, wait_seconds), type = "info")
     Sys.sleep(wait_seconds)
     attempt <- attempt + 1
   }
 
-  # If it still fails, now it's safe to assume it's broken
-  message("Torch backend still not ready. Reinstalling...")
-  unlink(torch::torch_home(), recursive = TRUE, force = TRUE)
+  updateRunLog("Torch backend still not ready. Reinstalling...", type = "info")
+  unlink(get("torch_home", envir = asNamespace("torch"))(), recursive = TRUE, force = TRUE)
   torch::install_torch()
   suppressPackageStartupMessages(library(torch))
   torch::torch_tensor(1)
@@ -111,22 +105,32 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   rasterDecimalPlaces <- classifierOptionsDataframe$rasterDecimalPlaces
 
   # assign value of 3 to contextualizationWindowSize if not specified
-  if (is.null(contextualizationWindowSize) || isTRUE(is.na(contextualizationWindowSize))) {
-    contextualizationWindowSize <- 3
-    warning(
-      "Contextualization window size was supplied but applyContextualization is set to FALSE; no contextualization will be applied"
-    )
-  } else if (contextualizationWindowSize %% 2 == 0) {
-    stop(
-      "Contextualization window size must be an odd number; please specify a odd value greater than 1"
-    )
+  if (applyContextualization == TRUE) {
+    if (is.null(contextualizationWindowSize) || isTRUE(is.na(contextualizationWindowSize))) {
+      contextualizationWindowSize <- 3
+      updateRunLog(
+        "Contextualization window size was not supplied; using default value of 3",
+        type = "info"
+      )
+    } else if (contextualizationWindowSize %% 2 == 0) {
+      stop(
+        "Contextualization window size must be an odd number; please specify a odd value greater than 1"
+      )
+    }
   }
 
   # give a warning if contextualization window is specified but applyContextualization is FALSE
   if (contextualizationWindowSize > 0 && applyContextualization == FALSE) {
-    warning(
-      "Contextualization window size was supplied but applyContextualization is set to FALSE; no contextualization will be applied"
-    )
+    updateRunLog(
+      "Contextualization window size was supplied but applyContextualization is set to FALSE; no contextualization will be applied",
+      type = "info"
+      )
+  }
+
+  if (contextualizationWindowSize == 1) {
+    stop(
+      "Contextualization window size must be greater than 1 for contextualization to be applied"
+      )
   }
 
   # Load post-processing options datasheet
@@ -143,10 +147,18 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   # apply default filtering values if not specified
   if (is.na(filterResolution) && applyFiltering == TRUE) {
     filterResolution <- 5
+    updateRunLog(
+        "Filter resolution was not supplied; using default value of 5",
+        type = "info"
+      )
   }
 
   if (is.na(filterPercent) && applyFiltering == TRUE) {
     filterPercent <- 0.25
+    updateRunLog(
+        "Filter percent was not supplied; using default value of 0.25",
+        type = "info"
+      )
   }
 
   # stop if manual threshold is missing or outside of possible range
@@ -207,11 +219,11 @@ setCores <- function(mulitprocessingSheet) {
   if (mulitprocessingSheet$EnableMultiprocessing) {
     requestedCores <- mulitprocessingSheet$MaximumJobs
     if (requestedCores > availableCores) {
-      warning(paste0(
+      updateRunLog(paste0(
         "Requested number of jobs exceeds available cores. Continuing run with ",
         availableCores,
         " jobs."
-      ))
+      ), type = "warning")
       nCores <- availableCores - 1
     } else {
       nCores <- requestedCores
