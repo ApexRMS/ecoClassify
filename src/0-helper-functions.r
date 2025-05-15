@@ -1230,25 +1230,36 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   stopCluster(cl)
 }
 
-
 getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   torch_set_num_threads(nCores)
 
   # 1) pull out data
   X_df <- subset(allTrainData, select = -c(presence, kfold))
+  stopifnot(ncol(X_df) > 0)  # Ensure there are predictors
+
   y_raw <- allTrainData$presence
   y_int <- if (is.factor(y_raw)) as.integer(y_raw) - 1L else as.integer(y_raw)
 
-  X <- as.matrix(X_df) # [n_samples, n_features]
+  X <- as.matrix(X_df)
+  if (is.null(dim(X)) || length(dim(X)) != 2) {
+    X <- matrix(X, ncol = ncol(X_df))
+  }
+
   n_feat <- ncol(X)
+
+  # Optional: check input shape
+  cat("Feature matrix shape:", dim(X), "\n")
 
   # 2) dataset + loader
   ds <- dataset(
     initialize = function(X, y) {
       self$X <- torch_tensor(X, dtype = torch_float())
-      self$y <- torch_tensor(y + 1L, dtype = torch_long())
+      self$y <- torch_tensor(y + 1L, dtype = torch_long())  # 1-based labels
     },
-    .getitem = function(i) list(x = self$X[i, ], y = self$y[i]),
+    .getitem = function(i) {
+      idx <- as.integer(i)
+      list(x = self$X[idx, ..], y = self$y[idx])
+    },
     .length = function() self$X$size()[1]
   )(X, y_int)
 
@@ -1256,29 +1267,30 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   epochs <- if (isTuningOn) 50 else 20
   dl <- dataloader(ds, batch_size = batch_size, shuffle = TRUE)
 
-  # 3) define a 1×1 “CNN”
+  # 3) define dynamic CNN model
   net <- nn_module(
-    "OneByOneCNN",
+    "DynamicOneByOneCNN",
     initialize = function(n_feat) {
-      # treat each predictor as its own channel, but length=1
+      out_channels <- min(32, max(8, n_feat * 2))  # dynamic filter count
+      cat("Using", out_channels, "filters for", n_feat, "features\n")
       self$conv1 <- nn_conv1d(
         in_channels = n_feat,
-        out_channels = 16,
+        out_channels = out_channels,
         kernel_size = 1
       )
-      self$fc1 <- nn_linear(16, 2)
+      self$fc1 <- nn_linear(out_channels, 2)
     },
     forward = function(x) {
-      x <- x$unsqueeze(3)
-      x <- self$conv1(x)
+      x <- x$unsqueeze(3)  # [batch_size, n_feat, 1]
+      x <- self$conv1(x)   # [batch_size, out_channels, 1]
       x <- nnf_relu(x)
-      x <- x$squeeze(3)
-      x <- self$fc1(x)
+      x <- x$squeeze(3)    # [batch_size, out_channels]
+      x <- self$fc1(x)     # [batch_size, 2]
       x
     }
   )(n_feat)
 
-  # 4) train it
+  # 4) training loop
   device <- torch_device("cpu")
   net <- net$to(device = device)
   opt <- optim_adam(net$parameters, lr = 1e-3)
@@ -1300,7 +1312,7 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
     )
   }
 
-  # 5) variable importance (abs sum of conv1 weights)
+  # 5) variable importance based on conv1 weights
   w1 <- net$conv1$weight$data()$abs()$sum(dim = c(1, 3))$to(device = "cpu")
   vimp <- as.numeric(w1)
   names(vimp) <- colnames(X_df)
