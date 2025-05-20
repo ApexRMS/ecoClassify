@@ -58,14 +58,26 @@ if (normalizeRasters == TRUE) {
   trainingRasterList <- normalizeRaster(trainingRasterList)
 }
 
+# apply contextualization to training rasters if selected ---------------------
+if (applyContextualization == TRUE) {
+  trainingRasterList <- contextualizeRaster(trainingRasterList)
+}
+
 # reclassify ground truth rasters --------------------------------------------
 groundTruthRasterList <- reclassifyGroundTruth(groundTruthRasterList)
+
+# extract covariate rasters and convert to correct data type -----------------
+trainingCovariateRaster <- processCovariates(trainingCovariateDataframe,
+                                             modelType)
 
 # add covariate data to training rasters -------------------------------------
 trainingRasterList <- addCovariates(
   trainingRasterList,
-  trainingCovariateDataframe
+  trainingCovariateRaster
 )
+
+# check and mask NA values in training rasters -------------------
+trainingRasterList <- checkAndMaskNA(trainingRasterList)
 
 # round rasters to integer if selected ----------------------------------
 if (is.numeric(rasterDecimalPlaces) && length(rasterDecimalPlaces) > 0 && !is.na(rasterDecimalPlaces)) {
@@ -93,12 +105,6 @@ confusionOutputDataframe <- data.frame(
 modelOutputDataframe <- data.frame(Statistic = character(0), Value = numeric(0))
 
 rgbOutputDataframe <- data.frame(Timestep = numeric(0), RGBImage = character(0))
-
-
-# add contextualization for prediction rasters if selected ---------------------
-if (applyContextualization == TRUE) {
-  trainingRasterList <- contextualizeRaster(trainingRasterList) # change naming to avoid this
-}
 
 # separate training and testing data -------------------------------------------
 splitData <- splitTrainTest(
@@ -132,7 +138,7 @@ if (modelType == "MaxEnt") {
   modelOut <- getCNNModel(allTrainData, nCores, modelTuning)
   if (setManualThreshold == FALSE) {
     threshold <- getOptimalThreshold(
-      modelOut[[1]],
+      modelOut,
       allTestData,
       "CNN"
     )
@@ -158,7 +164,7 @@ if (modelType == "CNN") {
 }
 
 # add to output datasheet
-modelObjectOutputDataframe <- data.frame(
+modelObjectOutputDataframe <- data.frame(  # TODO: add warning if missing present/absent and threshold == 0
   Model = modelPath,
   Threshold = threshold
 )
@@ -184,7 +190,7 @@ for (t in seq_along(trainingRasterList)) {
 
   predictionRasters <- getPredictionRasters(
     trainingRasterList[[t]],
-    model,
+    modelOut,
     threshold,
     modelType
   )
@@ -229,7 +235,7 @@ for (t in seq_along(trainingRasterList)) {
 
 # calculate mean values for model statistics -----------------------------------
 outputDataframes <- calculateStatistics(
-  model,
+  modelOut,
   allTestData,
   threshold,
   confusionOutputDataframe,
@@ -276,6 +282,10 @@ filterOutputDataframe <- data.frame(
   filterResolution = filterResolution,
   filterPercent = filterPercent
 )
+
+if (is.null(rasterDecimalPlaces)) {
+  rasterDecimalPlaces <- ""
+}
 
 classifierOptionsOutputDataframe <- data.frame(
   nObs = format(nObs, scientific = FALSE),

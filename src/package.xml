@@ -23,17 +23,20 @@
 
     <dataSheet name="InputTrainingCovariates" displayName="Covariates">
         <column name="trainingCovariateRasterFile" dataType="String" displayName="Covariate Raster" isExternalFile="True"/>
+        <column name="trainingCovariateType" displayName="Data Type" dataType="Integer" validationType="List" formula1="0:Categorical|1:Continuous"/>
+
     </dataSheet>
 
     <dataSheet name="InputPredictingCovariates" displayName="Covariates">
         <column name="predictingCovariateRasterFile" dataType="String" displayName="Covariate Raster" isExternalFile="True"/>
+        <column name="trainingCovariateType" displayName="Data Type" dataType="Integer" validationType="List" formula1="0:Categorical|1:Continuous"/>
     </dataSheet>
 
     <dataSheet name="ClassifierOptions" displayName="Classifier Options" isSingleRow="True">
         <column name="nObs" dataType="Integer" displayName="Sample Size"/>
         <column name="normalizeRasters" dataType="Boolean" displayName="Normalize Rasters"/>
         <column name="rasterDecimalPlaces" displayName="Raster Decimal Places (Rounding)" dataType="Integer" isOptional="True"/>
-        <column name="modelType" displayName="Model Type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt|2:CNN" isOptional="True"/>
+        <column name="modelType" displayName="Model Type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt|2:CNN"/>
         <column name="modelTuning" displayName="Enable Automated Tuning" dataType="Boolean"/>
         <column name="setManualThreshold" displayName="Set Probability Threshold" dataType="Boolean"/>
         <column name="manualThreshold" displayName="Probability Threshold" dataType="Double" isOptional="True"/>

@@ -68,11 +68,22 @@ if (normalizeRasters == TRUE) {
   predictRasterList <- normalizeRaster(predictRasterList)
 }
 
+# apply contextualization to prediction rasters if selected ---------------------
+if (applyContextualization == TRUE) {
+  predictRasterList <- contextualizeRaster(predictRasterList)
+}
+
+# extract covariate rasters and convert to correct data type -----------------
+predictingCovariateRaster <- processCovariates(predictingCovariateDataframe)
+
 # add covariate data to predicting rasters -------------------------------------
 predictRasterList <- addCovariates(
   predictRasterList,
-  predictingCovariateDataframe
+  predictingCovariateRaster
 )
+
+# check and mask NA values in predicting rasters -------------------
+predictRasterList <- checkAndMaskNA(predictRasterList)
 
 # round rasters to integer if selected ----------------------------------
 if (is.numeric(rasterDecimalPlaces) && length(rasterDecimalPlaces) > 0 && !is.na(rasterDecimalPlaces)) {
@@ -95,11 +106,6 @@ classifiedRgbOutputDataframe <- data.frame(
   RGBImage = character(0)
 )
 
-# add contextualization for prediction rasters if selected ---------------------
-if (applyContextualization == TRUE) {
-  predictRasterList <- contextualizeRaster(predictRasterList) # change naming to avoid this
-}
-
 ## Predict presence for rasters to classify ------------------------------------
 for (t in seq_along(predictRasterList)) {
   # get timestep for the current raster
@@ -107,7 +113,7 @@ for (t in seq_along(predictRasterList)) {
 
   classifiedRasters <- getPredictionRasters(
     predictRasterList[[t]],
-    model,
+    modelOut,
     threshold,
     modelType
   )

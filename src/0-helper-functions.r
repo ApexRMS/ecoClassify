@@ -341,6 +341,12 @@ plotVariableImportance <- function(importanceData, transferDir) {
     value = as.numeric(importanceData)
   )
 
+  n_vars <- nrow(df)
+
+  # Adjust font size and image height based on number of variables
+  font_size <- if (n_vars <= 10) 20 else if (n_vars <= 20) 18 else if (n_vars <= 40) 16 else 14
+  plot_height <- max(4, min(10, 0.3 * n_vars))  # height scales with variable count, capped at 10 in
+
   p <- ggplot2::ggplot(
     df,
     aes(
@@ -356,7 +362,10 @@ plotVariableImportance <- function(importanceData, transferDir) {
       y = "Variable Importance",
       title = "Information Value Summary"
     ) +
-    ggplot2::theme_classic(base_size = 26) +
+    ggplot2::theme_classic(base_size = font_size) +
+  ggplot2::theme(
+    plot.title = ggplot2::element_text(hjust = 0.5, margin = ggplot2::margin(t = 10, r = 20, b = 10, l = 10)),
+    plot.title.position = "plot") +
     ggplot2::scale_fill_gradientn(
       colours = "#424352",
       guide = "none"
@@ -367,8 +376,9 @@ plotVariableImportance <- function(importanceData, transferDir) {
     filename = outfile,
     plot = p,
     width = 7,
-    height = 7,
-    units = "in"
+    height = plot_height,
+    units = "in",
+    dpi = 300
   )
 
   return(list(
@@ -412,8 +422,10 @@ splitTrainTest <- function(trainingRasterList, groundTruthRasterList, nObs) {
     modelDataSampled <- modelData %>%
       mutate(presence = as.factor(response)) %>%
       dplyr::select(-ID, -response) %>%
-      mutate(kfold = sample(1:10, nrow(.), replace = TRUE)) %>%
-      drop_na()
+      mutate(kfold = sample(1:10, nrow(.), replace = TRUE))
+
+    # Apply preprocessing
+    modelDataSampled <- preprocessTrainingData(modelDataSampled, response = "presence", exclude = "kfold")
 
     # split into training and testing data
     train <- modelDataSampled %>% filter(kfold != 1)
@@ -481,11 +493,11 @@ getPredictionRasters <- function(
   # predict presence for each raster
   if (modelType == "Random Forest") {
     # generate probabilities for each raster using ranger
-    probabilityRaster <- predictRanger(raster, model)
+    probabilityRaster <- predictRanger(raster, model[[1]])
   } else if (modelType == "CNN") {
     probabilityRaster <- predictCNN(model, raster)
   } else if (modelType == "MaxEnt") {
-    probabilityRaster <- predict(model, raster, type = "logistic")
+    probabilityRaster <- predict(model[[1]], raster, type = "logistic")
   } else {
     stop("Model type not recognized")
   }
@@ -877,12 +889,12 @@ calculateStatistics <- function(
   modelOutputDataFrame
 ) {
   # Predict probabilities
-  if (inherits(model, "ranger")) {
-    probs <- predict(model, testData)$predictions[, 2]
-  } else if (inherits(model, "torchCNN")) {
+  if (inherits(model[[1]], "ranger")) {
+    probs <- predict(model[[1]], testData)$predictions[, 2]
+  } else if (inherits(model[[1]], "torchCNN")) {
     probs <- predictCNN(model, testData, isRaster = FALSE)
   } else {
-    probs <- predict(model, testData, type = "logistic")
+    probs <- predict(model[[1]], testData, type = "logistic")
   }
 
   # Binary classification based on threshold
@@ -1032,6 +1044,7 @@ contextualizeRaster <- function(rasterList) {
 #'
 #' @import ENMeval
 getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
+
   ## Specifying feature classes and regularization parameters for Maxent
   if (isTuningOn) {
     tuneArgs <- list(
@@ -1233,10 +1246,12 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
 getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   torch_set_num_threads(nCores)
 
-  # 1) pull out data
+  # 1) pull out predictors and one-hot encode
   X_df <- subset(allTrainData, select = -c(presence, kfold))
-  stopifnot(ncol(X_df) > 0)  # Ensure there are predictors
+  stopifnot(ncol(X_df) > 0)
+  X_df <- prepareOneHotData(X_df)
 
+  # 2) process response
   y_raw <- allTrainData$presence
   y_int <- if (is.factor(y_raw)) as.integer(y_raw) - 1L else as.integer(y_raw)
 
@@ -1246,15 +1261,13 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   }
 
   n_feat <- ncol(X)
-
-  # Optional: check input shape
   cat("Feature matrix shape:", dim(X), "\n")
 
-  # 2) dataset + loader
+  # 3) dataset + loader
   ds <- dataset(
     initialize = function(X, y) {
       self$X <- torch_tensor(X, dtype = torch_float())
-      self$y <- torch_tensor(y + 1L, dtype = torch_long())  # 1-based labels
+      self$y <- torch_tensor(y + 1L, dtype = torch_long())
     },
     .getitem = function(i) {
       idx <- as.integer(i)
@@ -1267,30 +1280,26 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   epochs <- if (isTuningOn) 50 else 20
   dl <- dataloader(ds, batch_size = batch_size, shuffle = TRUE)
 
-  # 3) define dynamic CNN model
+  # 4) model
   net <- nn_module(
     "DynamicOneByOneCNN",
     initialize = function(n_feat) {
-      out_channels <- min(32, max(8, n_feat * 2))  # dynamic filter count
+      out_channels <- min(32, max(8, n_feat * 2))
       cat("Using", out_channels, "filters for", n_feat, "features\n")
-      self$conv1 <- nn_conv1d(
-        in_channels = n_feat,
-        out_channels = out_channels,
-        kernel_size = 1
-      )
+      self$conv1 <- nn_conv1d(in_channels = n_feat, out_channels = out_channels, kernel_size = 1)
       self$fc1 <- nn_linear(out_channels, 2)
     },
     forward = function(x) {
-      x <- x$unsqueeze(3)  # [batch_size, n_feat, 1]
-      x <- self$conv1(x)   # [batch_size, out_channels, 1]
+      x <- x$unsqueeze(3)
+      x <- self$conv1(x)
       x <- nnf_relu(x)
-      x <- x$squeeze(3)    # [batch_size, out_channels]
-      x <- self$fc1(x)     # [batch_size, 2]
+      x <- x$squeeze(3)
+      x <- self$fc1(x)
       x
     }
   )(n_feat)
 
-  # 4) training loop
+  # 5) train
   device <- torch_device("cpu")
   net <- net$to(device = device)
   opt <- optim_adam(net$parameters, lr = 1e-3)
@@ -1303,7 +1312,6 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
         opt$zero_grad()
         x_b <- b$x$to(device = device)
         y_b <- b$y$to(device = device)
-
         logits <- net(x_b)
         loss <- lossf(logits, y_b)
         loss$backward()
@@ -1312,64 +1320,130 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
     )
   }
 
-  # 5) variable importance based on conv1 weights
+  # 6) variable importance
   w1 <- net$conv1$weight$data()$abs()$sum(dim = c(1, 3))$to(device = "cpu")
   vimp <- as.numeric(w1)
   names(vimp) <- colnames(X_df)
 
   class(net) <- c("torchCNN", class(net))
-  list(net, vimp)
+  list(model = net, vimp = vimp, feature_names = colnames(X_df))
 }
 
 ## Predict presence using a trained CNN model
 #' @param model A trained CNN model (torchCNN object).
 #' @param newdata A SpatRaster object containing the data to predict on.
 #' @param ... Additional arguments (not used).
+# predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
+#   # 1) extract and prepare predictor values
+#   if (isRaster) {
+#     df <- as.data.frame(newdata, xy = FALSE, cells = FALSE, na.rm = FALSE)
+#     # drop <- intersect(c("presence", "kfold"), names(df))
+#     # if (length(drop)) df <- df[, setdiff(names(df), drop), drop = FALSE]
+#     df <- df[complete.cases(df), ]  # Remove rows with any NA
+
+#     df <- prepareOneHotData(df, reference_cols = model$feature_names)
+#     vals <- as.matrix(df)
+#     storage.mode(vals) <- "double"
+#   } else if (is.data.frame(newdata) || is.matrix(newdata)) {
+#     df <- as.data.frame(newdata, stringsAsFactors = FALSE)
+#     drop <- intersect(c("presence", "kfold"), names(df))
+#     if (length(drop)) df <- df[, setdiff(names(df), drop), drop = FALSE]
+
+#     # one-hot encode and align
+#     df <- prepareOneHotData(df, reference_cols = model$feature_names)
+
+#     vals <- as.matrix(df)
+#     storage.mode(vals) <- "double"
+#   } else {
+#     stop("`newdata` must be a SpatRaster or a data.frame / matrix of predictors")
+#   }
+
+#   # 2) validate shape
+#   conv1_wt <- model$model$conv1$weight$data()
+#   n_in <- conv1_wt$size()[2]
+#   if (ncol(vals) != n_in) {
+#     stop(sprintf("Wrong number of predictors: model expects %d but you passed %d", n_in, ncol(vals)))
+#   }
+
+#   # 3) predict
+#   X <- torch_tensor(vals, dtype = torch_float())
+#   dev <- if (cuda_is_available()) torch_device("cuda") else torch_device("cpu")
+#   mdl <- model$model$to(device = dev)$eval()
+#   X <- X$to(device = dev)
+
+#   probs_t <- with_no_grad({
+#     logits <- mdl(X)
+#     nnf_softmax(logits, dim = 2)$to(device = torch_device("cpu"))
+#   })
+
+#   mat <- as.matrix(probs_t)
+#   colnames(mat) <- c("absent", "presence")
+
+#   if (isRaster) {
+#     outR <- newdata[[1]]
+#     terra::values(outR) <- mat[, "presence"]
+#     names(outR) <- "presence"
+#     return(outR)
+#   } else {
+#     return(mat[, "presence"])
+#   }
+# }
+
 predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
-  # 1) pull out the raw feature matrix
   if (isRaster) {
-    # get a numeric matrix ncell × nfeat
-    vals <- terra::values(newdata, mat = TRUE)
-  } else if (is.data.frame(newdata) || is.matrix(newdata)) {
-    df <- as.data.frame(newdata, stringsAsFactors = FALSE)
-    # drop any 'presence' or 'kfold' columns if they exist
-    drop <- intersect(c("presence", "kfold"), names(df))
-    if (length(drop)) df <- df[, setdiff(names(df), drop), drop = FALSE]
-    # coerce everything to numeric
+    # Extract raster values into a data frame
+    df_full <- as.data.frame(newdata, xy = FALSE, cells = FALSE, na.rm = FALSE)
+
+    # Identify complete rows
+    valid_idx <- complete.cases(df_full)
+    df <- df_full[valid_idx, , drop = FALSE]
+
+    # One-hot encode and align
+    df <- prepareOneHotData(df, reference_cols = model$feature_names)
+
     vals <- as.matrix(df)
     storage.mode(vals) <- "double"
+  } else if (is.data.frame(newdata) || is.matrix(newdata)) {
+    df <- as.data.frame(newdata, stringsAsFactors = FALSE)
+    drop <- intersect(c("presence", "kfold"), names(df))
+    if (length(drop)) df <- df[, setdiff(names(df), drop), drop = FALSE]
+
+    df <- prepareOneHotData(df, reference_cols = model$feature_names)
+
+    vals <- as.matrix(df)
+    storage.mode(vals) <- "double"
+    valid_idx <- rep(TRUE, nrow(df))
   } else {
-    stop(
-      "`newdata` must be a SpatRaster or a data.frame / matrix of predictors"
-    )
+    stop("`newdata` must be a SpatRaster or a data.frame / matrix of predictors")
   }
 
-  ## check input layers
-  conv1_wt <- model$conv1$weight$data()
+  # Validate input shape
+  conv1_wt <- model$model$conv1$weight$data()
   n_in <- conv1_wt$size()[2]
   if (ncol(vals) != n_in) {
-    stop(sprintf(
-      "Wrong number of predictors: model expects %d but you passed %d",
-      n_in,
-      ncol(vals)
-    ))
+    stop(sprintf("Wrong number of predictors: model expects %d but you passed %d", n_in, ncol(vals)))
   }
 
+  # Run prediction
   X <- torch_tensor(vals, dtype = torch_float())
   dev <- if (cuda_is_available()) torch_device("cuda") else torch_device("cpu")
-  model <- model$to(device = dev)$eval()
+  mdl <- model$model$to(device = dev)$eval()
   X <- X$to(device = dev)
 
   probs_t <- with_no_grad({
-    logits <- model(X) # [N, 2]
-    nnf_softmax(logits, dim = 2)$to(device = torch::torch_device("cpu"))
+    logits <- mdl(X)
+    nnf_softmax(logits, dim = 2)$to(device = torch_device("cpu"))
   })
-  mat <- as.matrix(probs_t) # base R matrix
+
+  mat <- as.matrix(probs_t)
   colnames(mat) <- c("absent", "presence")
 
   if (isRaster) {
+    # Create empty output raster and insert predictions only into valid cells
     outR <- newdata[[1]]
-    terra::values(outR) <- mat[, "presence"]
+    pred_vals <- rep(NA, terra::ncell(outR))
+    pred_vals[valid_idx] <- mat[, "presence"]
+    terra::values(outR) <- pred_vals
     names(outR) <- "presence"
     return(outR)
   } else {
@@ -1400,23 +1474,49 @@ reclassifyGroundTruth <- function(groundTruthRasterList) {
   return(reclassifiedGroundTruthList)
 }
 
-# add covariate rasters to training data
-addCovariates <- function(rasterList, covariateDataframe) {
+processCovariates <- function(trainingCovariateDataframe,
+                              modelType) {
+  
   # filter for NA values
-  covariateDataframe <- covariateDataframe %>%
-    filter(!is.na(covariateDataframe[, 1]))
+  trainingCovariateDataframe <- trainingCovariateDataframe %>%
+    filter(!is.na(trainingCovariateDataframe[, 1]))
 
-  # list all covariate files
-  covariateFiles <- as.vector(covariateDataframe[, 1])
+  covariateRasterList <- c()
 
-  if (length(covariateFiles) > 0) {
-    # read in covariate rasters
-    covariateRaster <- rast(covariateFiles)
+  if (nrow(trainingCovariateDataframe) > 0) {
 
-    # Merge each raster in covariateFiles with each raster in trainingRasterList
-    for (i in seq_along(rasterList)) {
-      rasterList[[i]] <- c(rasterList[[i]], covariateRaster)
+    if (modelType == "Random Forest" | modelType == "MaxEnt" | modelType == "CNN") {
+
+      for (row in seq(1, nrow(trainingCovariateDataframe), by = 1)) {
+        covariateRaster <- rast(trainingCovariateDataframe[row, 1])
+        dataType <- as.character(trainingCovariateDataframe[row, 2])
+
+        if (dataType == "Categorical") {
+          covariateRaster <- as.factor(covariateRaster)
+        } else if (dataType == "Continuous") {
+          covariateRaster <- as.numeric(covariateRaster)
+        } else {
+          stop("Data type not recognized")
+        }
+        covariateRasterList <- c(covariateRasterList, covariateRaster)
+      }
+
+      mergedCovariateRaster <- rast(covariateRasterList)
     }
+
+    mergedCovariateRaster <- rast(covariateRasterList)
+    
+    return(mergedCovariateRaster)
+  }
+
+}
+
+# add covariate rasters to training data
+addCovariates <- function(rasterList, covariateRaster) {
+
+  # Merge covariateFiles with each raster in trainingRasterList
+  for (i in seq_along(rasterList)) {
+      rasterList[[i]] <- c(rasterList[[i]], covariateRaster)
   }
 
   return(rasterList)
@@ -1482,4 +1582,97 @@ loadTorchCNNfromRDS <- function(path, n_feat, hidden_chs = 16, device = "cpu") {
   model <- model$to(device = dev)$eval()
 
   return(model)
+}
+
+# preprocess rasters to ensure each layer has the same pattern of NA values
+checkAndMaskNA <- function(rasterList) {
+  processedRasterList <- list()
+
+  for (i in seq_along(rasterList)) {
+    raster <- rasterList[[i]]
+    
+    # Check if each layer has the same number of non NA cells
+    cellCounts <- sapply(1:nlyr(raster), function(j) {
+      sum(!is.na(terra::values(raster[[j]])))
+    })
+    
+    if (length(unique(cellCounts)) != 1) {
+      msg <- sprintf("Input raster %d: Layers have unequal number of cells. Applying NA mask to standardize NA pattern.", i)
+      if (exists("updateRunLog")) {
+        updateRunLog(msg, type = "info")
+      } else {
+        message(msg)
+      }
+
+      # Create a mask of cells that are NA in any layer
+      naMask <- terra::app(raster, fun = function(x) any(is.na(x)))
+
+      # Apply mask so all layers share the same NA pattern
+      processedRaster <- terra::mask(raster, naMask, maskvalues = 1)
+    } else {
+      processedRaster <- raster
+    }
+
+    processedRasterList[[i]] <- processedRaster
+  }
+
+  return(processedRasterList)
+}
+
+preprocessTrainingData <- function(allTrainData, response = "presence", exclude = c("kfold")) {
+  predictorVars <- setdiff(names(allTrainData), c(response, exclude))
+  
+  initialN <- nrow(allTrainData)
+  completeRows <- !is.na(allTrainData[[response]]) & complete.cases(allTrainData[, predictorVars])
+  cleanedData <- allTrainData[completeRows, ]
+  rowsRemoved <- initialN - nrow(cleanedData)
+  
+  if (rowsRemoved > 0) {
+    warning(sprintf("Preprocessing: Removed %d rows with NA in '%s' or predictors.", rowsRemoved, response))
+  }
+  
+  return(cleanedData)
+}
+
+prepareOneHotData <- function(df, reference_cols = NULL) {
+  # Identify factor columns
+  factor_vars <- names(df)[sapply(df, is.factor)]
+
+  # One-hot encode all factor variables, including binary
+  encoded_list <- list()
+  for (colname in factor_vars) {
+    f <- df[[colname]]
+    if (length(unique(na.omit(f))) <= 1) next  # skip empty/constant
+    mat <- model.matrix(~ . - 1, data = df[colname])
+    if (ncol(mat) > 0) {
+      colnames(mat) <- gsub("^.*\\.", paste0(colname, "_"), colnames(mat))
+      encoded_list[[colname]] <- mat
+    }
+  }
+
+  # Combine encoded matrices
+  encoded_matrix <- if (length(encoded_list) > 0) do.call(cbind, encoded_list) else NULL
+
+  # Drop original factor columns and keep numerics
+  numeric_vars <- setdiff(names(df), factor_vars)
+  base_df <- df[, numeric_vars, drop = FALSE]
+
+  # Combine safely
+  if (!is.null(encoded_matrix)) {
+    if (nrow(encoded_matrix) != nrow(base_df)) {
+      stop("Row mismatch during one-hot encoding.")
+    }
+    full_df <- cbind(base_df, encoded_matrix)
+  } else {
+    full_df <- base_df
+  }
+
+  # Align to reference (training) columns
+  if (!is.null(reference_cols)) {
+    missing_cols <- setdiff(reference_cols, names(full_df))
+    for (col in missing_cols) full_df[[col]] <- 0
+    full_df <- full_df[, reference_cols, drop = FALSE]
+  }
+
+  return(full_df)
 }
