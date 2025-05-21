@@ -493,11 +493,11 @@ getPredictionRasters <- function(
   # predict presence for each raster
   if (modelType == "Random Forest") {
     # generate probabilities for each raster using ranger
-    probabilityRaster <- predictRanger(raster, model[[1]])
+    probabilityRaster <- predictRanger(raster, model)
   } else if (modelType == "CNN") {
     probabilityRaster <- predictCNN(model, raster)
   } else if (modelType == "MaxEnt") {
-    probabilityRaster <- predict(model[[1]], raster, type = "logistic")
+    probabilityRaster <- predict(model, raster, type = "logistic")
   } else {
     stop("Model type not recognized")
   }
@@ -1243,63 +1243,73 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   stopCluster(cl)
 }
 
+# Updated getCNNModel function to use embeddings for specified categorical variables, with dynamic embedding dimension
 getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   torch_set_num_threads(nCores)
 
-  # 1) pull out predictors and one-hot encode
-  X_df <- subset(allTrainData, select = -c(presence, kfold))
-  stopifnot(ncol(X_df) > 0)
-  X_df <- prepareOneHotData(X_df)
+  # Identify categorical and numeric variables
+  predictors <- subset(allTrainData, select = -c(presence, kfold))
+  cat_vars <- names(predictors)[sapply(predictors, is.factor)]
+  num_vars <- setdiff(names(predictors), cat_vars)
 
-  # 2) process response
+  # Map factor levels to integers
+  cat_indices <- lapply(predictors[cat_vars], function(x) as.integer(x))
+  cat_levels <- if (length(cat_vars)) lapply(predictors[cat_vars], function(x) length(levels(x))) else list()
+  embedding_dims <- if (length(cat_levels)) lapply(cat_levels, function(l) min(50, floor(l / 2) + 1)) else list()
+  cat_indices <- as.data.frame(cat_indices)
+  X_num <- as.matrix(predictors[num_vars])
+
   y_raw <- allTrainData$presence
   y_int <- if (is.factor(y_raw)) as.integer(y_raw) - 1L else as.integer(y_raw)
 
-  X <- as.matrix(X_df)
-  if (is.null(dim(X)) || length(dim(X)) != 2) {
-    X <- matrix(X, ncol = ncol(X_df))
-  }
-
-  n_feat <- ncol(X)
-  cat("Feature matrix shape:", dim(X), "\n")
-
-  # 3) dataset + loader
+  # Combine categorical and numeric tensors in custom dataset
   ds <- dataset(
-    initialize = function(X, y) {
-      self$X <- torch_tensor(X, dtype = torch_float())
+    initialize = function(X_num, X_cat, y) {
+      self$X_num <- torch_tensor(X_num, dtype = torch_float())
+      self$X_cat <- lapply(X_cat, function(x) torch_tensor(x, dtype = torch_long()))
       self$y <- torch_tensor(y + 1L, dtype = torch_long())
     },
     .getitem = function(i) {
-      idx <- as.integer(i)
-      list(x = self$X[idx, ..], y = self$y[idx])
+      cat_feats <- lapply(self$X_cat, function(x) x[i])
+      list(x_num = self$X_num[i, ], x_cat = cat_feats, y = self$y[i])
     },
-    .length = function() self$X$size()[1]
-  )(X, y_int)
+    .length = function() self$X_num$size()[1]
+  )(X_num, cat_indices, y_int)
 
   batch_size <- if (isTuningOn) 64 else 32
   epochs <- if (isTuningOn) 50 else 20
   dl <- dataloader(ds, batch_size = batch_size, shuffle = TRUE)
 
-  # 4) model
   net <- nn_module(
-    "DynamicOneByOneCNN",
-    initialize = function(n_feat) {
-      out_channels <- min(32, max(8, n_feat * 2))
-      cat("Using", out_channels, "filters for", n_feat, "features\n")
-      self$conv1 <- nn_conv1d(in_channels = n_feat, out_channels = out_channels, kernel_size = 1)
-      self$fc1 <- nn_linear(out_channels, 2)
+    "CNNWithEmbeddings",
+    initialize = function(n_num, cat_levels, embedding_dims) {
+      self$has_cat <- length(cat_levels) > 0
+      if (self$has_cat) {
+        self$embeddings <- nn_module_list(
+          mapply(function(l, d) nn_embedding(num_embeddings = l + 1, embedding_dim = d),
+                 cat_levels, embedding_dims, SIMPLIFY = FALSE)
+        )
+        embed_dim <- sum(unlist(embedding_dims))
+      } else {
+        embed_dim <- 0
+        self$embeddings <- NULL
+      }
+      self$fc1 <- nn_linear(embed_dim + n_num, 16)
+      self$fc2 <- nn_linear(16, 2)
     },
-    forward = function(x) {
-      x <- x$unsqueeze(3)
-      x <- self$conv1(x)
-      x <- nnf_relu(x)
-      x <- x$squeeze(3)
-      x <- self$fc1(x)
-      x
+    forward = function(x_num, x_cat) {
+      if (self$has_cat) {
+        embeds <- lapply(seq_along(x_cat), function(i) self$embeddings[[i]](x_cat[[i]]))
+        x_cat_emb <- torch_cat(embeds, dim = 2)
+        x <- torch_cat(list(x_num, x_cat_emb), dim = 2)
+      } else {
+        x <- x_num
+      }
+      x <- nnf_relu(self$fc1(x))
+      self$fc2(x)
     }
-  )(n_feat)
+  )(ncol(X_num), unlist(cat_levels), unlist(embedding_dims))
 
-  # 5) train
   device <- torch_device("cpu")
   net <- net$to(device = device)
   opt <- optim_adam(net$parameters, lr = 1e-3)
@@ -1310,128 +1320,86 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
     coro::loop(
       for (b in dl) {
         opt$zero_grad()
-        x_b <- b$x$to(device = device)
-        y_b <- b$y$to(device = device)
-        logits <- net(x_b)
-        loss <- lossf(logits, y_b)
+        x_num <- b$x_num$to(device = device)
+        x_cat <- lapply(b$x_cat, function(x) x$to(device = device))
+        y <- b$y$to(device = device)
+
+        logits <- net(x_num, x_cat)
+        loss <- lossf(logits, y)
         loss$backward()
         opt$step()
       }
     )
   }
 
-  # 6) variable importance
-  w1 <- net$conv1$weight$data()$abs()$sum(dim = c(1, 3))$to(device = "cpu")
-  vimp <- as.numeric(w1)
-  names(vimp) <- colnames(X_df)
+  # Compute variable importance
+  vimp <- numeric(length(num_vars) + length(cat_vars))
+  names(vimp) <- c(num_vars, cat_vars)
+
+  # For numeric vars: use sum of absolute weights from fc1
+  if (length(num_vars)) {
+    weights <- net$fc1$weight$data()[ , 1:length(num_vars)]$abs()$sum(dim = 1)
+    vimp[num_vars] <- as.numeric(weights)
+  }
+
+  # For categorical vars: use average norm of embedding weights
+  if (length(cat_vars)) {
+    emb_norms <- sapply(net$embeddings, function(e) {
+      torch_mean(torch_norm(e$weight$data(), p = 2, dim = 2))$item()
+    })
+    vimp[cat_vars] <- emb_norms
+  }
 
   class(net) <- c("torchCNN", class(net))
-  list(model = net, vimp = vimp, feature_names = colnames(X_df))
+  list(model = net, vimp = vimp, feature_names = names(predictors),
+       cat_vars = cat_vars, num_vars = num_vars, cat_levels = cat_levels)
 }
+
 
 ## Predict presence using a trained CNN model
 #' @param model A trained CNN model (torchCNN object).
 #' @param newdata A SpatRaster object containing the data to predict on.
 #' @param ... Additional arguments (not used).
-# predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
-#   # 1) extract and prepare predictor values
-#   if (isRaster) {
-#     df <- as.data.frame(newdata, xy = FALSE, cells = FALSE, na.rm = FALSE)
-#     # drop <- intersect(c("presence", "kfold"), names(df))
-#     # if (length(drop)) df <- df[, setdiff(names(df), drop), drop = FALSE]
-#     df <- df[complete.cases(df), ]  # Remove rows with any NA
-
-#     df <- prepareOneHotData(df, reference_cols = model$feature_names)
-#     vals <- as.matrix(df)
-#     storage.mode(vals) <- "double"
-#   } else if (is.data.frame(newdata) || is.matrix(newdata)) {
-#     df <- as.data.frame(newdata, stringsAsFactors = FALSE)
-#     drop <- intersect(c("presence", "kfold"), names(df))
-#     if (length(drop)) df <- df[, setdiff(names(df), drop), drop = FALSE]
-
-#     # one-hot encode and align
-#     df <- prepareOneHotData(df, reference_cols = model$feature_names)
-
-#     vals <- as.matrix(df)
-#     storage.mode(vals) <- "double"
-#   } else {
-#     stop("`newdata` must be a SpatRaster or a data.frame / matrix of predictors")
-#   }
-
-#   # 2) validate shape
-#   conv1_wt <- model$model$conv1$weight$data()
-#   n_in <- conv1_wt$size()[2]
-#   if (ncol(vals) != n_in) {
-#     stop(sprintf("Wrong number of predictors: model expects %d but you passed %d", n_in, ncol(vals)))
-#   }
-
-#   # 3) predict
-#   X <- torch_tensor(vals, dtype = torch_float())
-#   dev <- if (cuda_is_available()) torch_device("cuda") else torch_device("cpu")
-#   mdl <- model$model$to(device = dev)$eval()
-#   X <- X$to(device = dev)
-
-#   probs_t <- with_no_grad({
-#     logits <- mdl(X)
-#     nnf_softmax(logits, dim = 2)$to(device = torch_device("cpu"))
-#   })
-
-#   mat <- as.matrix(probs_t)
-#   colnames(mat) <- c("absent", "presence")
-
-#   if (isRaster) {
-#     outR <- newdata[[1]]
-#     terra::values(outR) <- mat[, "presence"]
-#     names(outR) <- "presence"
-#     return(outR)
-#   } else {
-#     return(mat[, "presence"])
-#   }
-# }
-
 predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
   if (isRaster) {
-    # Extract raster values into a data frame
     df_full <- as.data.frame(newdata, xy = FALSE, cells = FALSE, na.rm = FALSE)
-
-    # Identify complete rows
     valid_idx <- complete.cases(df_full)
     df <- df_full[valid_idx, , drop = FALSE]
-
-    # One-hot encode and align
-    df <- prepareOneHotData(df, reference_cols = model$feature_names)
-
-    vals <- as.matrix(df)
-    storage.mode(vals) <- "double"
   } else if (is.data.frame(newdata) || is.matrix(newdata)) {
-    df <- as.data.frame(newdata, stringsAsFactors = FALSE)
+    df <- as.data.frame(newdata, stringsAsFactors = TRUE)
     drop <- intersect(c("presence", "kfold"), names(df))
     if (length(drop)) df <- df[, setdiff(names(df), drop), drop = FALSE]
-
-    df <- prepareOneHotData(df, reference_cols = model$feature_names)
-
-    vals <- as.matrix(df)
-    storage.mode(vals) <- "double"
     valid_idx <- rep(TRUE, nrow(df))
   } else {
     stop("`newdata` must be a SpatRaster or a data.frame / matrix of predictors")
   }
 
-  # Validate input shape
-  conv1_wt <- model$model$conv1$weight$data()
-  n_in <- conv1_wt$size()[2]
-  if (ncol(vals) != n_in) {
-    stop(sprintf("Wrong number of predictors: model expects %d but you passed %d", n_in, ncol(vals)))
-  }
+  # Extract numeric and categorical variables
+  num_vars <- model$num_vars
+  cat_vars <- model$cat_vars
+  cat_levels <- model$cat_levels
 
-  # Run prediction
-  X <- torch_tensor(vals, dtype = torch_float())
+  X_num <- as.matrix(df[, num_vars, drop = FALSE])
+  storage.mode(X_num) <- "double"
+
+  # Convert categorical variables to integer indices
+  X_cat <- lapply(seq_along(cat_vars), function(i) {
+    factor(df[[cat_vars[i]]], levels = seq_len(cat_levels[[i]])) |> as.integer()
+  })
+
+  # Prepare tensors
+  X_num_tensor <- torch_tensor(X_num, dtype = torch_float())
+  X_cat_tensor <- lapply(X_cat, function(x) torch_tensor(x, dtype = torch_long()))
+
+  # Predict
   dev <- if (cuda_is_available()) torch_device("cuda") else torch_device("cpu")
   mdl <- model$model$to(device = dev)$eval()
-  X <- X$to(device = dev)
+
+  X_num_tensor <- X_num_tensor$to(device = dev)
+  X_cat_tensor <- lapply(X_cat_tensor, function(x) x$to(device = dev))
 
   probs_t <- with_no_grad({
-    logits <- mdl(X)
+    logits <- mdl(X_num_tensor, X_cat_tensor)
     nnf_softmax(logits, dim = 2)$to(device = torch_device("cpu"))
   })
 
@@ -1439,7 +1407,6 @@ predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
   colnames(mat) <- c("absent", "presence")
 
   if (isRaster) {
-    # Create empty output raster and insert predictions only into valid cells
     outR <- newdata[[1]]
     pred_vals <- rep(NA, terra::ncell(outR))
     pred_vals[valid_idx] <- mat[, "presence"]
@@ -1450,7 +1417,6 @@ predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
     return(mat[, "presence"])
   }
 }
-
 
 # function to reclassify ground truth rasters
 reclassifyGroundTruth <- function(groundTruthRasterList) {
@@ -1485,7 +1451,7 @@ processCovariates <- function(trainingCovariateDataframe,
 
   if (nrow(trainingCovariateDataframe) > 0) {
 
-    if (modelType == "Random Forest" | modelType == "MaxEnt" | modelType == "CNN") {
+    if (modelType == "Random Forest" || modelType == "MaxEnt" || modelType == "CNN") {
 
       for (row in seq(1, nrow(trainingCovariateDataframe), by = 1)) {
         covariateRaster <- rast(trainingCovariateDataframe[row, 1])
@@ -1550,7 +1516,6 @@ normalizeRaster <- function(rasterList) {
   return(normalizedRasterList)
 }
 
-
 # Save only the model’s state_dict (weights) as plain R arrays
 saveTorchCNNasRDS <- function(model, path) {
   # 1a) pull out the state dict (a named list of torch_tensors)
@@ -1560,7 +1525,6 @@ saveTorchCNNasRDS <- function(model, path) {
   # 1c) write to disk
   saveRDS(sd_r, path)
 }
-
 
 loadTorchCNNfromRDS <- function(path, n_feat, hidden_chs = 16, device = "cpu") {
   # 2a) read the plain‐R list of arrays
@@ -1634,45 +1598,54 @@ preprocessTrainingData <- function(allTrainData, response = "presence", exclude 
   return(cleanedData)
 }
 
-prepareOneHotData <- function(df, reference_cols = NULL) {
-  # Identify factor columns
-  factor_vars <- names(df)[sapply(df, is.factor)]
-
-  # One-hot encode all factor variables, including binary
-  encoded_list <- list()
-  for (colname in factor_vars) {
-    f <- df[[colname]]
-    if (length(unique(na.omit(f))) <= 1) next  # skip empty/constant
-    mat <- model.matrix(~ . - 1, data = df[colname])
-    if (ncol(mat) > 0) {
-      colnames(mat) <- gsub("^.*\\.", paste0(colname, "_"), colnames(mat))
-      encoded_list[[colname]] <- mat
+# Function to load a CNN model from separate .pt and .rds files
+loadCNNModel <- function(weights_path, metadata_path) {
+  # Define CNNWithEmbeddings inside the function scope
+  CNNWithEmbeddings <- nn_module(
+    "CNNWithEmbeddings",
+    initialize = function(n_num, cat_levels, embedding_dims) {
+      self$has_cat <- length(cat_levels) > 0
+      if (self$has_cat) {
+        self$embeddings <- nn_module_list(
+          mapply(function(l, d) nn_embedding(num_embeddings = l + 1, embedding_dim = d),
+                 cat_levels, embedding_dims, SIMPLIFY = FALSE)
+        )
+        embed_dim <- sum(unlist(embedding_dims))
+      } else {
+        embed_dim <- 0
+        self$embeddings <- NULL
+      }
+      self$fc1 <- nn_linear(embed_dim + n_num, 16)
+      self$fc2 <- nn_linear(16, 2)
+    },
+    forward = function(x_num, x_cat) {
+      if (self$has_cat) {
+        embeds <- lapply(seq_along(x_cat), function(i) self$embeddings[[i]](x_cat[[i]]))
+        x_cat_emb <- torch_cat(embeds, dim = 2)
+        x <- torch_cat(list(x_num, x_cat_emb), dim = 2)
+      } else {
+        x <- x_num
+      }
+      x <- nnf_relu(self$fc1(x))
+      self$fc2(x)
     }
-  }
+  )
 
-  # Combine encoded matrices
-  encoded_matrix <- if (length(encoded_list) > 0) do.call(cbind, encoded_list) else NULL
+  # Load metadata (cat_levels, feature_names, etc.)
+  metadata <- readRDS(metadata_path)
 
-  # Drop original factor columns and keep numerics
-  numeric_vars <- setdiff(names(df), factor_vars)
-  base_df <- df[, numeric_vars, drop = FALSE]
+  # Reconstruct model architecture
+  embedding_dims <- lapply(unlist(metadata$cat_levels), function(l) min(50, floor(l / 2) + 1))
+  net <- CNNWithEmbeddings(
+    n_num = length(metadata$num_vars),
+    cat_levels = unlist(metadata$cat_levels),
+    embedding_dims = unlist(embedding_dims)
+  )
+  class(net) <- c("torchCNN", class(net))
 
-  # Combine safely
-  if (!is.null(encoded_matrix)) {
-    if (nrow(encoded_matrix) != nrow(base_df)) {
-      stop("Row mismatch during one-hot encoding.")
-    }
-    full_df <- cbind(base_df, encoded_matrix)
-  } else {
-    full_df <- base_df
-  }
+  # Load weights
+  net$load_state_dict(torch_load(weights_path))
 
-  # Align to reference (training) columns
-  if (!is.null(reference_cols)) {
-    missing_cols <- setdiff(reference_cols, names(full_df))
-    for (col in missing_cols) full_df[[col]] <- 0
-    full_df <- full_df[, reference_cols, drop = FALSE]
-  }
-
-  return(full_df)
+  # Return full modelOut object
+  c(list(model = net), metadata)
 }

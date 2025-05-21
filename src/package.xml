@@ -29,7 +29,7 @@
 
     <dataSheet name="InputPredictingCovariates" displayName="Covariates">
         <column name="predictingCovariateRasterFile" dataType="String" displayName="Covariate Raster" isExternalFile="True"/>
-        <column name="trainingCovariateType" displayName="Data Type" dataType="Integer" validationType="List" formula1="0:Categorical|1:Continuous"/>
+        <column name="predictingCovariateType" displayName="Data Type" dataType="Integer" validationType="List" formula1="0:Categorical|1:Continuous"/>
     </dataSheet>
 
     <dataSheet name="ClassifierOptions" displayName="Classifier Options" isSingleRow="True">
@@ -101,6 +101,7 @@
     <dataSheet name="ModelObject" displayName="Model">
 	    <column name="Model" dataType="String" isExternalFile="True"/>
         <column name="Threshold" dataType="Double"/>
+        <column name="Weights" dataType="String" isExternalFile="True"/>
     </dataSheet>
 
     <dataSheet name="ModelChartData" displayName="Model Chart Data">

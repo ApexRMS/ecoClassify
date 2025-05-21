@@ -151,24 +151,34 @@ if (modelType == "MaxEnt") {
 model <- modelOut[[1]]
 variableImportance <- modelOut[[2]]
 
-# save model
-modelPath <- ifelse(
-  modelType == "CNN",
-  file.path(transferDir, "model.pt"),
-  file.path(transferDir, "model.rds")
-)
 if (modelType == "CNN") {
-  torch::torch_save(model, modelPath)
+  # Save Torch weights separately
+  model_weights_path <- file.path(transferDir, "model_weights.pt")
+  torch::torch_save(modelOut$model$state_dict(), model_weights_path)
+
+  # Save non-torch metadata
+  metadata <- modelOut[names(modelOut) != "model"]
+  metadata_path <- file.path(transferDir, "model_metadata.rds")
+  saveRDS(metadata, metadata_path)
 } else {
+  modelPath <- file.path(transferDir, "model.rds")
   saveRDS(model, modelPath)
 }
 
 # add to output datasheet
-modelObjectOutputDataframe <- data.frame(  # TODO: add warning if missing present/absent and threshold == 0
-  Model = modelPath,
-  Threshold = threshold
-)
-
+if (modelType == "CNN") {
+  modelObjectOutputDataframe <- data.frame(
+    Model = metadata_path,
+    Threshold = threshold,
+    Weights = model_weights_path
+  )
+} else {
+    modelObjectOutputDataframe <- data.frame(  # TODO: add warning if missing present/absent and threshold == 0
+      Model = modelPath,
+      Threshold = threshold,
+      Weights = ""
+    )
+}
 # save model object to output datasheet
 variableImportanceOutput <- plotVariableImportance(
   variableImportance,
@@ -188,12 +198,21 @@ for (t in seq_along(trainingRasterList)) {
   # get timestep for the current raster
   timestep <- timestepList[t]
 
-  predictionRasters <- getPredictionRasters(
+  if (modelType == "CNN") {
+    predictionRasters <- getPredictionRasters(
     trainingRasterList[[t]],
     modelOut,
     threshold,
     modelType
-  )
+    )
+  } else if (modelType == "Random Forest" || modelType == "MaxEnt") {
+    predictionRasters <- getPredictionRasters(
+      trainingRasterList[[t]],
+      model,
+      threshold,
+      modelType
+    )
+  }
   predictedPresence <- predictionRasters[[1]]
   probabilityRaster <- predictionRasters[[2]]
 

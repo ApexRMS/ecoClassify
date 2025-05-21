@@ -49,8 +49,11 @@ rasterDecimalPlaces <- inputVariables[[13]]
 
 # load model and threshold
 if (modelType == "CNN") {
-  model <- torch::torch_load(modelObjectDataframe$Model)
-} else {
+  model <- loadCNNModel(
+    weights_path = modelObjectDataframe$Weights,     # e.g. "model_weights.pt"
+    metadata_path = modelObjectDataframe$Model    # e.g. "model_metadata.rds"
+  )
+} else if (modelType == "Random Forest" || modelType == "MaxEnt") {
   model <- readRDS(modelObjectDataframe$Model)
 }
 
@@ -74,7 +77,8 @@ if (applyContextualization == TRUE) {
 }
 
 # extract covariate rasters and convert to correct data type -----------------
-predictingCovariateRaster <- processCovariates(predictingCovariateDataframe)
+predictingCovariateRaster <- processCovariates(predictingCovariateDataframe,
+                                               modelType)
 
 # add covariate data to predicting rasters -------------------------------------
 predictRasterList <- addCovariates(
@@ -113,7 +117,7 @@ for (t in seq_along(predictRasterList)) {
 
   classifiedRasters <- getPredictionRasters(
     predictRasterList[[t]],
-    modelOut,
+    model,
     threshold,
     modelType
   )
