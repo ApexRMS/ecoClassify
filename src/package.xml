@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<package name="ecoClassify" displayName="ecoClassify" description="Image classifier using semantic image segmentation" version="1.1.0" url="https://apexrms.github.io/ecoClassify/" minSyncroSimVersion="3.1.0">
+<package name="ecoClassify" displayName="ecoClassify" description="Image classifier using semantic image segmentation" version="1.2.0" url="https://apexrms.github.io/ecoClassify/" minSyncroSimVersion="3.1.0">
 
     <!--Project Level-->
     <dataSheet name="Terminology" isSingleRow="True" dataScope="Project">
@@ -23,26 +23,31 @@
 
     <dataSheet name="InputTrainingCovariates" displayName="Covariates">
         <column name="trainingCovariateRasterFile" dataType="String" displayName="Covariate Raster" isExternalFile="True"/>
+        <column name="trainingCovariateType" displayName="Data Type" dataType="Integer" validationType="List" formula1="0:Categorical|1:Continuous"/>
+
     </dataSheet>
 
     <dataSheet name="InputPredictingCovariates" displayName="Covariates">
         <column name="predictingCovariateRasterFile" dataType="String" displayName="Covariate Raster" isExternalFile="True"/>
+        <column name="predictingCovariateType" displayName="Data Type" dataType="Integer" validationType="List" formula1="0:Categorical|1:Continuous"/>
     </dataSheet>
 
     <dataSheet name="ClassifierOptions" displayName="Classifier Options" isSingleRow="True">
         <column name="nObs" dataType="Integer" displayName="Sample Size"/>
         <column name="normalizeRasters" dataType="Boolean" displayName="Normalize Rasters"/>
-        <column name="modelType" displayName="Model Type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt" isOptional="True"/>
+        <column name="rasterDecimalPlaces" displayName="Raster Decimal Places (Rounding)" dataType="Integer" isOptional="True"/>
+        <column name="modelType" displayName="Model Type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt|2:CNN"/>
         <column name="modelTuning" displayName="Enable Automated Tuning" dataType="Boolean"/>
         <column name="setManualThreshold" displayName="Set Probability Threshold" dataType="Boolean"/>
         <column name="manualThreshold" displayName="Probability Threshold" dataType="Double" isOptional="True"/>
         <column name="applyContextualization" dataType="Boolean" displayName="Apply Contextualization"/>
+        <column name="contextualizationWindowSize" dataType="Integer" displayName="Contextualization Window Size" isOptional="True"/>
     </dataSheet>
 
     <dataSheet name="PostProcessingOptions" displayName="Post-processing options" isSingleRow="True">
-        <column name="applyFiltering" dataType="Boolean" displayName="Apply filtering"/>
-        <column name="filterResolution" dataType="Double" displayName="Filter Resolution (optional)"/>
-        <column name="filterPercent" dataType="Double" displayName="Filter Threshold (optional)"/>
+        <column name="applyFiltering" dataType="Boolean" displayName="Apply Filtering"/>
+        <column name="filterResolution" dataType="Double" displayName="Filter Resolution"/>
+        <column name="filterPercent" dataType="Double" displayName="Filter Threshold"/>
     </dataSheet>
 
     <!--Output-->
@@ -96,6 +101,7 @@
     <dataSheet name="ModelObject" displayName="Model">
 	    <column name="Model" dataType="String" isExternalFile="True"/>
         <column name="Threshold" dataType="Double"/>
+        <column name="Weights" dataType="String" isExternalFile="True"/>
     </dataSheet>
 
     <dataSheet name="ModelChartData" displayName="Model Chart Data">
@@ -106,7 +112,7 @@
     </dataSheet>
 
     <!--Transformer 1: training classifier-->
-    <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.2">
+    <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.3">
         <dataSheet name="InputTrainingRasters" type="Input"/>
         <dataSheet name="InputPredictingRasters" type="Input"/>
         <dataSheet name="InputTrainingCovariates" type="Input"/>
@@ -123,7 +129,7 @@
     </transformer>
 
     <!--Transformer 2: predicting-->
-    <transformer name="Predict" displayName="2-Predict" programName="Rscript" programArguments="2-predict.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.2">
+    <transformer name="Predict" displayName="2-Predict" programName="Rscript" programArguments="2-predict.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.3">
         <dataSheet name="InputPredictingRasters" type="Input"/>
         <dataSheet name="InputPredictingCovariates" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Input"/>

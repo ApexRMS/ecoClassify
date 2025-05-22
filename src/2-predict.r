@@ -8,119 +8,164 @@ packageDir <- (Sys.getenv("ssim_package_directory"))
 source(file.path(packageDir, "0-helper-functions.r"))
 
 # Set up -------------------------------------------------------------------
-myScenario <- scenario()  # Get the SyncroSim Scenario that is currently running
+myScenario <- scenario() # Get the SyncroSim Scenario that is currently running
 
 # Retrieve the transfer directory for storing output rasters
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
 # Load raster input datasheets -----------------------------------------------
-predictingRasterDataframe <- datasheet(myScenario,
-                                       name = "ecoClassify_InputPredictingRasters")
+predictingRasterDataframe <- datasheet(
+  myScenario,
+  name = "ecoClassify_InputPredictingRasters"
+)
 
-predictingCovariateDataframe <- datasheet(myScenario,
-                                        name = "ecoClassify_InputPredictingCovariates")
+predictingCovariateDataframe <- datasheet(
+  myScenario,
+  name = "ecoClassify_InputPredictingCovariates"
+)
 
-modelObjectDataframe <- datasheet(myScenario,
-                                  name = "ecoClassify_ModelObject")
+modelObjectDataframe <- datasheet(myScenario, name = "ecoClassify_ModelObject")
 
 # Assign variables ----------------------------------------------------------
-inputVariables <- assignVariables(myScenario,
-                                  predictingRasterDataframe,
-                                  predictingRasterDataframe$predictingRasterFile)
+inputVariables <- assignVariables(
+  myScenario,
+  predictingRasterDataframe,
+  predictingRasterDataframe$predictingRasterFile
+)
 timestepList <- inputVariables[[1]]
 nObs <- inputVariables[[2]]
-filterResolution <- inputVariables[[3]]
+filterResolution <- inputVariables[[3]] # TO DO: give warnings for lower limits (must be >=1?)
 filterPercent <- inputVariables[[4]]
 applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[6]]
-modelType <- inputVariables[[7]]
-modelTuning <- inputVariables[[8]]
-setManualThreshold <- inputVariables[[9]]
-manualThreshold <- inputVariables[[10]]
-normalizeRasters <- inputVariables[[11]]
+contextualizationWindowSize <- inputVariables[[7]]
+modelType <- inputVariables[[8]]
+modelTuning <- inputVariables[[9]]
+setManualThreshold <- inputVariables[[10]]
+manualThreshold <- inputVariables[[11]]
+normalizeRasters <- inputVariables[[12]]
+rasterDecimalPlaces <- inputVariables[[13]]
 
 # load model and threshold
-model <- readRDS(modelObjectDataframe$Model)
-threshold <- modelObjectDataframe$Threshold
+if (modelType == "CNN") {
+  model <- loadCNNModel(
+    weights_path = modelObjectDataframe$Weights,     # e.g. "model_weights.pt"
+    metadata_path = modelObjectDataframe$Model    # e.g. "model_metadata.rds"
+  )
+} else if (modelType == "Random Forest" || modelType == "MaxEnt") {
+  model <- readRDS(modelObjectDataframe$Model)
+}
+
+if (setManualThreshold == FALSE) {
+  threshold <- modelObjectDataframe$Threshold
+} else {
+  threshold <- manualThreshold
+}
 
 # extract list of testing rasters --------------------------------------------
-predictRasterList <- extractRasters(predictingRasterDataframe,
-                                    column = 2)
+predictRasterList <- extractRasters(predictingRasterDataframe, column = 2)
 
-# normalize training rasters if selected -------------------------------------
+# normalize predicting rasters if selected -------------------------------------
 if (normalizeRasters == TRUE) {
   predictRasterList <- normalizeRaster(predictRasterList)
 }
 
-# add covariate data to training rasters -------------------------------------
-predictRasterList <- addCovariates(predictRasterList,
-                                   predictingCovariateDataframe)
+# apply contextualization to prediction rasters if selected ---------------------
+if (applyContextualization == TRUE) {
+  predictRasterList <- contextualizeRaster(predictRasterList)
+}
+
+# extract covariate rasters and convert to correct data type -----------------
+predictingCovariateRaster <- processCovariates(predictingCovariateDataframe,
+                                               modelType)
+
+# add covariate data to predicting rasters -------------------------------------
+predictRasterList <- addCovariates(
+  predictRasterList,
+  predictingCovariateRaster
+)
+
+# check and mask NA values in predicting rasters -------------------
+predictRasterList <- checkAndMaskNA(predictRasterList)
+
+# round rasters to integer if selected ----------------------------------
+if (is.numeric(rasterDecimalPlaces) && length(rasterDecimalPlaces) > 0 && !is.na(rasterDecimalPlaces)) {
+  roundedRasters <- lapply(predictRasterList, function(r) {
+    return(app(r, fun = function(x) round(x, rasterDecimalPlaces)))
+  })
+  predictRasterList <- roundedRasters
+}
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
+classifiedRasterOutputDataframe <- data.frame(
+  Timestep = numeric(0),
+  ClassifiedUnfiltered = character(0),
+  ClassifiedFiltered = character(0),
+  ClassifiedProbability = character(0)
+)
 
-classifiedRasterOutputDataframe <- data.frame(Timestep = numeric(0),
-                                              ClassifiedUnfiltered = character(0),
-                                              ClassifiedFiltered = character(0),
-                                              ClassifiedProbability = character(0))
-
-
-classifiedRgbOutputDataframe <- data.frame(Timestep = numeric(0),
-                                           RGBImage = character(0))
-
-# add contextualization for prediction rasters if selected ---------------------
-if (applyContextualization == TRUE) {
-
-  predictRasterList <- contextualizeRaster(predictRasterList) # change naming to avoid this
-
-}
+classifiedRgbOutputDataframe <- data.frame(
+  Timestep = numeric(0),
+  RGBImage = character(0)
+)
 
 ## Predict presence for rasters to classify ------------------------------------
 for (t in seq_along(predictRasterList)) {
-
   # get timestep for the current raster
   timestep <- timestepList[t]
 
-  classifiedRasters <- getPredictionRasters(predictRasterList[[t]],
-                                            model,
-                                            threshold,
-                                            modelType)
+  classifiedRasters <- getPredictionRasters(
+    predictRasterList[[t]],
+    model,
+    threshold,
+    modelType
+  )
   classifiedPresence <- classifiedRasters[[1]]
   classifiedProbability <- classifiedRasters[[2]]
 
   # generate rasterDataframe based on filtering argument
-  classifiedRasterOutputDataframe <- generateRasterDataframe(applyFiltering,
-                                                             classifiedPresence,
-                                                             filterResolution,
-                                                             filterPercent,
-                                                             category = "predicting",
-                                                             timestep,
-                                                             transferDir,
-                                                             classifiedRasterOutputDataframe,
-                                                             hasGroundTruth = FALSE)
+  classifiedRasterOutputDataframe <- generateRasterDataframe(
+    applyFiltering,
+    classifiedPresence,
+    filterResolution,
+    filterPercent,
+    category = "predicting",
+    timestep,
+    transferDir,
+    classifiedRasterOutputDataframe,
+    hasGroundTruth = FALSE
+  )
 
   # define RGB data frame
-  classifiedRgbOutputDataframe <- getRgbDataframe(classifiedRgbOutputDataframe,
-                                                  category = "predicting",
-                                                  timestep,
-                                                  transferDir)
+  classifiedRgbOutputDataframe <- getRgbDataframe(
+    classifiedRgbOutputDataframe,
+    category = "predicting",
+    timestep,
+    transferDir
+  )
 
   # save files
-  saveFiles(classifiedPresence,
-            groundTruth = NULL,
-            classifiedProbability,
-            predictRasterList,
-            category = "predicting",
-            timestep,
-            transferDir)
+  saveFiles(
+    classifiedPresence,
+    groundTruth = NULL,
+    classifiedProbability,
+    predictRasterList,
+    category = "predicting",
+    timestep,
+    transferDir
+  )
 }
 
 # Save dataframes back to SyncroSim library's output datasheets ----------------
+saveDatasheet(
+  myScenario,
+  data = classifiedRasterOutputDataframe,
+  name = "ecoClassify_ClassifiedRasterOutput"
+)
 
-saveDatasheet(myScenario,
-              data = classifiedRasterOutputDataframe,
-              name = "ecoClassify_ClassifiedRasterOutput")
-
-saveDatasheet(myScenario,
-              data = classifiedRgbOutputDataframe,
-              name = "ecoClassify_ClassifiedRgbOutput")
+saveDatasheet(
+  myScenario,
+  data = classifiedRgbOutputDataframe,
+  name = "ecoClassify_ClassifiedRgbOutput"
+)
