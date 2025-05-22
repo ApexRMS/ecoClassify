@@ -1119,7 +1119,7 @@ getSensSpec <- function(probs, actual, threshold) {
 getOptimalThreshold <- function(
   model,
   testingData,
-  modelType = "Random Forest"
+  modelType
 ) {
   # define thresholds
   thresholds <- seq(0.01, 0.99, by = 0.01)
