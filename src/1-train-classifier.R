@@ -305,6 +305,9 @@ filterOutputDataframe <- data.frame(
 if (is.null(rasterDecimalPlaces)) {
   rasterDecimalPlaces <- ""
 }
+if (is.null(contextualizationWindowSize)) {
+  contextualizationWindowSize <- ""
+}
 
 classifierOptionsOutputDataframe <- data.frame(
   nObs = format(nObs, scientific = FALSE),

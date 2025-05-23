@@ -116,22 +116,22 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
       stop(
         "Contextualization window size must be an odd number; please specify a odd value greater than 1"
       )
+    } else if (contextualizationWindowSize == 1) {
+    stop(
+      "Contextualization window size must be greater than 1 for contextualization to be applied"
+      )
     }
   }
 
   # give a warning if contextualization window is specified but applyContextualization is FALSE
-  if (contextualizationWindowSize > 0 && applyContextualization == FALSE) {
+  if (!is.null(contextualizationWindowSize) && applyContextualization == FALSE) {
     updateRunLog(
       "Contextualization window size was supplied but applyContextualization is set to FALSE; no contextualization will be applied",
       type = "info"
       )
   }
 
-  if (contextualizationWindowSize == 1) {
-    stop(
-      "Contextualization window size must be greater than 1 for contextualization to be applied"
-      )
-  }
+  
 
   # Load post-processing options datasheet
   postProcessingDataframe <- datasheet(
