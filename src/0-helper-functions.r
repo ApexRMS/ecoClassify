@@ -458,12 +458,13 @@ predictRanger <- function(raster, model) {
   names(predictionRaster) <- "present"
 
   ## predict over raster decomposition
-  rasterMatrix <- data.frame(raster)
-  rasterMatrix <- na.omit(rasterMatrix)
+  rasterMatrix <- terra::values(raster, mat = TRUE)
+  valid_idx <- complete.cases(rasterMatrix)
+  rasterMatrix <- rasterMatrix[valid_idx, ]
   predictedValues <- data.frame(predict(model, rasterMatrix))[, 2]
 
   # assing values where raster is not NA
-  predictionRaster[!is.na(raster[[1]])] <- predictedValues
+  predictionRaster[valid_idx] <- predictedValues
 
   return(predictionRaster)
 }
@@ -1469,8 +1470,6 @@ processCovariates <- function(trainingCovariateDataframe,
 
       mergedCovariateRaster <- rast(covariateRasterList)
     }
-
-    mergedCovariateRaster <- rast(covariateRasterList)
     
     return(mergedCovariateRaster)
   }
