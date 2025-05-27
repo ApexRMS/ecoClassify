@@ -1116,8 +1116,6 @@ getSensSpec <- function(probs, actual, threshold) {
 }
 
 
-## find optimal threshold between sensitivity and specificity
-# Updated function to support fallback 'unknown' category index for CNN models
 getOptimalThreshold <- function(
   model,
   testingData,
@@ -1135,7 +1133,6 @@ getOptimalThreshold <- function(
       for (i in seq_along(model$cat_vars)) {
         col <- model$cat_vars[i]
         if (col %in% names(testingData)) {
-          # ensure each factor has its own level set to match training
           f <- factor(testingData[[col]], levels = seq_len(model$cat_levels[[i]]))
           x <- as.integer(f)
           x[is.na(x)] <- model$cat_levels[[i]] + 1  # assign 'unknown' category index
@@ -1144,33 +1141,50 @@ getOptimalThreshold <- function(
       }
     }
   } else if (modelType == "Random Forest") {
-    rf_model <- model
-    rf_vars <- rf_model$forest$independent.variable.names
-    cat_vars <- names(testingData)[sapply(testingData, is.factor) & names(testingData) %in% rf_vars]
-    for (col in cat_vars) {
-      levels_train <- rf_model$forest$levels[[col]]
-      if (!is.null(levels_train)) {
-        testingData[[col]] <- factor(testingData[[col]], levels = levels_train)
+    rf_model <- model$model
+    rf_levels <- model$factor_levels
+    rf_vars <- names(rf_levels)
+    if (is.null(rf_levels) || length(rf_levels) == 0) {
+      warning("Random Forest model does not include categorical level info. Skipping factor alignment.")
+    } else {
+      cat_vars <- names(testingData)[sapply(testingData, is.factor) & names(testingData) %in% rf_vars]
+      for (col in cat_vars) {
+        levels_train <- rf_levels[[col]]
+        if (!is.null(levels_train)) {
+          f <- factor(as.character(testingData[[col]]), levels = levels_train)
+          f[is.na(f)] <- "__unknown__"
+          levels(f) <- c(levels_train, "__unknown__")
+          testingData[[col]] <- f
+        } else {
+          warning(sprintf("Skipping factor alignment for '%s': not found in trained RF model levels", col))
+          testingData[[col]] <- NA
+        }
       }
     }
   } else if (modelType == "MaxEnt") {
-    maxent_model <- model
+    maxent_model <- model[[1]]
     cat_vars <- names(testingData)[sapply(testingData, is.factor)]
     for (col in cat_vars) {
       if (col %in% names(maxent_model@data@presence)) {
         levels_train <- levels(maxent_model@data@presence[[col]])
         if (!is.null(levels_train)) {
-          testingData[[col]] <- factor(testingData[[col]], levels = levels_train)
+          f <- factor(testingData[[col]], levels = levels_train)
+          f[is.na(f)] <- "__unknown__"
+          levels(f) <- c(levels_train, "__unknown__")
+          testingData[[col]] <- f
         }
+      } else {
+        warning(sprintf("Skipping factor alignment for '%s': not found in trained MaxEnt model data", col))
+        testingData[[col]] <- NA
       }
     }
   }
 
   ## predicting data
   if (modelType == "Random Forest") {
-    testingPredictions <- predict(model, testingData)$predictions[, 2]
+    testingPredictions <- predict(model$model, testingData)$predictions[, 2]
   } else if (modelType == "MaxEnt") {
-    testingPredictions <- predict(model, testingData, type = "logistic")
+    testingPredictions <- predict(model$model, testingData, type = "logistic")
   } else if (modelType == "CNN") {
     testingPredictions <- predictCNN(model, testingData, isRaster = FALSE)
   } else {
@@ -1223,8 +1237,8 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   trainingVariables <- grep(
     "presence|kfold",
     colnames(allTrainData),
-    invert = T,
-    value = T
+    invert = TRUE,
+    value = TRUE
   )
 
   mainModel <- formula(sprintf(
@@ -1233,49 +1247,45 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
     paste(trainingVariables, collapse = " + ")
   ))
 
-  ## Specifying feature classes and regularization parameters for Maxent
   if (isTuningOn) {
     tuneArgs <- list(
-      mtry = seq_len(min(6, length(trainingVariables))), ## number of splits
-      maxDepth = seq(0, 1, 0.2), ## regulariation amount
+      mtry = seq_len(min(6, length(trainingVariables))),
+      maxDepth = seq(0, 1, 0.2),
       nTrees = c(500, 1000, 2000)
-    ) ## number of trees
+    )
     tuneArgsGrid <- expand.grid(tuneArgs)
   } else {
     tuneArgs <- list(
-      mtry = round(sqrt(length(trainingVariables)), 0), ## defaults
+      mtry = round(sqrt(length(trainingVariables)), 0),
       maxDepth = 0,
       nTrees = 500
     )
     tuneArgsGrid <- expand.grid(tuneArgs)
   }
 
-  registerDoParallel(cores = nCores) # TO DO: confirm this is a good solution
+  registerDoParallel(cores = nCores)
 
   results <- foreach(
     i = seq_len(nrow(tuneArgsGrid)),
     .combine = rbind,
     .packages = "ranger"
-  ) %dopar%
-    {
-      rf1 <- ranger(
-        mainModel,
-        data = allTrainData,
-        mtry = tuneArgsGrid$mtry[i],
-        num.trees = tuneArgsGrid$nTrees[i],
-        max.depth = tuneArgsGrid$maxDepth[i],
-        probability = TRUE,
-        importance = "impurity"
-      )
+  ) %dopar% {
+    rf1 <- ranger(
+      mainModel,
+      data = allTrainData,
+      mtry = tuneArgsGrid$mtry[i],
+      num.trees = tuneArgsGrid$nTrees[i],
+      max.depth = tuneArgsGrid$maxDepth[i],
+      probability = TRUE,
+      importance = "impurity"
+    )
 
-      oobError <- rf1$prediction.error
+    oobError <- rf1$prediction.error
+    modelResults <- tuneArgsGrid[i, ]
+    modelResults[, "oobError"] <- oobError
+    modelResults
+  }
 
-      modelResults <- tuneArgsGrid[i, ]
-      modelResults[, "oobError"] <- oobError
-      modelResults
-    }
-
-  # Find the best model and train off of it
   bestModel <- ranger(
     mainModel,
     data = allTrainData,
@@ -1287,8 +1297,15 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
     importance = "impurity"
   )
 
-  return(list(bestModel, bestModel$variable.importance))
-  stopCluster(cl)
+  factor_levels <- lapply(allTrainData[, trainingVariables, drop = FALSE], function(x) {
+    if (is.factor(x)) levels(x) else NULL
+  })
+
+  return(list(
+    model = bestModel,
+    vimp = bestModel$variable.importance,
+    factor_levels = factor_levels
+  ))
 }
 
 # Updated getCNNModel function to use embeddings for specified categorical variables, with dynamic embedding dimension

@@ -119,7 +119,7 @@ allTestData <- splitData[[2]]
 if (modelType == "MaxEnt") {
   modelOut <- getMaxentModel(allTrainData, nCores, modelTuning)
   if (setManualThreshold == FALSE) {
-    threshold <- getOptimalThreshold(modelOut[[1]], allTestData, "MaxEnt")
+    threshold <- getOptimalThreshold(modelOut, allTestData, "MaxEnt")
   } else {
     threshold <- manualThreshold
   }
@@ -127,7 +127,7 @@ if (modelType == "MaxEnt") {
   modelOut <- getRandomForestModel(allTrainData, nCores, modelTuning)
   if (setManualThreshold == FALSE) {
     threshold <- getOptimalThreshold(
-      modelOut[[1]],
+      modelOut,
       allTestData,
       "Random Forest"
     )
@@ -151,6 +151,7 @@ if (modelType == "MaxEnt") {
 model <- modelOut[[1]]
 variableImportance <- modelOut[[2]]
 
+
 if (modelType == "CNN") {
   # Save Torch weights separately
   model_weights_path <- file.path(transferDir, "model_weights.pt")
@@ -164,7 +165,6 @@ if (modelType == "CNN") {
   modelPath <- file.path(transferDir, "model.rds")
   saveRDS(model, modelPath)
 }
-
 # add to output datasheet
 if (modelType == "CNN") {
   modelObjectOutputDataframe <- data.frame(
