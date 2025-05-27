@@ -1117,6 +1117,7 @@ getSensSpec <- function(probs, actual, threshold) {
 
 
 ## find optimal threshold between sensitivity and specificity
+# Updated function to support fallback 'unknown' category index for CNN models
 getOptimalThreshold <- function(
   model,
   testingData,
@@ -1128,15 +1129,61 @@ getOptimalThreshold <- function(
   # define testing observations (subtract 1 for factor level)
   testingObservations <- as.numeric(testingData$presence) - 1
 
+  # handle categorical variables by aligning factor levels
+  if (modelType == "CNN") {
+    if (!is.null(model$cat_vars) && length(model$cat_vars) > 0) {
+      for (i in seq_along(model$cat_vars)) {
+        col <- model$cat_vars[i]
+        if (col %in% names(testingData)) {
+          # ensure each factor has its own level set to match training
+          f <- factor(testingData[[col]], levels = seq_len(model$cat_levels[[i]]))
+          x <- as.integer(f)
+          x[is.na(x)] <- model$cat_levels[[i]] + 1  # assign 'unknown' category index
+          testingData[[col]] <- x
+        }
+      }
+    }
+  } else if (modelType == "Random Forest") {
+    rf_model <- model
+    rf_vars <- rf_model$forest$independent.variable.names
+    cat_vars <- names(testingData)[sapply(testingData, is.factor) & names(testingData) %in% rf_vars]
+    for (col in cat_vars) {
+      levels_train <- rf_model$forest$levels[[col]]
+      if (!is.null(levels_train)) {
+        testingData[[col]] <- factor(testingData[[col]], levels = levels_train)
+      }
+    }
+  } else if (modelType == "MaxEnt") {
+    maxent_model <- model
+    cat_vars <- names(testingData)[sapply(testingData, is.factor)]
+    for (col in cat_vars) {
+      if (col %in% names(maxent_model@data@presence)) {
+        levels_train <- levels(maxent_model@data@presence[[col]])
+        if (!is.null(levels_train)) {
+          testingData[[col]] <- factor(testingData[[col]], levels = levels_train)
+        }
+      }
+    }
+  }
+
   ## predicting data
   if (modelType == "Random Forest") {
-    testingPredictions <- predict(model, testingData)$predictions[, 2] # TO DO: use value instead of index?
+    testingPredictions <- predict(model, testingData)$predictions[, 2]
   } else if (modelType == "MaxEnt") {
     testingPredictions <- predict(model, testingData, type = "logistic")
   } else if (modelType == "CNN") {
     testingPredictions <- predictCNN(model, testingData, isRaster = FALSE)
   } else {
     stop("Model type not recognized")
+  }
+
+  # remove NAs in predictions or observations
+  valid_idx <- complete.cases(testingPredictions, testingObservations)
+  testingPredictions <- testingPredictions[valid_idx]
+  testingObservations <- testingObservations[valid_idx]
+
+  if (length(testingPredictions) == 0) {
+    stop("All testing predictions were dropped due to NA — possibly from unseen factor levels.")
   }
 
   # Calculate sensitivity and specificity for each threshold
@@ -1287,7 +1334,7 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
       self$has_cat <- length(cat_levels) > 0
       if (self$has_cat) {
         self$embeddings <- nn_module_list(
-          mapply(function(l, d) nn_embedding(num_embeddings = l + 1, embedding_dim = d),
+          mapply(function(l, d) nn_embedding(num_embeddings = l + 2, embedding_dim = d),
                  cat_levels, embedding_dims, SIMPLIFY = FALSE)
         )
         embed_dim <- sum(unlist(embedding_dims))
@@ -1385,7 +1432,10 @@ predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
 
   # Convert categorical variables to integer indices
   X_cat <- lapply(seq_along(cat_vars), function(i) {
-    factor(df[[cat_vars[i]]], levels = seq_len(cat_levels[[i]])) |> as.integer()
+  f <- factor(df[[cat_vars[i]]], levels = seq_len(cat_levels[[i]]))
+  x <- as.integer(f)
+  x[is.na(x)] <- cat_levels[[i]] + 1
+  x
   })
 
   # Prepare tensors
@@ -1606,7 +1656,7 @@ loadCNNModel <- function(weights_path, metadata_path) {
       self$has_cat <- length(cat_levels) > 0
       if (self$has_cat) {
         self$embeddings <- nn_module_list(
-          mapply(function(l, d) nn_embedding(num_embeddings = l + 1, embedding_dim = d),
+          mapply(function(l, d) nn_embedding(num_embeddings = l + 2, embedding_dim = d),
                  cat_levels, embedding_dims, SIMPLIFY = FALSE)
         )
         embed_dim <- sum(unlist(embedding_dims))
