@@ -1931,3 +1931,59 @@ predictResponseHistogram <- function(rastLayerHistogram, model) {
   })
   return(predictedLayers)
 }
+
+
+## plot histogram and responses to raster layers
+
+plotLayerHistogram <- function(histogramData, transferDir) {
+  n_vars <- unique(histogramData$layer) %>% length()
+
+  # Adjust font size and image height based on number of variables
+  font_size <- if (n_vars <= 6) {
+    20
+  } else if (n_vars <= 12) {
+    16
+  } else if (n_vars <= 18) {
+    12
+  } else {
+    10
+  }
+
+  width_per_facet <- 3
+  height_per_facet <- 2
+
+  plot_width <- max(14, n_vars * width_per_facet)
+  plot_height <- max(8, n_vars * height_per_facet)
+
+  p <- ggplot2::ggplot(histogramData, aes(x = predictor, y = response)) +
+    ggplot2::geom_col(
+      aes(y = pct * max(response)),
+      fill = "gray80",
+      width = 0.05
+    ) +
+    ggplot2::geom_line(size = 1.2, color = "Grey20") +
+    ggplot2::facet_wrap(~layer, scales = "free") +
+    ggplot2::labs(
+      x = "Layer values",
+      y = "Predicted response",
+      title = "Training layer histogram and response"
+    ) +
+    ggplot2::theme_classic(base_size = font_size) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(
+        hjust = 0.5,
+        margin = ggplot2::margin(t = 10, r = 20, b = 10, l = 10)
+      ),
+      plot.title.position = "plot"
+    )
+
+  outfile <- file.path(transferDir, "LayerHistogramResponse.png")
+  ggplot2::ggsave(
+    filename = outfile,
+    plot = p,
+    height = plot_height,
+    width = plot_width,
+    units = "in",
+    dpi = 300
+  )
+}

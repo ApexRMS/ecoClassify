@@ -8,10 +8,6 @@
         <record columns="timestepName" values="Timestep"/>
     </dataSheet>
 
-    <dataSheet name="ModelLayerNames" displayName="Model Layers" dataScope="Project" displayMember="layer">
-        <column name="layer" dataType="String"/>
-    </dataSheet>
-
     <!--Scenario Level-->
     <!--Input-->
     <dataSheet name="InputTrainingRasters" displayName="Training Rasters">
@@ -115,11 +111,6 @@
         <column name="Specificity" dataType="Double"/>
     </dataSheet>
 
-    <dataSheet name="ModelResponseChart" displayName="Model Response">
-        <column name="layer" dataType="String" validationType="Datasheet" formula1="ModelLayerNames"/>
-        <column name="predictor" dataType="Double"/>
-        <column name="response" dataType="Double"/>
-    </dataSheet>
 
     <!--Transformer 1: training classifier-->
     <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.3">
@@ -196,13 +187,6 @@
             <item name="modelPrecision" displayName="Precision" dataSheet="ModelChartData" column="Precision"/>
             <item name="modelSensitivity" displayName="Sensitivity" dataSheet="ModelChartData" column="Sensitivity"/>
             <item name="modelSpecificity" displayName="Specificity" dataSheet="ModelChartData" column="Specificity"/>
-      </group>
-            <group name="partialResponse" displayName="Partial Response Curves">
-            <item name="layerResponse" 
-                displayName="Response by layer" 
-                dataSheet="ModelResponseChart" 
-                column="response" 
-                filter="layer"/>
         </group>
     </layout>
 
