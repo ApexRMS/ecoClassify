@@ -111,7 +111,7 @@
         <column name="Specificity" dataType="Double"/>
     </dataSheet>
 
-    <dataSheet name="ModelResponseChart" displayName="Model Response" hasTimestep="False">
+    <dataSheet name="ModelResponseChart" displayName="Model Response">
         <column name="layer" dataType="String"/>
         <column name="predictor" dataType="Double"/>
         <column name="response" dataType="Double"/>
