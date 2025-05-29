@@ -265,6 +265,7 @@ for (t in seq_along(trainingRasterList)) {
 # Predict response based on range of values
 responseHistogram <- predictResponseHistogram(rastLayerHistogram, model)
 
+
 # calculate mean values for model statistics -----------------------------------
 outputDataframes <- calculateStatistics(
   modelOut,
@@ -365,6 +366,9 @@ saveDatasheet(
   data = modelOutputDataframe,
   name = "ecoClassify_ModelStatistics"
 )
+
+saveDatasheet(myScenario, data = responseHistogram, name = "ModelResponseChart")
+
 
 saveDatasheet(
   myScenario,

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<package name="ecoClassify" displayName="ecoClassify" description="Image classifier using semantic image segmentation" version="1.2.0" url="https://apexrms.github.io/ecoClassify/" minSyncroSimVersion="3.1.0">
+<package name="ecoClassify" displayName="ecoClassify" description="Image classifier using semantic image segmentation" version="1.3.0" url="https://apexrms.github.io/ecoClassify/" minSyncroSimVersion="3.1.0">
 
     <!--Project Level-->
     <dataSheet name="Terminology" isSingleRow="True" dataScope="Project">
@@ -111,6 +111,14 @@
         <column name="Specificity" dataType="Double"/>
     </dataSheet>
 
+    <dataSheet name="ModelResponseChart" displayName="Model Response" hasTimestep="False">
+        <column name="layer" dataType="String"/>
+        <column name="predictor" dataType="Double"/>
+        <column name="response" dataType="Double"/>
+    </dataSheet>
+
+
+
     <!--Transformer 1: training classifier-->
     <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.3">
         <dataSheet name="InputTrainingRasters" type="Input"/>
@@ -187,6 +195,16 @@
             <item name="modelSensitivity" displayName="Sensitivity" dataSheet="ModelChartData" column="Sensitivity"/>
             <item name="modelSpecificity" displayName="Specificity" dataSheet="ModelChartData" column="Specificity"/>
       </group>
+    </layout>
+
+    <layout type="Chart">
+        <group name="partialResponse" displayName="Partial Response Curves">
+            <item name="layerResponse" 
+                displayName="Response by layer" 
+                dataSheet="ModelResponseChart" 
+                column="response" 
+                filter="layer"/>
+        </group>
     </layout>
 
     <!--Map Layout-->
