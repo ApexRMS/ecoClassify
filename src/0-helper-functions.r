@@ -1870,26 +1870,64 @@ getValueRange <- function(rasterList, layerName, nBins = 20, nSample = 5000) {
 getRastLayerHistogram <- function(
   rasterList,
   nBins = 20,
-  nSample = 10000,
+  nSample = 10000
 ) {
   # Basic checks --------------------------------------------------
   layerNames <- names(rasterList[[1]])
   if (is.null(layerNames) || length(layerNames) == 0) {
     stop("rasterList[[1]] must have at least one named layer.")
   }
-  if (nBins <= 0 || nSample <= 0 || nJobs < 1) {
-    stop("nBins, nSample must be > 0 and nJobs must be >= 1.")
-  }
 
   result_df <- foreach(
     layerName = layerNames,
-    .combine = rbind,
-    .export = c("getValueRange", "rasterList"),
-    .packages = c("terra")
+    .combine = rbind
   ) %do%
     {
       getValueRange(rasterList, layerName, nBins, nSample)
     }
 
   return(result_df)
+}
+
+
+## Predict the response across the range of values based on the histogram
+predictResponseHistogram <- function(rastLayerHistogram, model) {
+  layers <- unique(rastLayerHistogram$layer)
+
+  # Construct a wide-format dataframe of bin_lower values
+  rastHistogramPredict <- rastLayerHistogram %>%
+    select(layer, bin_lower) %>%
+    group_by(layer) %>%
+    mutate(row = row_number()) %>%
+    ungroup() %>%
+    spread(layer, bin_lower) %>%
+    select(-row)
+
+  # Initialize dataframe for predicted results
+  predictedLayers <- map_dfr(layers, function(layerName) {
+    # Clone base grid
+    predictLayerTemp <- rastHistogramPredict
+
+    # Hold other layers constant at their mean
+    fixed_cols <- setdiff(names(predictLayerTemp), layerName)
+    predictLayerTemp[fixed_cols] <- map_dfc(
+      predictLayerTemp[fixed_cols],
+      ~ mean(.x, na.rm = TRUE)
+    )
+
+    # Predict using the random forest model
+    preds <- predict(
+      model,
+      data = predictLayerTemp,
+      type = "response"
+    )$predictions
+
+    # Combine output
+    tibble(
+      layer = layerName,
+      predictor = predictLayerTemp[[layerName]],
+      response = preds[, 2] # assuming binary classification, column 2 is P(class = 1)
+    )
+  })
+  return(predictedLayers)
 }
