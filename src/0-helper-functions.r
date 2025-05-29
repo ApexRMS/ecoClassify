@@ -1949,11 +1949,11 @@ plotLayerHistogram <- function(histogramData, transferDir) {
     10
   }
 
-  width_per_facet <- 3
-  height_per_facet <- 2
+  width_per_facet <- 1
+  height_per_facet <- 0.66
 
-  plot_width <- max(14, n_vars * width_per_facet)
-  plot_height <- max(8, n_vars * height_per_facet)
+  plot_width <- max(10, n_vars * width_per_facet)
+  plot_height <- max(10, n_vars * height_per_facet)
 
   p <- ggplot2::ggplot(histogramData, aes(x = predictor, y = response)) +
     ggplot2::geom_col(
@@ -1961,7 +1961,7 @@ plotLayerHistogram <- function(histogramData, transferDir) {
       fill = "gray80",
       width = 0.05
     ) +
-    ggplot2::geom_line(size = 1.2, color = "Grey20") +
+    ggplot2::geom_line(linewidth = 1.2, color = "Grey20") +
     ggplot2::facet_wrap(~layer, scales = "free") +
     ggplot2::labs(
       x = "Layer values",

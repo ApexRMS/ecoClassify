@@ -267,6 +267,13 @@ responseHistogram <- predictResponseHistogram(rastLayerHistogram, model)
 histogramJoin <- responseHistogram %>%
   left_join(rastLayerHistogram, by = c("layer", "predictor" = "bin_lower"))
 plotLayerHistogram(histogramJoin, transferDir)
+# add to output datasheet
+layerHistogramPlotOutputDataframe <- data.frame(
+  LayerHistogramPlot = file.path(paste0(
+    transferDir,
+    "/LayerHistogramResponse.png"
+  ))
+)
 
 # calculate mean values for model statistics -----------------------------------
 outputDataframes <- calculateStatistics(
@@ -392,6 +399,12 @@ saveDatasheet(
   myScenario,
   data = confusionMatrixPlotOutputDataframe,
   name = "ecoClassify_ConfusionMatrixPlotOutput"
+)
+
+saveDatasheet(
+  myScenario,
+  data = layerHistogramPlotOutputDataframe,
+  name = "ecoClassify_LayerHistogramPlotOutput"
 )
 
 saveDatasheet(
