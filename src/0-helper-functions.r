@@ -1412,7 +1412,7 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   )(X_num, cat_indices, y_int)
 
   batch_size <- if (isTuningOn) 64 else 32
-  epochs <- if (isTuningOn) 50 else 20
+  epochs <- if (isTuningOn) 100 else 20
   dl <- dataloader(ds, batch_size = batch_size, shuffle = TRUE)
 
   net <- nn_module(
@@ -1785,8 +1785,11 @@ loadCNNModel <- function(weights_path, metadata_path) {
         embed_dim <- 0
         self$embeddings <- NULL
       }
-      self$fc1 <- nn_linear(embed_dim + n_num, 16)
-      self$fc2 <- nn_linear(16, 2)
+      self$fc1 <- nn_linear(embed_dim + n_num, 64)
+      self$drop1 <- nn_dropout(p = 0.3)
+      self$fc2 <- nn_linear(64, 32)
+      self$drop2 <- nn_dropout(p = 0.3)
+      self$fc3 <- nn_linear(32, 2)
     },
     forward = function(x_num, x_cat) {
       if (self$has_cat) {
@@ -1800,7 +1803,10 @@ loadCNNModel <- function(weights_path, metadata_path) {
         x <- x_num
       }
       x <- nnf_relu(self$fc1(x))
-      self$fc2(x)
+      x <- self$drop1(x)
+      x <- nnf_relu(self$fc2(x))
+      x <- self$drop2(x)
+      x <- self$fc3(x)
     }
   )
 
