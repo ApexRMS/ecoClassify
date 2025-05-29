@@ -1891,7 +1891,7 @@ getRastLayerHistogram <- function(
 
 
 ## Predict the response across the range of values based on the histogram
-predictResponseHistogram <- function(rastLayerHistogram, model) {
+predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
   layers <- unique(rastLayerHistogram$layer)
 
   # Construct a wide-format dataframe of bin_lower values
@@ -1915,13 +1915,12 @@ predictResponseHistogram <- function(rastLayerHistogram, model) {
       ~ mean(.x, na.rm = TRUE)
     )
 
-    # Predict using the random forest model
-    preds <- predict(
-      model,
-      data = predictLayerTemp,
-      type = "response"
-    )$predictions
-
+    ## predict based on different models
+    if (modelType == "CNN") {
+      preds <- predict_cnn_dataframe(model, predictLayerTemp, "prob")
+    } else {
+      preds <- predict(model, predictLayerTemp, type = "response")$predictions
+    }
     # Combine output
     tibble(
       layer = layerName,
@@ -1986,4 +1985,39 @@ plotLayerHistogram <- function(histogramData, transferDir) {
     units = "in",
     dpi = 300
   )
+}
+
+
+predict_cnn_dataframe <- function(model, newdata, return = c("class", "prob")) {
+  return <- match.arg(return)
+
+  if (!inherits(model, "nn_module")) {
+    stop("model must be a torch nn_module object")
+  }
+
+  if (!is.data.frame(newdata)) {
+    stop("newdata must be a data.frame")
+  }
+
+  if (any(is.na(newdata))) {
+    stop("newdata contains NA values. These must be handled before prediction.")
+  }
+
+  # Convert to tensor
+  input_tensor <- torch_tensor(as.matrix(newdata), dtype = torch_float())
+
+  # Put model in eval mode and predict
+  model$eval()
+  with_no_grad({
+    output <- model(input_tensor)
+  })
+
+  # Return class or probabilities
+  if (return == "prob") {
+    probs <- output$softmax(dim = 2)
+    return(as_array(probs))
+  } else {
+    classes <- output$argmax(dim = 2)$to(dtype = torch_int())$cpu()
+    return(as_array(classes))
+  }
 }

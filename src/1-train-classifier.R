@@ -263,7 +263,11 @@ for (t in seq_along(trainingRasterList)) {
 }
 
 # Predict response based on range of values
-responseHistogram <- predictResponseHistogram(rastLayerHistogram, model)
+responseHistogram <- predictResponseHistogram(
+  rastLayerHistogram,
+  model,
+  modelType
+)
 histogramJoin <- responseHistogram %>%
   left_join(rastLayerHistogram, by = c("layer", "predictor" = "bin_lower"))
 plotLayerHistogram(histogramJoin, transferDir)
