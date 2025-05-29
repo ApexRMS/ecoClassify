@@ -263,6 +263,7 @@ for (t in seq_along(trainingRasterList)) {
 }
 
 # Predict response based on range of values
+layerNames <- unique(rastLayerHistogram$layer)
 responseHistogram <- predictResponseHistogram(rastLayerHistogram, model)
 
 
@@ -367,7 +368,20 @@ saveDatasheet(
   name = "ecoClassify_ModelStatistics"
 )
 
-saveDatasheet(myScenario, data = responseHistogram, name = "ModelResponseChart")
+saveDatasheet(
+  myScenario,
+  data = responseHistogram,
+  name = "ecoClassify_ModelResponseChart"
+)
+
+saveDatasheet(
+  myScenario,
+  data = data.frame(
+    layer = layerNames,
+    stringsAsFactors = FALSE
+  ),
+  name = "ecoClassify_ModelLayerNames"
+)
 
 
 saveDatasheet(
