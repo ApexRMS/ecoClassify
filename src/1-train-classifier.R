@@ -58,13 +58,13 @@ if (normalizeRasters == TRUE) {
   trainingRasterList <- normalizeRaster(trainingRasterList)
 }
 
-# Extract raster values for diagnostics
-rastLayerHistogram <- getRastLayerHistogram(trainingRasterList)
-
 # apply contextualization to training rasters if selected ---------------------
 if (applyContextualization == TRUE) {
   trainingRasterList <- contextualizeRaster(trainingRasterList)
 }
+
+# Extract raster values for diagnostics
+rastLayerHistogram <- getRastLayerHistogram(trainingRasterList)
 
 # reclassify ground truth rasters --------------------------------------------
 groundTruthRasterList <- reclassifyGroundTruth(groundTruthRasterList)
