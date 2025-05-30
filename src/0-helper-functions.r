@@ -1191,6 +1191,14 @@ contextualizeRaster <- function(rasterList) {
 #'
 #' @import ENMeval
 getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
+  # Identify predictor variables
+  predictorVars <- grep("presence|kfold", colnames(allTrainData), invert = TRUE, value = TRUE)
+
+  # Split into categorical and numeric
+  predictorData <- allTrainData[, predictorVars, drop = FALSE]
+  cat_vars <- names(predictorData)[sapply(predictorData, is.factor)]
+  num_vars <- setdiff(predictorVars, cat_vars)
+
   ## Specifying feature classes and regularization parameters for Maxent
   if (isTuningOn) {
     tuneArgs <- list(
@@ -1203,22 +1211,22 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
 
   absenceTrainData <- allTrainData[
     allTrainData$presence == 0,
-    grep("presence|kfold", colnames(allTrainData), invert = T)
+    predictorVars
   ]
   presenceTrainData <- allTrainData[
     allTrainData$presence == 1,
-    grep("presence|kfold", colnames(allTrainData), invert = T)
+    predictorVars
   ]
 
   max1 <- ENMevaluate(
     occ = presenceTrainData,
     bg.coords = absenceTrainData,
     tune.args = tuneArgs,
-    progbar = F,
+    progbar = FALSE,
     partitions = "randomkfold",
-    parallel = T,
+    parallel = TRUE,
     numCores = nCores,
-    quiet = T, ## silence messages but not errors
+    quiet = TRUE,
     algorithm = 'maxent.jar'
   )
 
@@ -1232,9 +1240,13 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
   maxentImportance <- getMaxentImportance(varImp)
 
   model <- max1@models[[bestMax]]
-  # modelOut <- max1@results[bestMax,]
 
-  return(list(model, maxentImportance))
+  return(list(
+    model = model,
+    vimp = maxentImportance,
+    cat_vars = cat_vars,
+    num_vars = num_vars
+  ))
 }
 
 getMaxentImportance <- function(varImp) {
@@ -1401,6 +1413,10 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
     value = TRUE
   )
 
+  # Identify categorical and numeric variables
+  cat_vars <- names(allTrainData[, trainingVariables, drop = FALSE])[sapply(allTrainData[, trainingVariables, drop = FALSE], is.factor)]
+  num_vars <- setdiff(trainingVariables, cat_vars)
+
   mainModel <- formula(sprintf(
     "%s ~ %s",
     "presence",
@@ -1468,7 +1484,9 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   return(list(
     model = bestModel,
     vimp = bestModel$variable.importance,
-    factor_levels = factor_levels
+    factor_levels = factor_levels,
+    cat_vars = cat_vars,
+    num_vars = num_vars
   ))
 }
 
@@ -1975,71 +1993,104 @@ getValueRange <- function(rasterList, layerName, nBins = 20, nSample = 5000) {
   )
 }
 
-
 getRastLayerHistogram <- function(
   rasterList,
   nBins = 20,
   nSample = 10000
 ) {
-  # Basic checks --------------------------------------------------
-  layerNames <- names(rasterList[[1]])
+  first_raster <- rasterList[[1]]
+  layerNames <- names(first_raster)
   if (is.null(layerNames) || length(layerNames) == 0) {
     stop("rasterList[[1]] must have at least one named layer.")
   }
 
-  result_df <- foreach(
-    layerName = layerNames,
+  # Determine layer types
+  is_numeric_layer <- sapply(layerNames, function(name) {
+    vals <- terra::values(first_raster[[name]], mat = FALSE)
+    is.numeric(vals) && length(unique(vals)) > 15
+  })
+
+  numeric_layers <- layerNames[is_numeric_layer]
+  categorical_layers <- setdiff(layerNames, numeric_layers)
+
+  # Histogram for numeric layers
+  numeric_df <- foreach(
+    layerName = numeric_layers,
     .combine = rbind
-  ) %do%
-    {
-      getValueRange(rasterList, layerName, nBins, nSample)
-    }
+  ) %do% {
+    getValueRange(rasterList, layerName, nBins, nSample)
+  }
 
-  return(result_df)
+  # Placeholder for categorical layers
+  categorical_df <- tibble::tibble(
+    layer = categorical_layers,
+    bin_lower = NA_real_,
+    bin_upper = NA_real_,
+    count = NA_real_,
+    pct = NA_real_
+  )
+
+  return(bind_rows(numeric_df, categorical_df))
 }
-
 
 ## Predict the response across the range of values based on the histogram
 predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
-  layers <- unique(rastLayerHistogram$layer)
+  # Separate numeric and categorical variables in the model
+  numeric_layers <- intersect(unique(rastLayerHistogram$layer), model$num_vars)
+  categorical_layers <- intersect(model$cat_vars, unique(rastLayerHistogram$layer))
 
-  # Construct a wide-format dataframe of bin_lower values
+  # Prepare prediction grid for numeric layers
   rastHistogramPredict <- rastLayerHistogram %>%
+    filter(layer %in% numeric_layers) %>%
     select(layer, bin_lower) %>%
     group_by(layer) %>%
     mutate(row = row_number()) %>%
     ungroup() %>%
-    spread(layer, bin_lower) %>%
+    tidyr::spread(layer, bin_lower) %>%
     select(-row)
 
-  # Initialize dataframe for predicted results
-  predictedLayers <- map_dfr(layers, function(layerName) {
-    # Clone base grid
+  # Predict for numeric layers
+  numeric_predictions <- purrr::map_dfr(numeric_layers, function(layerName) {
     predictLayerTemp <- rastHistogramPredict
-
-    # Hold other layers constant at their mean
     fixed_cols <- setdiff(names(predictLayerTemp), layerName)
-    predictLayerTemp[fixed_cols] <- map_dfc(
+    predictLayerTemp[fixed_cols] <- purrr::map_dfc(
       predictLayerTemp[fixed_cols],
       ~ mean(.x, na.rm = TRUE)
     )
 
-    ## predict based on different models
-    if (modelType == "CNN") {
-      preds <- predict_cnn_dataframe(model, predictLayerTemp, "prob")
+    preds <- if (modelType == "CNN") {
+      predict_cnn_dataframe(model, predictLayerTemp, "prob")
     } else {
-      preds <- predict(model, predictLayerTemp, type = "response")$predictions
+      # Add back missing categorical variables with a fixed level
+      missing_cat_vars <- setdiff(model$cat_vars, names(predictLayerTemp))
+      for (v in missing_cat_vars) {
+        # Use first known level from training
+        lvls <- model$factor_levels[[v]]
+        predictLayerTemp[[v]] <- factor(rep(lvls[1], nrow(predictLayerTemp)), levels = lvls)
+      }
+      predict(model$model, predictLayerTemp, type = "response")$predictions
     }
-    # Combine output
-    tibble(
+
+    tibble::tibble(
       layer = layerName,
       predictor = predictLayerTemp[[layerName]],
-      response = preds[, 2] # assuming binary classification, column 2 is P(class = 1)
+      response = preds[, 2]
     )
   })
+
+  # Generate empty rows for categorical variables
+  cat_predictions <- purrr::map_dfr(categorical_layers, function(layerName) {
+    tibble::tibble(
+      layer = layerName,
+      predictor = NA,
+      response = NA_real_
+    )
+  })
+
+  # Combine both
+  predictedLayers <- bind_rows(numeric_predictions, cat_predictions)
   return(predictedLayers)
 }
-
 
 ## plot histogram and responses to raster layers
 
@@ -2059,13 +2110,18 @@ plotLayerHistogram <- function(histogramData, transferDir) {
 
   width_per_facet <- 1
   height_per_facet <- 0.66
-
   plot_width <- max(10, n_vars * width_per_facet)
   plot_height <- max(10, n_vars * height_per_facet)
 
-  p <- ggplot2::ggplot(histogramData, aes(x = predictor, y = response)) +
+  # Scale bars by facet-wise max(response)
+  scaled_data <- histogramData %>%
+    group_by(layer) %>%
+    mutate(pct_scaled = pct * max(response, na.rm = TRUE)) %>%
+    ungroup()
+
+  p <- ggplot2::ggplot(scaled_data, aes(x = predictor, y = response)) +
     ggplot2::geom_col(
-      aes(y = pct * max(response)),
+      aes(y = pct_scaled),
       fill = "gray80",
       width = 0.05
     ) +
@@ -2096,11 +2152,10 @@ plotLayerHistogram <- function(histogramData, transferDir) {
   )
 }
 
-
 predict_cnn_dataframe <- function(model, newdata, return = c("class", "prob")) {
   return <- match.arg(return)
 
-  if (!inherits(model, "nn_module")) {
+  if (!inherits(model$model, "nn_module")) {
     stop("model must be a torch nn_module object")
   }
 
@@ -2116,7 +2171,8 @@ predict_cnn_dataframe <- function(model, newdata, return = c("class", "prob")) {
   input_tensor <- torch_tensor(as.matrix(newdata), dtype = torch_float())
 
   # Put model in eval mode and predict
-  model$eval()
+  net <- model$model
+  net$eval()
   with_no_grad({
     output <- model(input_tensor)
   })
