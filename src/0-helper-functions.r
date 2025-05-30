@@ -447,43 +447,86 @@ plotVariableImportance <- function(importanceData, transferDir) {
 #' @details
 #' Both input rasters lists must be the same length.
 #' @noRd
-splitTrainTest <- function(trainingRasterList, groundTruthRasterList, nObs) {
-  # create empty lists for binding data
-  allTrainData <- c()
-  allTestData <- c()
 
-  # For loop through each raster pair
-  for (i in seq_along(trainingRasterList)) {
-    ## Decompose satellite image raster
-    modelData <- decomposedRaster(
-      trainingRasterList[[i]],
-      groundTruthRasterList[[i]],
-      nobs = nObs
+splitTrainTest <- function(
+  trainingRasterList, # list of SpatRaster stacks (one per time step)
+  groundTruthRasterList, # same structure, but single-band (0/1) rasters
+  nObs, # total number of pixels to sample
+  nBlocks = 25, # must be a perfect square
+  proportionTraining = 0.8 # fraction of blocks to use for training
+) {
+  blockDim <- sqrt(nBlocks)
+  if (blockDim != floor(blockDim)) {
+    stop("`nBlocks` must be a perfect square, e.g.  100, 144, 256.")
+  }
+  if (proportionTraining <= 0 || proportionTraining >= 1) {
+    stop("`proportionTraining` must be between 0 and 1 (exclusive).")
+  }
+  nTrainBlocks <- floor(nBlocks * proportionTraining)
+  if (nTrainBlocks < 1) {
+    stop(
+      "With that `proportionTraining`, you end up with zero training blocks."
     )
-
-    # format sampled data
-    modelDataSampled <- modelData %>%
-      mutate(presence = as.factor(response)) %>%
-      dplyr::select(-ID, -response) %>%
-      mutate(kfold = sample(1:10, nrow(.), replace = TRUE))
-
-    # Apply preprocessing
-    modelDataSampled <- preprocessTrainingData(
-      modelDataSampled,
-      response = "presence",
-      exclude = "kfold"
-    )
-
-    # split into training and testing data
-    train <- modelDataSampled %>% filter(kfold != 1)
-    test <- modelDataSampled %>% filter(kfold == 1)
-
-    # bind to list
-    allTrainData <- rbind(allTrainData, train)
-    allTestData <- rbind(allTestData, test)
   }
 
-  return(list(allTrainData, allTestData))
+  ## Build spatial grid over first raster -------------------------------
+  r0 <- trainingRasterList[[1]][[1]] # pick one layer just to get extent/CRS
+  bbox_sf <- st_as_sfc(st_bbox(r0))
+  grid <- st_make_grid(bbox_sf, n = c(blockDim, blockDim), square = TRUE)
+  gridSf <- st_sf(block = seq_along(grid), geometry = grid)
+
+  # Sample points & assign to blocks -----------------------------------
+  pts <- terra::spatSample(r0, size = nObs, as.points = TRUE)
+  ptsSf <- st_as_sf(pts) %>% st_join(gridSf, join = st_within)
+  ptsSf <- filter(ptsSf, !is.na(block))
+  if (nrow(ptsSf) < nObs * 0.5) {
+    warning(
+      "Lost >50% of points to NA blocks; you may want a finer grid or more samples."
+    )
+  }
+
+  # 4. Extract true presence/absence --------------------------------------
+  resp_df <- terra::extract(groundTruthRasterList[[1]], vect(ptsSf), df = TRUE)
+  ptsSf$presence <- resp_df[[2]] # assume second column is your 0/1 band
+
+  # 5. Stratified sampling by block & class -------------------------------
+  # roughly equal points per block, half presence/half absence
+  samplesPerBlock <- ceiling(nObs / nBlocks)
+  samplesPerClass <- ceiling(samplesPerBlock / 2)
+
+  balancedPts <- ptsSf %>%
+    group_by(block, presence) %>%
+    slice_sample(n = samplesPerClass, replace = TRUE) %>%
+    ungroup()
+
+  # Split blocks into train vs test
+  trainBlocks <- sample(unique(balancedPts$block), nTrainBlocks)
+  trainPts <- filter(balancedPts, block %in% trainBlocks)
+  testPts <- filter(balancedPts, !block %in% trainBlocks)
+
+  # 7. Extract predictors for each time step ------------------------------
+  extract_at_pts <- function(rStack, pts) {
+    terra::extract(rStack, vect(pts), df = TRUE)[, -1] # drop ID col
+  }
+
+  train_list <- lapply(trainingRasterList, extract_at_pts, pts = trainPts)
+  test_list <- lapply(trainingRasterList, extract_at_pts, pts = testPts)
+
+  # 8. Combine & return ----------------------------------------------------
+  train_df <- do.call(
+    rbind,
+    lapply(train_list, function(df) {
+      cbind(df, presence = trainPts$presence)
+    })
+  )
+  test_df <- do.call(
+    rbind,
+    lapply(test_list, function(df) {
+      cbind(df, presence = testPts$presence)
+    })
+  )
+
+  list(train = train_df, test = test_df)
 }
 
 #' Predict presence over area ---
