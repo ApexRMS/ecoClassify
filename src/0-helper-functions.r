@@ -2059,15 +2059,26 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
     )
 
     preds <- if (modelType == "CNN") {
+      # Add back missing categorical variables with a fixed level
+      missing_cat_vars <- setdiff(model$cat_vars, names(predictLayerTemp))
+      for (v in missing_cat_vars) {
+        num_levels <- model$cat_levels[[v]]
+        # Assign integer index directly, NOT factor
+        predictLayerTemp[[v]] <- rep(1L, nrow(predictLayerTemp))
+      }
+
+      # Ensure column order is correct
+      predictLayerTemp <- predictLayerTemp[, c(model$num_vars, model$cat_vars), drop = FALSE]
+
       predict_cnn_dataframe(model, predictLayerTemp, "prob")
     } else {
       # Add back missing categorical variables with a fixed level
       missing_cat_vars <- setdiff(model$cat_vars, names(predictLayerTemp))
       for (v in missing_cat_vars) {
-        # Use first known level from training
-        lvls <- model$factor_levels[[v]]
-        predictLayerTemp[[v]] <- factor(rep(lvls[1], nrow(predictLayerTemp)), levels = lvls)
-      }
+      num_levels <- model$cat_levels[[v]]
+      # Use index 1 for all rows (assuming it corresponds to a valid level)
+      predictLayerTemp[[v]] <- as.integer(1L)
+    }
       predict(model$model, predictLayerTemp, type = "response")$predictions
     }
 
@@ -2156,28 +2167,40 @@ predict_cnn_dataframe <- function(model, newdata, return = c("class", "prob")) {
   return <- match.arg(return)
 
   if (!inherits(model$model, "nn_module")) {
-    stop("model must be a torch nn_module object")
+    stop("model$model must be a torch nn_module object")
   }
 
   if (!is.data.frame(newdata)) {
     stop("newdata must be a data.frame")
   }
 
-  if (any(is.na(newdata))) {
-    stop("newdata contains NA values. These must be handled before prediction.")
-  }
+  # Extract model metadata
+  num_vars <- model$num_vars
+  cat_vars <- model$cat_vars
+  cat_levels <- model$cat_levels
 
-  # Convert to tensor
-  input_tensor <- torch_tensor(as.matrix(newdata), dtype = torch_float())
+  # Handle numeric input
+  X_num <- as.matrix(newdata[, num_vars, drop = FALSE])
+  if (anyNA(X_num)) stop("NA values in numeric predictors not allowed.")
+  input_num <- torch_tensor(X_num, dtype = torch_float())
 
-  # Put model in eval mode and predict
+  # Handle categorical input
+  input_cat <- lapply(cat_vars, function(var) {
+    levels_train <- cat_levels[[var]]
+    x <- newdata[[var]]
+    if (!is.factor(x)) x <- factor(x, levels = levels_train)
+    idx <- as.integer(factor(x, levels = levels_train))
+    idx[is.na(idx)] <- length(levels_train) + 1  # handle unknowns
+    torch_tensor(idx, dtype = torch_long())
+  })
+
+  # Predict using model$model
   net <- model$model
   net$eval()
   with_no_grad({
-    output <- model(input_tensor)
+    output <- net(input_num, input_cat)
   })
 
-  # Return class or probabilities
   if (return == "prob") {
     probs <- output$softmax(dim = 2)
     return(as_array(probs))
