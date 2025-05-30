@@ -1355,14 +1355,14 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
     tuneArgs <- list(
       mtry = seq_len(min(6, length(trainingVariables))),
       maxDepth = seq(0, 1, 0.2),
-      nTrees = c(500, 1000, 2000)
+      nTrees = c(1000, 2000, 3000, 4000, 5000)
     )
     tuneArgsGrid <- expand.grid(tuneArgs)
   } else {
     tuneArgs <- list(
       mtry = round(sqrt(length(trainingVariables)), 0),
       maxDepth = 0,
-      nTrees = 500
+      nTrees = 2000,
     )
     tuneArgsGrid <- expand.grid(tuneArgs)
   }
