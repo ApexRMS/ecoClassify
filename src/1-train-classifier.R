@@ -3,37 +3,6 @@
 ## ApexRMS, November 2024
 ## -------------------------------
 
-# access test library ------------------------------------------------------
-library(rsyncrosim)
-mySession <- session("C:/Program Files/SyncroSim")
-# libPath <- "library/image_classifier_testing.ssim"
-# libPath <- "C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/Tamarisk Predictions.ssim"
-# libPath <- "C:/Users/HannahAdams/Documents/Projects/A332 UofT - UPA Mapping/UPA-testing.ssim"
-# libPath <- "C:/Users/HannahAdams/Documents/Projects/A345 McMurray Metis/Lake-Classification.ssim"
-# libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/ecoClassify Testing.ssim"
-# libPath <- "C:/Users/HannahAdams/Documents/GitHub/HHLTWetlandMapping/HHLT-Swamp-Classification-With-Slope.ssim"
-libPath <- "C:/Users/HannahAdams/Downloads/HHLT-Wetland-Classification.ssim"
-
-myLibrary <- ssimLibrary(name = libPath,
-                         session = mySession)
-
-# define project
-myProject <- rsyncrosim::project(myLibrary, project = 1)
-
-# define scenario
-scenario(myProject)
-myScenario <- scenario(myProject, scenario = 1)
-
-# view datasheets
-datasheet(myScenario)
-source("dev/ecoClassify/0-helper-functions.r")
-
-# transferDir <- ""
-transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
-nObs <- 500
-modelType <- "CNN"
-# --------------------------------------------------------------------------
-
 # set up workspace ---------------------------------------------------------
 packageDir <- (Sys.getenv("ssim_package_directory"))
 source(file.path(packageDir, "0-helper-functions.r"))
