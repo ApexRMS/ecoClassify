@@ -18,10 +18,26 @@ quiet <- function(expr) {
 }
 
 quiet({
-  pkgs <- c("terra", "tidyverse", "magrittr", "ENMeval", "foreach",
-            "iterators", "parallel", "coro", "rsyncrosim",
-            "sf", "ranger", "gtools", "codetools", "rJava", "ecospat", "cvms",
-            "doParallel", "tidymodels")
+  pkgs <- c(
+    "terra",
+    "tidyverse",
+    "magrittr",
+    "ENMeval",
+    "foreach",
+    "iterators",
+    "parallel",
+    "coro",
+    "rsyncrosim",
+    "sf",
+    "ranger",
+    "gtools",
+    "codetools",
+    "rJava",
+    "ecospat",
+    "cvms",
+    "doParallel",
+    "tidymodels"
+  )
 
   invisible(lapply(pkgs, load_pkg))
 })
@@ -40,19 +56,33 @@ install_and_load_torch <- function(max_attempts = 3, wait_seconds = 5) {
   # Try loading backend up to `max_attempts` times
   attempt <- 1
   while (attempt <= max_attempts) {
-    try({
-      suppressPackageStartupMessages(library(torch))
-      torch::torch_tensor(1)  # forces backend to load
-      return(invisible(TRUE))
-    }, silent = TRUE)
+    try(
+      {
+        suppressPackageStartupMessages(library(torch))
+        torch::torch_tensor(1) # forces backend to load
+        return(invisible(TRUE))
+      },
+      silent = TRUE
+    )
 
-    updateRunLog(sprintf("Attempt %d failed to load torch backend. Retrying in %d seconds...", attempt, wait_seconds), type = "info")
+    updateRunLog(
+      sprintf(
+        "Attempt %d failed to load torch backend. Retrying in %d seconds...",
+        attempt,
+        wait_seconds
+      ),
+      type = "info"
+    )
     Sys.sleep(wait_seconds)
     attempt <- attempt + 1
   }
 
   updateRunLog("Torch backend still not ready. Reinstalling...", type = "info")
-  unlink(get("torch_home", envir = asNamespace("torch"))(), recursive = TRUE, force = TRUE)
+  unlink(
+    get("torch_home", envir = asNamespace("torch"))(),
+    recursive = TRUE,
+    force = TRUE
+  )
   torch::install_torch()
   suppressPackageStartupMessages(library(torch))
   torch::torch_tensor(1)
@@ -106,7 +136,10 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
 
   # assign value of 3 to contextualizationWindowSize if not specified
   if (applyContextualization == TRUE) {
-    if (is.null(contextualizationWindowSize) || isTRUE(is.na(contextualizationWindowSize))) {
+    if (
+      is.null(contextualizationWindowSize) ||
+        isTRUE(is.na(contextualizationWindowSize))
+    ) {
       contextualizationWindowSize <- 3
       updateRunLog(
         "Contextualization window size was not supplied; using default value of 3",
@@ -117,21 +150,21 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
         "Contextualization window size must be an odd number; please specify a odd value greater than 1"
       )
     } else if (contextualizationWindowSize == 1) {
-    stop(
-      "Contextualization window size must be greater than 1 for contextualization to be applied"
+      stop(
+        "Contextualization window size must be greater than 1 for contextualization to be applied"
       )
     }
   }
 
   # give a warning if contextualization window is specified but applyContextualization is FALSE
-  if (!is.null(contextualizationWindowSize) && applyContextualization == FALSE) {
+  if (
+    !is.null(contextualizationWindowSize) && applyContextualization == FALSE
+  ) {
     updateRunLog(
       "Contextualization window size was supplied but applyContextualization is set to FALSE; no contextualization will be applied",
       type = "info"
-      )
+    )
   }
-
-  
 
   # Load post-processing options datasheet
   postProcessingDataframe <- datasheet(
@@ -148,17 +181,17 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   if (is.na(filterResolution) && applyFiltering == TRUE) {
     filterResolution <- 5
     updateRunLog(
-        "Filter resolution was not supplied; using default value of 5",
-        type = "info"
-      )
+      "Filter resolution was not supplied; using default value of 5",
+      type = "info"
+    )
   }
 
   if (is.na(filterPercent) && applyFiltering == TRUE) {
     filterPercent <- 0.25
     updateRunLog(
-        "Filter percent was not supplied; using default value of 0.25",
-        type = "info"
-      )
+      "Filter percent was not supplied; using default value of 0.25",
+      type = "info"
+    )
   }
 
   # stop if manual threshold is missing or outside of possible range
@@ -219,11 +252,14 @@ setCores <- function(mulitprocessingSheet) {
   if (mulitprocessingSheet$EnableMultiprocessing) {
     requestedCores <- mulitprocessingSheet$MaximumJobs
     if (requestedCores > availableCores) {
-      updateRunLog(paste0(
-        "Requested number of jobs exceeds available cores. Continuing run with ",
-        availableCores,
-        " jobs."
-      ), type = "warning")
+      updateRunLog(
+        paste0(
+          "Requested number of jobs exceeds available cores. Continuing run with ",
+          availableCores,
+          " jobs."
+        ),
+        type = "warning"
+      )
       nCores <- availableCores - 1
     } else {
       nCores <- requestedCores
@@ -344,8 +380,11 @@ plotVariableImportance <- function(importanceData, transferDir) {
   n_vars <- nrow(df)
 
   # Adjust font size and image height based on number of variables
-  font_size <- if (n_vars <= 10) 20 else if (n_vars <= 20) 18 else if (n_vars <= 40) 16 else 14
-  plot_height <- max(4, min(10, 0.3 * n_vars))  # height scales with variable count, capped at 10 in
+  font_size <- if (n_vars <= 10) 20 else if (n_vars <= 20) 18 else if (
+    n_vars <= 40
+  )
+    16 else 14
+  plot_height <- max(4, min(10, 0.3 * n_vars)) # height scales with variable count, capped at 10 in
 
   p <- ggplot2::ggplot(
     df,
@@ -363,9 +402,13 @@ plotVariableImportance <- function(importanceData, transferDir) {
       title = "Information Value Summary"
     ) +
     ggplot2::theme_classic(base_size = font_size) +
-  ggplot2::theme(
-    plot.title = ggplot2::element_text(hjust = 0.5, margin = ggplot2::margin(t = 10, r = 20, b = 10, l = 10)),
-    plot.title.position = "plot") +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(
+        hjust = 0.5,
+        margin = ggplot2::margin(t = 10, r = 20, b = 10, l = 10)
+      ),
+      plot.title.position = "plot"
+    ) +
     ggplot2::scale_fill_gradientn(
       colours = "#424352",
       guide = "none"
@@ -425,7 +468,11 @@ splitTrainTest <- function(trainingRasterList, groundTruthRasterList, nObs) {
       mutate(kfold = sample(1:10, nrow(.), replace = TRUE))
 
     # Apply preprocessing
-    modelDataSampled <- preprocessTrainingData(modelDataSampled, response = "presence", exclude = "kfold")
+    modelDataSampled <- preprocessTrainingData(
+      modelDataSampled,
+      response = "presence",
+      exclude = "kfold"
+    )
 
     # split into training and testing data
     train <- modelDataSampled %>% filter(kfold != 1)
@@ -932,14 +979,14 @@ calculateStatistics <- function(
 
   # Confusion matrix plot
   confusionMatrixPlot <- plot_confusion_matrix(
-  confusionMatrix,
-  target_col = "Reference",
-  prediction_col = "Prediction",
-  counts_col = "Frequency",
-  font_counts = font(size = 15),
-  font_normalized = font(size = 6),
-  font_row_percentages = font(size = 6),
-  font_col_percentages = font(size = 6)
+    confusionMatrix,
+    target_col = "Reference",
+    prediction_col = "Prediction",
+    counts_col = "Frequency",
+    font_counts = font(size = 15),
+    font_normalized = font(size = 6),
+    font_row_percentages = font(size = 6),
+    font_col_percentages = font(size = 6)
   ) +
     ggplot2::theme(
       axis.title = element_text(size = 25),
@@ -1045,7 +1092,6 @@ contextualizeRaster <- function(rasterList) {
 #'
 #' @import ENMeval
 getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
-
   ## Specifying feature classes and regularization parameters for Maxent
   if (isTuningOn) {
     tuneArgs <- list(
@@ -1133,9 +1179,12 @@ getOptimalThreshold <- function(
       for (i in seq_along(model$cat_vars)) {
         col <- model$cat_vars[i]
         if (col %in% names(testingData)) {
-          f <- factor(testingData[[col]], levels = seq_len(model$cat_levels[[i]]))
+          f <- factor(
+            testingData[[col]],
+            levels = seq_len(model$cat_levels[[i]])
+          )
           x <- as.integer(f)
-          x[is.na(x)] <- model$cat_levels[[i]] + 1  # assign 'unknown' category index
+          x[is.na(x)] <- model$cat_levels[[i]] + 1 # assign 'unknown' category index
           testingData[[col]] <- x
         }
       }
@@ -1145,9 +1194,13 @@ getOptimalThreshold <- function(
     rf_levels <- model$factor_levels
     rf_vars <- names(rf_levels)
     if (is.null(rf_levels) || length(rf_levels) == 0) {
-      warning("Random Forest model does not include categorical level info. Skipping factor alignment.")
+      warning(
+        "Random Forest model does not include categorical level info. Skipping factor alignment."
+      )
     } else {
-      cat_vars <- names(testingData)[sapply(testingData, is.factor) & names(testingData) %in% rf_vars]
+      cat_vars <- names(testingData)[
+        sapply(testingData, is.factor) & names(testingData) %in% rf_vars
+      ]
       for (col in cat_vars) {
         levels_train <- rf_levels[[col]]
         if (!is.null(levels_train)) {
@@ -1156,7 +1209,10 @@ getOptimalThreshold <- function(
           levels(f) <- c(levels_train, "__unknown__")
           testingData[[col]] <- f
         } else {
-          warning(sprintf("Skipping factor alignment for '%s': not found in trained RF model levels", col))
+          warning(sprintf(
+            "Skipping factor alignment for '%s': not found in trained RF model levels",
+            col
+          ))
           testingData[[col]] <- NA
         }
       }
@@ -1174,7 +1230,10 @@ getOptimalThreshold <- function(
           testingData[[col]] <- f
         }
       } else {
-        warning(sprintf("Skipping factor alignment for '%s': not found in trained MaxEnt model data", col))
+        warning(sprintf(
+          "Skipping factor alignment for '%s': not found in trained MaxEnt model data",
+          col
+        ))
         testingData[[col]] <- NA
       }
     }
@@ -1197,7 +1256,9 @@ getOptimalThreshold <- function(
   testingObservations <- testingObservations[valid_idx]
 
   if (length(testingPredictions) == 0) {
-    stop("All testing predictions were dropped due to NA — possibly from unseen factor levels.")
+    stop(
+      "All testing predictions were dropped due to NA — possibly from unseen factor levels."
+    )
   }
 
   # Calculate sensitivity and specificity for each threshold
@@ -1269,22 +1330,23 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
     i = seq_len(nrow(tuneArgsGrid)),
     .combine = rbind,
     .packages = "ranger"
-  ) %dopar% {
-    rf1 <- ranger(
-      mainModel,
-      data = allTrainData,
-      mtry = tuneArgsGrid$mtry[i],
-      num.trees = tuneArgsGrid$nTrees[i],
-      max.depth = tuneArgsGrid$maxDepth[i],
-      probability = TRUE,
-      importance = "impurity"
-    )
+  ) %dopar%
+    {
+      rf1 <- ranger(
+        mainModel,
+        data = allTrainData,
+        mtry = tuneArgsGrid$mtry[i],
+        num.trees = tuneArgsGrid$nTrees[i],
+        max.depth = tuneArgsGrid$maxDepth[i],
+        probability = TRUE,
+        importance = "impurity"
+      )
 
-    oobError <- rf1$prediction.error
-    modelResults <- tuneArgsGrid[i, ]
-    modelResults[, "oobError"] <- oobError
-    modelResults
-  }
+      oobError <- rf1$prediction.error
+      modelResults <- tuneArgsGrid[i, ]
+      modelResults[, "oobError"] <- oobError
+      modelResults
+    }
 
   bestModel <- ranger(
     mainModel,
@@ -1297,9 +1359,12 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
     importance = "impurity"
   )
 
-  factor_levels <- lapply(allTrainData[, trainingVariables, drop = FALSE], function(x) {
-    if (is.factor(x)) levels(x) else NULL
-  })
+  factor_levels <- lapply(
+    allTrainData[, trainingVariables, drop = FALSE],
+    function(x) {
+      if (is.factor(x)) levels(x) else NULL
+    }
+  )
 
   return(list(
     model = bestModel,
@@ -1319,8 +1384,10 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
 
   # Map factor levels to integers
   cat_indices <- lapply(predictors[cat_vars], function(x) as.integer(x))
-  cat_levels <- if (length(cat_vars)) lapply(predictors[cat_vars], function(x) length(levels(x))) else list()
-  embedding_dims <- if (length(cat_levels)) lapply(cat_levels, function(l) min(50, floor(l / 2) + 1)) else list()
+  cat_levels <- if (length(cat_vars))
+    lapply(predictors[cat_vars], function(x) length(levels(x))) else list()
+  embedding_dims <- if (length(cat_levels))
+    lapply(cat_levels, function(l) min(50, floor(l / 2) + 1)) else list()
   cat_indices <- as.data.frame(cat_indices)
   X_num <- as.matrix(predictors[num_vars])
 
@@ -1331,7 +1398,10 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   ds <- dataset(
     initialize = function(X_num, X_cat, y) {
       self$X_num <- torch_tensor(X_num, dtype = torch_float())
-      self$X_cat <- lapply(X_cat, function(x) torch_tensor(x, dtype = torch_long()))
+      self$X_cat <- lapply(
+        X_cat,
+        function(x) torch_tensor(x, dtype = torch_long())
+      )
       self$y <- torch_tensor(y + 1L, dtype = torch_long())
     },
     .getitem = function(i) {
@@ -1342,7 +1412,7 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   )(X_num, cat_indices, y_int)
 
   batch_size <- if (isTuningOn) 64 else 32
-  epochs <- if (isTuningOn) 50 else 20
+  epochs <- if (isTuningOn) 100 else 20
   dl <- dataloader(ds, batch_size = batch_size, shuffle = TRUE)
 
   net <- nn_module(
@@ -1351,8 +1421,13 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
       self$has_cat <- length(cat_levels) > 0
       if (self$has_cat) {
         self$embeddings <- nn_module_list(
-          mapply(function(l, d) nn_embedding(num_embeddings = l + 2, embedding_dim = d),
-                 cat_levels, embedding_dims, SIMPLIFY = FALSE)
+          mapply(
+            function(l, d)
+              nn_embedding(num_embeddings = l + 2, embedding_dim = d),
+            cat_levels,
+            embedding_dims,
+            SIMPLIFY = FALSE
+          )
         )
         embed_dim <- sum(unlist(embedding_dims))
       } else {
@@ -1364,7 +1439,10 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
     },
     forward = function(x_num, x_cat) {
       if (self$has_cat) {
-        embeds <- lapply(seq_along(x_cat), function(i) self$embeddings[[i]](x_cat[[i]]))
+        embeds <- lapply(
+          seq_along(x_cat),
+          function(i) self$embeddings[[i]](x_cat[[i]])
+        )
         x_cat_emb <- torch_cat(embeds, dim = 2)
         x <- torch_cat(list(x_num, x_cat_emb), dim = 2)
       } else {
@@ -1403,7 +1481,7 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
 
   # For numeric vars: use sum of absolute weights from fc1
   if (length(num_vars)) {
-    weights <- net$fc1$weight$data()[ , 1:length(num_vars)]$abs()$sum(dim = 1)
+    weights <- net$fc1$weight$data()[, 1:length(num_vars)]$abs()$sum(dim = 1)
     vimp[num_vars] <- as.numeric(weights)
   }
 
@@ -1416,8 +1494,14 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   }
 
   class(net) <- c("torchCNN", class(net))
-  list(model = net, vimp = vimp, feature_names = names(predictors),
-       cat_vars = cat_vars, num_vars = num_vars, cat_levels = cat_levels)
+  list(
+    model = net,
+    vimp = vimp,
+    feature_names = names(predictors),
+    cat_vars = cat_vars,
+    num_vars = num_vars,
+    cat_levels = cat_levels
+  )
 }
 
 
@@ -1436,7 +1520,9 @@ predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
     if (length(drop)) df <- df[, setdiff(names(df), drop), drop = FALSE]
     valid_idx <- rep(TRUE, nrow(df))
   } else {
-    stop("`newdata` must be a SpatRaster or a data.frame / matrix of predictors")
+    stop(
+      "`newdata` must be a SpatRaster or a data.frame / matrix of predictors"
+    )
   }
 
   # Extract numeric and categorical variables
@@ -1449,15 +1535,18 @@ predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
 
   # Convert categorical variables to integer indices
   X_cat <- lapply(seq_along(cat_vars), function(i) {
-  f <- factor(df[[cat_vars[i]]], levels = seq_len(cat_levels[[i]]))
-  x <- as.integer(f)
-  x[is.na(x)] <- cat_levels[[i]] + 1
-  x
+    f <- factor(df[[cat_vars[i]]], levels = seq_len(cat_levels[[i]]))
+    x <- as.integer(f)
+    x[is.na(x)] <- cat_levels[[i]] + 1
+    x
   })
 
   # Prepare tensors
   X_num_tensor <- torch_tensor(X_num, dtype = torch_float())
-  X_cat_tensor <- lapply(X_cat, function(x) torch_tensor(x, dtype = torch_long()))
+  X_cat_tensor <- lapply(
+    X_cat,
+    function(x) torch_tensor(x, dtype = torch_long())
+  )
 
   # Predict
   dev <- if (cuda_is_available()) torch_device("cuda") else torch_device("cpu")
@@ -1508,9 +1597,7 @@ reclassifyGroundTruth <- function(groundTruthRasterList) {
   return(reclassifiedGroundTruthList)
 }
 
-processCovariates <- function(trainingCovariateDataframe,
-                              modelType) {
-  
+processCovariates <- function(trainingCovariateDataframe, modelType) {
   # filter for NA values
   trainingCovariateDataframe <- trainingCovariateDataframe %>%
     filter(!is.na(trainingCovariateDataframe[, 1]))
@@ -1518,9 +1605,11 @@ processCovariates <- function(trainingCovariateDataframe,
   covariateRasterList <- c()
 
   if (nrow(trainingCovariateDataframe) > 0) {
-
-    if (modelType == "Random Forest" || modelType == "MaxEnt" || modelType == "CNN") {
-
+    if (
+      modelType == "Random Forest" ||
+        modelType == "MaxEnt" ||
+        modelType == "CNN"
+    ) {
       for (row in seq(1, nrow(trainingCovariateDataframe), by = 1)) {
         covariateRaster <- rast(trainingCovariateDataframe[row, 1])
         dataType <- as.character(trainingCovariateDataframe[row, 2])
@@ -1537,18 +1626,16 @@ processCovariates <- function(trainingCovariateDataframe,
 
       mergedCovariateRaster <- rast(covariateRasterList)
     }
-    
+
     return(mergedCovariateRaster)
   }
-
 }
 
 # add covariate rasters to training data
 addCovariates <- function(rasterList, covariateRaster) {
-
   # Merge covariateFiles with each raster in trainingRasterList
   for (i in seq_along(rasterList)) {
-      rasterList[[i]] <- c(rasterList[[i]], covariateRaster)
+    rasterList[[i]] <- c(rasterList[[i]], covariateRaster)
   }
 
   return(rasterList)
@@ -1620,14 +1707,17 @@ checkAndMaskNA <- function(rasterList) {
 
   for (i in seq_along(rasterList)) {
     raster <- rasterList[[i]]
-    
+
     # Check if each layer has the same number of non NA cells
     cellCounts <- sapply(1:nlyr(raster), function(j) {
       sum(!is.na(terra::values(raster[[j]])))
     })
-    
+
     if (length(unique(cellCounts)) != 1) {
-      msg <- sprintf("Input raster %d: Layers have unequal number of cells. Applying NA mask to standardize NA pattern.", i)
+      msg <- sprintf(
+        "Input raster %d: Layers have unequal number of cells. Applying NA mask to standardize NA pattern.",
+        i
+      )
       if (exists("updateRunLog")) {
         updateRunLog(msg, type = "info")
       } else {
@@ -1649,18 +1739,27 @@ checkAndMaskNA <- function(rasterList) {
   return(processedRasterList)
 }
 
-preprocessTrainingData <- function(allTrainData, response = "presence", exclude = c("kfold")) {
+preprocessTrainingData <- function(
+  allTrainData,
+  response = "presence",
+  exclude = c("kfold")
+) {
   predictorVars <- setdiff(names(allTrainData), c(response, exclude))
-  
+
   initialN <- nrow(allTrainData)
-  completeRows <- !is.na(allTrainData[[response]]) & complete.cases(allTrainData[, predictorVars])
+  completeRows <- !is.na(allTrainData[[response]]) &
+    complete.cases(allTrainData[, predictorVars])
   cleanedData <- allTrainData[completeRows, ]
   rowsRemoved <- initialN - nrow(cleanedData)
-  
+
   if (rowsRemoved > 0) {
-    warning(sprintf("Preprocessing: Removed %d rows with NA in '%s' or predictors.", rowsRemoved, response))
+    warning(sprintf(
+      "Preprocessing: Removed %d rows with NA in '%s' or predictors.",
+      rowsRemoved,
+      response
+    ))
   }
-  
+
   return(cleanedData)
 }
 
@@ -1673,27 +1772,41 @@ loadCNNModel <- function(weights_path, metadata_path) {
       self$has_cat <- length(cat_levels) > 0
       if (self$has_cat) {
         self$embeddings <- nn_module_list(
-          mapply(function(l, d) nn_embedding(num_embeddings = l + 2, embedding_dim = d),
-                 cat_levels, embedding_dims, SIMPLIFY = FALSE)
+          mapply(
+            function(l, d)
+              nn_embedding(num_embeddings = l + 2, embedding_dim = d),
+            cat_levels,
+            embedding_dims,
+            SIMPLIFY = FALSE
+          )
         )
         embed_dim <- sum(unlist(embedding_dims))
       } else {
         embed_dim <- 0
         self$embeddings <- NULL
       }
-      self$fc1 <- nn_linear(embed_dim + n_num, 16)
-      self$fc2 <- nn_linear(16, 2)
+      self$fc1 <- nn_linear(embed_dim + n_num, 64)
+      self$drop1 <- nn_dropout(p = 0.3)
+      self$fc2 <- nn_linear(64, 32)
+      self$drop2 <- nn_dropout(p = 0.3)
+      self$fc3 <- nn_linear(32, 2)
     },
     forward = function(x_num, x_cat) {
       if (self$has_cat) {
-        embeds <- lapply(seq_along(x_cat), function(i) self$embeddings[[i]](x_cat[[i]]))
+        embeds <- lapply(
+          seq_along(x_cat),
+          function(i) self$embeddings[[i]](x_cat[[i]])
+        )
         x_cat_emb <- torch_cat(embeds, dim = 2)
         x <- torch_cat(list(x_num, x_cat_emb), dim = 2)
       } else {
         x <- x_num
       }
       x <- nnf_relu(self$fc1(x))
-      self$fc2(x)
+      x <- self$drop1(x)
+      x <- nnf_relu(self$fc2(x))
+      x <- self$drop2(x)
+      x <- self$fc3(x)
     }
   )
 
@@ -1701,7 +1814,10 @@ loadCNNModel <- function(weights_path, metadata_path) {
   metadata <- readRDS(metadata_path)
 
   # Reconstruct model architecture
-  embedding_dims <- lapply(unlist(metadata$cat_levels), function(l) min(50, floor(l / 2) + 1))
+  embedding_dims <- lapply(
+    unlist(metadata$cat_levels),
+    function(l) min(50, floor(l / 2) + 1)
+  )
   net <- CNNWithEmbeddings(
     n_num = length(metadata$num_vars),
     cat_levels = unlist(metadata$cat_levels),
@@ -1714,4 +1830,200 @@ loadCNNModel <- function(weights_path, metadata_path) {
 
   # Return full modelOut object
   c(list(model = net), metadata)
+}
+
+
+### Get the range of raster values in the raster
+getValueRange <- function(rasterList, layerName, nBins = 20, nSample = 5000) {
+  mins <- vapply(
+    rasterList,
+    function(r) terra::global(r[[layerName]], "min", na.rm = TRUE)[1, 1],
+    numeric(1)
+  )
+  maxs <- vapply(
+    rasterList,
+    function(r) terra::global(r[[layerName]], "max", na.rm = TRUE)[1, 1],
+    numeric(1)
+  )
+  rastMin <- min(mins, na.rm = TRUE)
+  rastMax <- max(maxs, na.rm = TRUE)
+
+  brks <- seq(rastMin, rastMax, length.out = nBins + 1)
+
+  ## sample each raster’s layer, flatten into one vector
+  perRaster <- ceiling(nSample / length(rasterList))
+  sampVals <- unlist(
+    lapply(rasterList, function(r) {
+      as.vector(spatSample(r[[layerName]], perRaster, na.rm = TRUE))
+    }),
+    use.names = FALSE
+  )
+
+  ## Calc histogram
+  h <- hist(sampVals, breaks = brks, plot = FALSE)
+
+  ## return a clean data.frame
+  data.frame(
+    layer = layerName,
+    bin_lower = head(h$breaks, -1),
+    bin_upper = tail(h$breaks, -1),
+    count = h$counts,
+    pct = h$counts / sum(h$counts)
+  )
+}
+
+
+getRastLayerHistogram <- function(
+  rasterList,
+  nBins = 20,
+  nSample = 10000
+) {
+  # Basic checks --------------------------------------------------
+  layerNames <- names(rasterList[[1]])
+  if (is.null(layerNames) || length(layerNames) == 0) {
+    stop("rasterList[[1]] must have at least one named layer.")
+  }
+
+  result_df <- foreach(
+    layerName = layerNames,
+    .combine = rbind
+  ) %do%
+    {
+      getValueRange(rasterList, layerName, nBins, nSample)
+    }
+
+  return(result_df)
+}
+
+
+## Predict the response across the range of values based on the histogram
+predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
+  layers <- unique(rastLayerHistogram$layer)
+
+  # Construct a wide-format dataframe of bin_lower values
+  rastHistogramPredict <- rastLayerHistogram %>%
+    select(layer, bin_lower) %>%
+    group_by(layer) %>%
+    mutate(row = row_number()) %>%
+    ungroup() %>%
+    spread(layer, bin_lower) %>%
+    select(-row)
+
+  # Initialize dataframe for predicted results
+  predictedLayers <- map_dfr(layers, function(layerName) {
+    # Clone base grid
+    predictLayerTemp <- rastHistogramPredict
+
+    # Hold other layers constant at their mean
+    fixed_cols <- setdiff(names(predictLayerTemp), layerName)
+    predictLayerTemp[fixed_cols] <- map_dfc(
+      predictLayerTemp[fixed_cols],
+      ~ mean(.x, na.rm = TRUE)
+    )
+
+    ## predict based on different models
+    if (modelType == "CNN") {
+      preds <- predict_cnn_dataframe(model, predictLayerTemp, "prob")
+    } else {
+      preds <- predict(model, predictLayerTemp, type = "response")$predictions
+    }
+    # Combine output
+    tibble(
+      layer = layerName,
+      predictor = predictLayerTemp[[layerName]],
+      response = preds[, 2] # assuming binary classification, column 2 is P(class = 1)
+    )
+  })
+  return(predictedLayers)
+}
+
+
+## plot histogram and responses to raster layers
+
+plotLayerHistogram <- function(histogramData, transferDir) {
+  n_vars <- unique(histogramData$layer) %>% length()
+
+  # Adjust font size and image height based on number of variables
+  font_size <- if (n_vars <= 6) {
+    20
+  } else if (n_vars <= 12) {
+    16
+  } else if (n_vars <= 18) {
+    12
+  } else {
+    10
+  }
+
+  width_per_facet <- 1
+  height_per_facet <- 0.66
+
+  plot_width <- max(10, n_vars * width_per_facet)
+  plot_height <- max(10, n_vars * height_per_facet)
+
+  p <- ggplot2::ggplot(histogramData, aes(x = predictor, y = response)) +
+    ggplot2::geom_col(
+      aes(y = pct * max(response)),
+      fill = "gray80",
+      width = 0.05
+    ) +
+    ggplot2::geom_line(linewidth = 1.2, color = "Grey20") +
+    ggplot2::facet_wrap(~layer, scales = "free") +
+    ggplot2::labs(
+      x = "Layer values",
+      y = "Predicted response",
+      title = "Training layer histogram and response"
+    ) +
+    ggplot2::theme_classic(base_size = font_size) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(
+        hjust = 0.5,
+        margin = ggplot2::margin(t = 10, r = 20, b = 10, l = 10)
+      ),
+      plot.title.position = "plot"
+    )
+
+  outfile <- file.path(transferDir, "LayerHistogramResponse.png")
+  ggplot2::ggsave(
+    filename = outfile,
+    plot = p,
+    height = plot_height,
+    width = plot_width,
+    units = "in",
+    dpi = 300
+  )
+}
+
+
+predict_cnn_dataframe <- function(model, newdata, return = c("class", "prob")) {
+  return <- match.arg(return)
+
+  if (!inherits(model, "nn_module")) {
+    stop("model must be a torch nn_module object")
+  }
+
+  if (!is.data.frame(newdata)) {
+    stop("newdata must be a data.frame")
+  }
+
+  if (any(is.na(newdata))) {
+    stop("newdata contains NA values. These must be handled before prediction.")
+  }
+
+  # Convert to tensor
+  input_tensor <- torch_tensor(as.matrix(newdata), dtype = torch_float())
+
+  # Put model in eval mode and predict
+  model$eval()
+  with_no_grad({
+    output <- model(input_tensor)
+  })
+
+  # Return class or probabilities
+  if (return == "prob") {
+    probs <- output$softmax(dim = 2)
+    return(as_array(probs))
+  } else {
+    classes <- output$argmax(dim = 2)$to(dtype = torch_int())$cpu()
+    return(as_array(classes))
+  }
 }

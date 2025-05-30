@@ -63,12 +63,17 @@ if (applyContextualization == TRUE) {
   trainingRasterList <- contextualizeRaster(trainingRasterList)
 }
 
+# Extract raster values for diagnostics
+rastLayerHistogram <- getRastLayerHistogram(trainingRasterList)
+
 # reclassify ground truth rasters --------------------------------------------
 groundTruthRasterList <- reclassifyGroundTruth(groundTruthRasterList)
 
 # extract covariate rasters and convert to correct data type -----------------
-trainingCovariateRaster <- processCovariates(trainingCovariateDataframe,
-                                             modelType)
+trainingCovariateRaster <- processCovariates(
+  trainingCovariateDataframe,
+  modelType
+)
 
 # add covariate data to training rasters -------------------------------------
 trainingRasterList <- addCovariates(
@@ -80,7 +85,11 @@ trainingRasterList <- addCovariates(
 trainingRasterList <- checkAndMaskNA(trainingRasterList)
 
 # round rasters to integer if selected ----------------------------------
-if (is.numeric(rasterDecimalPlaces) && length(rasterDecimalPlaces) > 0 && !is.na(rasterDecimalPlaces)) {
+if (
+  is.numeric(rasterDecimalPlaces) &&
+    length(rasterDecimalPlaces) > 0 &&
+    !is.na(rasterDecimalPlaces)
+) {
   roundedRasters <- lapply(trainingRasterList, function(r) {
     return(app(r, fun = function(x) round(x, rasterDecimalPlaces)))
   })
@@ -173,11 +182,12 @@ if (modelType == "CNN") {
     Weights = model_weights_path
   )
 } else {
-    modelObjectOutputDataframe <- data.frame(  # TODO: add warning if missing present/absent and threshold == 0
-      Model = modelPath,
-      Threshold = threshold,
-      Weights = ""
-    )
+  modelObjectOutputDataframe <- data.frame(
+    # TODO: add warning if missing present/absent and threshold == 0
+    Model = modelPath,
+    Threshold = threshold,
+    Weights = ""
+  )
 }
 # save model object to output datasheet
 variableImportanceOutput <- plotVariableImportance(
@@ -200,10 +210,10 @@ for (t in seq_along(trainingRasterList)) {
 
   if (modelType == "CNN") {
     predictionRasters <- getPredictionRasters(
-    trainingRasterList[[t]],
-    modelOut,
-    threshold,
-    modelType
+      trainingRasterList[[t]],
+      modelOut,
+      threshold,
+      modelType
     )
   } else if (modelType == "Random Forest" || modelType == "MaxEnt") {
     predictionRasters <- getPredictionRasters(
@@ -251,6 +261,23 @@ for (t in seq_along(trainingRasterList)) {
     transferDir
   )
 }
+
+# Predict response based on range of values
+responseHistogram <- predictResponseHistogram(
+  rastLayerHistogram,
+  model,
+  modelType
+)
+histogramJoin <- responseHistogram %>%
+  left_join(rastLayerHistogram, by = c("layer", "predictor" = "bin_lower"))
+plotLayerHistogram(histogramJoin, transferDir)
+# add to output datasheet
+layerHistogramPlotOutputDataframe <- data.frame(
+  LayerHistogramPlot = file.path(paste0(
+    transferDir,
+    "/LayerHistogramResponse.png"
+  ))
+)
 
 # calculate mean values for model statistics -----------------------------------
 outputDataframes <- calculateStatistics(
@@ -353,6 +380,7 @@ saveDatasheet(
   name = "ecoClassify_ModelStatistics"
 )
 
+
 saveDatasheet(
   myScenario,
   data = varImportanceOutputImage,
@@ -375,6 +403,12 @@ saveDatasheet(
   myScenario,
   data = confusionMatrixPlotOutputDataframe,
   name = "ecoClassify_ConfusionMatrixPlotOutput"
+)
+
+saveDatasheet(
+  myScenario,
+  data = layerHistogramPlotOutputDataframe,
+  name = "ecoClassify_LayerHistogramPlotOutput"
 )
 
 saveDatasheet(
