@@ -2106,6 +2106,16 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
 ## plot histogram and responses to raster layers
 
 plotLayerHistogram <- function(histogramData, transferDir) {
+  # Only keep numeric predictors
+  histogramData <- histogramData %>%
+    dplyr::filter(!is.na(predictor))
+
+  # Skip plotting if there's nothing to show
+  if (nrow(histogramData) == 0) {
+    warning("No numeric data available to plot.")
+    return(NULL)
+  }
+
   n_vars <- unique(histogramData$layer) %>% length()
 
   # Adjust font size and image height based on number of variables
@@ -2124,15 +2134,9 @@ plotLayerHistogram <- function(histogramData, transferDir) {
   plot_width <- max(10, n_vars * width_per_facet)
   plot_height <- max(10, n_vars * height_per_facet)
 
-  # Scale bars by facet-wise max(response)
-  scaled_data <- histogramData %>%
-    group_by(layer) %>%
-    mutate(pct_scaled = pct * max(response, na.rm = TRUE)) %>%
-    ungroup()
-
-  p <- ggplot2::ggplot(scaled_data, aes(x = predictor, y = response)) +
+  p <- ggplot2::ggplot(histogramData, aes(x = predictor, y = response)) +
     ggplot2::geom_col(
-      aes(y = pct_scaled),
+      aes(y = pct * max(response, na.rm = TRUE)),
       fill = "gray80",
       width = 0.05
     ) +
