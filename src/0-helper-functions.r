@@ -519,12 +519,14 @@ splitTrainTest <- function(
       cbind(df, presence = trainPts$presence)
     })
   )
+  train_df <- train_df[!is.na(train_df$presence), ]
   test_df <- do.call(
     rbind,
     lapply(test_list, function(df) {
       cbind(df, presence = testPts$presence)
     })
   )
+  test_df <- test_df[!is.na(test_df$presence), ]
 
   list(train = train_df, test = test_df)
 }
@@ -1214,7 +1216,7 @@ getOptimalThreshold <- function(
   thresholds <- seq(0.01, 0.99, by = 0.01)
 
   # define testing observations (subtract 1 for factor level)
-  testingObservations <- as.numeric(testingData$presence) - 1
+  testingObservations <- as.numeric(testingData$presence)
 
   # handle categorical variables by aligning factor levels
   if (modelType == "CNN") {
@@ -1362,7 +1364,7 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
     tuneArgs <- list(
       mtry = round(sqrt(length(trainingVariables)), 0),
       maxDepth = 0,
-      nTrees = 2000,
+      nTrees = 2000
     )
     tuneArgsGrid <- expand.grid(tuneArgs)
   }
@@ -1421,7 +1423,11 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   torch_set_num_threads(nCores)
 
   # Identify categorical and numeric variables
-  predictors <- subset(allTrainData, select = -c(presence, kfold))
+  predictors <- allTrainData[, grep(
+    "presence|kfold",
+    colnames(allTrainData),
+    invert = T
+  )]
   cat_vars <- names(predictors)[sapply(predictors, is.factor)]
   num_vars <- setdiff(names(predictors), cat_vars)
 

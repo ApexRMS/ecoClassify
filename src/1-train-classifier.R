@@ -24,6 +24,16 @@ trainingCovariateDataframe <- datasheet(
   name = "ecoClassify_InputTrainingCovariates"
 )
 
+classifierOptions <- datasheet(
+  myScenario,
+  name = "ecoClassify_ClassifierOptions"
+)
+
+# Set the random seed if provided
+if (!is.null(classifierOptions$setSeed) && !is.na(classifierOptions$setSeed)) {
+  set.seed(classifierOptions$setSeed)
+}
+
 # Assign variables ----------------------------------------------------------
 inputVariables <- assignVariables(
   myScenario,
@@ -43,6 +53,7 @@ setManualThreshold <- inputVariables[[10]]
 manualThreshold <- inputVariables[[11]]
 normalizeRasters <- inputVariables[[12]]
 rasterDecimalPlaces <- inputVariables[[13]]
+
 
 ## check if multiprocessing is selected
 mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")

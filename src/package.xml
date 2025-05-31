@@ -42,6 +42,7 @@
         <column name="manualThreshold" displayName="Probability Threshold" dataType="Double" isOptional="True"/>
         <column name="applyContextualization" dataType="Boolean" displayName="Apply Contextualization"/>
         <column name="contextualizationWindowSize" dataType="Integer" displayName="Contextualization Window Size" isOptional="True"/>
+         <column name="setSeed" dataType="Integer" displayName="Random Seed" isOptional="True"/>
     </dataSheet>
 
     <dataSheet name="PostProcessingOptions" displayName="Post-processing options" isSingleRow="True">
@@ -252,4 +253,8 @@
         </group>
     </layout>
 
+
+<updateProvider
+    className="SyncroSim.Core.XMLUpdateProvider"
+    classAssembly="SyncroSim.Core" />
 </package>
