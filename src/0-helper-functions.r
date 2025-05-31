@@ -1069,28 +1069,36 @@ getPCAFromRaster <- function(r, pcaSample = 100000) {
 addRasterAdjacencyValues <- function(
   rasterIn,
   adjacencyWindow = contextualizationWindowSize,
-  pcaSample = 100000
+  pcaSample = 100000,
+  nBins = 16
 ) {
-  # 1) 8‐neighbour mean
+  terraOptions(threads = 7)
+  # helper to compute local range
+  rangeFun <- function(vals, na.rm = TRUE) {
+    if (na.rm) vals <- vals[!is.na(vals)]
+    if (length(vals) == 0) return(NA_real_)
+    max(vals) - min(vals)
+  }
+
+  # helper to compute local entropy
+  entropyFun <- function(vals, na.rm = TRUE) {
+    if (na.rm) vals <- vals[!is.na(vals)]
+    if (length(vals) == 0) return(NA_real_)
+    h <- hist(vals, breaks = nBins, plot = FALSE)
+    p <- h$counts / sum(h$counts)
+    p <- p[p > 0]
+    -sum(p * log2(p))
+  }
+
+  # build moving-window weight matrix
   w <- matrix(1, adjacencyWindow, adjacencyWindow)
 
-  adj <- focal(
-    rasterIn,
-    w = w,
-    fun = "mean",
-    na.rm = TRUE,
-    filename = "", # empty means process in blocks
-    overwrite = TRUE
-  )
-  names(adj) <- paste0(names(rasterIn), "_adj")
-
-  # 2) build PCA model on a random sample of pixels
+  # compute PCA on a random sample of pixels
   vals <- values(rasterIn, mat = TRUE)
   keep <- complete.cases(vals)
   samp <- sample(which(keep), min(pcaSample, sum(keep)))
-  pcaMod <- prcomp(vals[samp, ])
+  pcaMod <- prcomp(vals[samp, ], scale. = TRUE)
 
-  # 3) predict PC1 & PC2 back onto the full Raster in blocks
   pcs <- predict(
     rasterIn,
     model = pcaMod,
@@ -1100,10 +1108,56 @@ addRasterAdjacencyValues <- function(
   )
   names(pcs) <- c("PC1", "PC2")
 
-  # 4) combine all layers
-  rasterOut <- c(rasterIn, adj, pcs)
+  # compute local mean
+  adjMean <- focal(
+    rasterIn,
+    w = w,
+    fun = "mean",
+    na.rm = TRUE,
+    filename = "",
+    overwrite = TRUE
+  )
+  names(adjMean) <- paste0(names(rasterIn), "_mean")
+
+  # compute local sd
+  adjSd <- focal(
+    rasterIn,
+    w = w,
+    fun = "sd",
+    na.rm = TRUE,
+    filename = "",
+    overwrite = TRUE
+  )
+  names(adjSd) <- paste0(names(rasterIn), "_sd")
+
+  # compute local range
+  adjRange <- focal(
+    rasterIn,
+    w = w,
+    fun = rangeFun,
+    na.rm = TRUE,
+    filename = "",
+    overwrite = TRUE
+  )
+  names(adjRange) <- paste0(names(rasterIn), "_range")
+
+  # compute local entropy
+  adjEntropy <- focal(
+    rasterIn,
+    w = w,
+    fun = entropyFun,
+    na.rm = TRUE,
+    filename = "",
+    overwrite = TRUE
+  )
+  names(adjEntropy) <- paste0(names(rasterIn), "_entropy")
+
+  # stack everything: original → mean → sd → range → entropy → PCs
+  rasterOut <- c(rasterIn, adjMean, adjSd, adjRange, adjEntropy, pcs)
+
   return(rasterOut)
 }
+
 
 contextualizeRaster <- function(rasterList) {
   contextualizedRasterList <- c()

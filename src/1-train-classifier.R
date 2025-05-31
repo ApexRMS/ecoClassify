@@ -69,6 +69,18 @@ if (normalizeRasters == TRUE) {
   trainingRasterList <- normalizeRaster(trainingRasterList)
 }
 
+# round rasters to integer if selected ----------------------------------
+if (
+  is.numeric(rasterDecimalPlaces) &&
+    length(rasterDecimalPlaces) > 0 &&
+    !is.na(rasterDecimalPlaces)
+) {
+  roundedRasters <- lapply(trainingRasterList, function(r) {
+    return(app(r, fun = function(x) round(x, rasterDecimalPlaces)))
+  })
+  trainingRasterList <- roundedRasters
+}
+
 # apply contextualization to training rasters if selected ---------------------
 if (applyContextualization == TRUE) {
   trainingRasterList <- contextualizeRaster(trainingRasterList)
@@ -95,17 +107,6 @@ trainingRasterList <- addCovariates(
 # check and mask NA values in training rasters -------------------
 trainingRasterList <- checkAndMaskNA(trainingRasterList)
 
-# round rasters to integer if selected ----------------------------------
-if (
-  is.numeric(rasterDecimalPlaces) &&
-    length(rasterDecimalPlaces) > 0 &&
-    !is.na(rasterDecimalPlaces)
-) {
-  roundedRasters <- lapply(trainingRasterList, function(r) {
-    return(app(r, fun = function(x) round(x, rasterDecimalPlaces)))
-  })
-  trainingRasterList <- roundedRasters
-}
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(
