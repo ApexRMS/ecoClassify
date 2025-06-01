@@ -1621,7 +1621,8 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
     feature_names = names(predictors),
     cat_vars = cat_vars,
     num_vars = num_vars,
-    cat_levels = cat_levels
+    cat_levels = cat_levels,
+    embedding_dims = embedding_dims
   )
 }
 
@@ -1906,11 +1907,8 @@ loadCNNModel <- function(weights_path, metadata_path) {
         embed_dim <- 0
         self$embeddings <- NULL
       }
-      self$fc1 <- nn_linear(embed_dim + n_num, 64)
-      self$drop1 <- nn_dropout(p = 0.3)
-      self$fc2 <- nn_linear(64, 32)
-      self$drop2 <- nn_dropout(p = 0.3)
-      self$fc3 <- nn_linear(32, 2)
+      self$fc1 <- nn_linear(embed_dim + n_num, 16)  # <-- Match here
+      self$fc2 <- nn_linear(16, 2)                  # <-- Match here
     },
     forward = function(x_num, x_cat) {
       if (self$has_cat) {
@@ -1924,10 +1922,7 @@ loadCNNModel <- function(weights_path, metadata_path) {
         x <- x_num
       }
       x <- nnf_relu(self$fc1(x))
-      x <- self$drop1(x)
-      x <- nnf_relu(self$fc2(x))
-      x <- self$drop2(x)
-      x <- self$fc3(x)
+      x <- self$fc2(x)
     }
   )
 
@@ -1935,10 +1930,7 @@ loadCNNModel <- function(weights_path, metadata_path) {
   metadata <- readRDS(metadata_path)
 
   # Reconstruct model architecture
-  embedding_dims <- lapply(
-    unlist(metadata$cat_levels),
-    function(l) min(50, floor(l / 2) + 1)
-  )
+  embedding_dims <- metadata$embedding_dims
   net <- CNNWithEmbeddings(
     n_num = length(metadata$num_vars),
     cat_levels = unlist(metadata$cat_levels),
