@@ -5,7 +5,6 @@
 
 ## load packages ---------------------------------------------------
 # suppress additional warnings ----
-
 load_pkg <- function(pkg) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
     install.packages(pkg, repos = 'http://cran.us.r-project.org')
@@ -545,19 +544,30 @@ splitTrainTest <- function(
 #' Used inside getPredictionRasters wrapper function
 #' @noRd
 predictRanger <- function(raster, model) {
-  ## generate blank raster
   predictionRaster <- raster[[1]]
   names(predictionRaster) <- "present"
 
-  ## predict over raster decomposition
   rasterMatrix <- terra::values(raster, mat = TRUE)
   valid_idx <- complete.cases(rasterMatrix)
-  rasterMatrix <- rasterMatrix[valid_idx, ]
-  predictedValues <- data.frame(predict(model, rasterMatrix))[, 2]
+  rasterMatrix <- as.data.frame(rasterMatrix[valid_idx, ])
 
-  # assing values where raster is not NA
+  # Handle factor levels
+  for (var in model$cat_vars) {
+    if (!var %in% names(rasterMatrix)) next
+
+    # Safely coerce with unseen handling
+    f <- factor(as.character(rasterMatrix[[var]]), levels = model$factor_levels[[var]])
+    f <- addNA(f)
+    if (!"unseen" %in% levels(f)) {
+      levels(f) <- c(levels(f), "unseen")
+    }
+    f[is.na(f)] <- "unseen"
+    rasterMatrix[[var]] <- f
+  }
+
+  predictedValues <- data.frame(predict(model$model, data = rasterMatrix))[, 2]
+
   predictionRaster[valid_idx] <- predictedValues
-
   return(predictionRaster)
 }
 
@@ -590,7 +600,7 @@ getPredictionRasters <- function(
   } else if (modelType == "CNN") {
     probabilityRaster <- predictCNN(model, raster)
   } else if (modelType == "MaxEnt") {
-    probabilityRaster <- predict(model, raster, type = "logistic")
+    probabilityRaster <- predict(model$model, raster, type = "logistic")
   } else {
     stop("Model type not recognized")
   }
@@ -1218,17 +1228,34 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
     predictorVars
   ]
 
-  max1 <- ENMevaluate(
-    occ = presenceTrainData,
-    bg.coords = absenceTrainData,
-    tune.args = tuneArgs,
-    progbar = FALSE,
-    partitions = "randomkfold",
-    parallel = TRUE,
-    numCores = nCores,
-    quiet = TRUE,
-    algorithm = 'maxent.jar'
-  )
+  # limit java memory usage
+  nCores <- min(2, parallel::detectCores() - 1)
+
+  max1 <- tryCatch({
+    ENMevaluate(
+      occ = presenceTrainData,
+      bg.coords = absenceTrainData,
+      tune.args = tuneArgs,
+      progbar = FALSE,
+      partitions = "randomkfold",
+      parallel = TRUE,
+      numCores = nCores,
+      quiet = TRUE,
+      algorithm = 'maxent.jar'
+  )}, error = function(e) {
+    warning("Parallel Maxent failed due to memory issue. Retrying in serial mode...")
+    ENMevaluate(
+      occ = presenceTrainData,
+      bg.coords = absenceTrainData,
+      tune.args = tuneArgs,
+      progbar = FALSE,
+      partitions = "randomkfold",
+      parallel = FALSE,
+      numCores = nCores,
+      quiet = TRUE,
+      algorithm = 'maxent.jar'
+    )
+  })
 
   bestMax <- which.max(max1@results$cbi.val.avg)
   varImp <- max1@variable.importance[bestMax] %>% data.frame()
@@ -1329,23 +1356,16 @@ getOptimalThreshold <- function(
       }
     }
   } else if (modelType == "MaxEnt") {
-    maxent_model <- model[[1]]
+    # Optional: warn if factor levels in testing data don't match
     cat_vars <- names(testingData)[sapply(testingData, is.factor)]
     for (col in cat_vars) {
-      if (col %in% names(maxent_model@data@presence)) {
-        levels_train <- levels(maxent_model@data@presence[[col]])
-        if (!is.null(levels_train)) {
-          f <- factor(testingData[[col]], levels = levels_train)
-          f[is.na(f)] <- "__unknown__"
-          levels(f) <- c(levels_train, "__unknown__")
-          testingData[[col]] <- f
-        }
-      } else {
+      # Try aligning factor levels to training data if you have access
+      # For now, we just drop NA-producing levels
+      if (any(is.na(testingData[[col]]))) {
         warning(sprintf(
-          "Skipping factor alignment for '%s': not found in trained MaxEnt model data",
+          "Column '%s' in testing data contains unknown levels. NA values will be introduced in prediction.",
           col
         ))
-        testingData[[col]] <- NA
       }
     }
   }
