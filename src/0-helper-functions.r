@@ -518,14 +518,16 @@ splitTrainTest <- function(
       cbind(df, presence = trainPts$presence)
     })
   )
-  train_df <- train_df[!is.na(train_df$presence), ]
   test_df <- do.call(
     rbind,
     lapply(test_list, function(df) {
       cbind(df, presence = testPts$presence)
     })
   )
-  test_df <- test_df[!is.na(test_df$presence), ]
+  
+  # Drop rows with NA in predictors or presence
+  train_df <- train_df[stats::complete.cases(train_df), ]
+  test_df  <- test_df[stats::complete.cases(test_df), ]
 
   list(train = train_df, test = test_df)
 }
@@ -1645,7 +1647,6 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
     embedding_dims = embedding_dims
   )
 }
-
 
 ## Predict presence using a trained CNN model
 #' @param model A trained CNN model (torchCNN object).
