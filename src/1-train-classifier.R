@@ -24,6 +24,16 @@ trainingCovariateDataframe <- datasheet(
   name = "ecoClassify_InputTrainingCovariates"
 )
 
+classifierOptions <- datasheet(
+  myScenario,
+  name = "ecoClassify_ClassifierOptions"
+)
+
+# Set the random seed if provided
+if (!is.null(classifierOptions$setSeed) && !is.na(classifierOptions$setSeed)) {
+  set.seed(classifierOptions$setSeed)
+}
+
 # Assign variables ----------------------------------------------------------
 inputVariables <- assignVariables(
   myScenario,
@@ -44,6 +54,7 @@ manualThreshold <- inputVariables[[11]]
 normalizeRasters <- inputVariables[[12]]
 rasterDecimalPlaces <- inputVariables[[13]]
 
+
 ## check if multiprocessing is selected
 mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
 nCores <- setCores(mulitprocessingSheet)
@@ -56,6 +67,18 @@ groundTruthRasterList <- extractRasters(trainingRasterDataframe, column = 3)
 # normalize training rasters if selected -------------------------------------
 if (normalizeRasters == TRUE) {
   trainingRasterList <- normalizeRaster(trainingRasterList)
+}
+
+# round rasters to integer if selected ----------------------------------
+if (
+  is.numeric(rasterDecimalPlaces) &&
+    length(rasterDecimalPlaces) > 0 &&
+    !is.na(rasterDecimalPlaces)
+) {
+  roundedRasters <- lapply(trainingRasterList, function(r) {
+    return(app(r, fun = function(x) round(x, rasterDecimalPlaces)))
+  })
+  trainingRasterList <- roundedRasters
 }
 
 # apply contextualization to training rasters if selected ---------------------
@@ -84,17 +107,6 @@ trainingRasterList <- addCovariates(
 # check and mask NA values in training rasters -------------------
 trainingRasterList <- checkAndMaskNA(trainingRasterList)
 
-# round rasters to integer if selected ----------------------------------
-if (
-  is.numeric(rasterDecimalPlaces) &&
-    length(rasterDecimalPlaces) > 0 &&
-    !is.na(rasterDecimalPlaces)
-) {
-  roundedRasters <- lapply(trainingRasterList, function(r) {
-    return(app(r, fun = function(x) round(x, rasterDecimalPlaces)))
-  })
-  trainingRasterList <- roundedRasters
-}
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(
