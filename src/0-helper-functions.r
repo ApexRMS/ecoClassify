@@ -479,8 +479,9 @@ splitTrainTest <- function(
   ptsSf <- st_as_sf(pts) %>% st_join(gridSf, join = st_within)
   ptsSf <- filter(ptsSf, !is.na(block))
   if (nrow(ptsSf) < nObs * 0.5) {
-    warning(
-      "Lost >50% of points to NA blocks; you may want a finer grid or more samples."
+    updateRunLog(
+      "Lost >50% of points to NA blocks; you may want a finer grid or more samples.",
+    type = "warning"
     )
   }
 
@@ -525,9 +526,21 @@ splitTrainTest <- function(
     })
   )
   
+
   # Drop rows with NA in predictors or presence
+  n_train_before <- nrow(train_df)
   train_df <- train_df[stats::complete.cases(train_df), ]
-  test_df  <- test_df[stats::complete.cases(test_df), ]
+  n_train_dropped <- n_train_before - nrow(train_df)
+  if (n_train_dropped > 0) {
+    updateRunLog(sprintf("%d rows dropped from training data due to NA values.", n_train_dropped), type = "warning")
+  }
+
+  n_test_before <- nrow(test_df)
+  test_df <- test_df[stats::complete.cases(test_df), ]
+  n_test_dropped <- n_test_before - nrow(test_df)
+  if (n_test_dropped > 0) {
+    updateRunLog(sprintf("%d rows dropped from testing data due to NA values.", n_test_dropped), type = "warning")
+  }
 
   list(train = train_df, test = test_df)
 }
@@ -1364,10 +1377,11 @@ getOptimalThreshold <- function(
       # Try aligning factor levels to training data if you have access
       # For now, we just drop NA-producing levels
       if (any(is.na(testingData[[col]]))) {
-        warning(sprintf(
+        updateRunLog(sprintf(
           "Column '%s' in testing data contains unknown levels. NA values will be introduced in prediction.",
           col
-        ))
+        ),
+        type = "warning")
       }
     }
   }
@@ -1882,29 +1896,29 @@ checkAndMaskNA <- function(rasterList) {
   return(processedRasterList)
 }
 
-preprocessTrainingData <- function(
-  allTrainData,
-  response = "presence",
-  exclude = c("kfold")
-) {
-  predictorVars <- setdiff(names(allTrainData), c(response, exclude))
+# preprocessTrainingData <- function(
+#   allTrainData,
+#   response = "presence",
+#   exclude = c("kfold")
+# ) {
+#   predictorVars <- setdiff(names(allTrainData), c(response, exclude))
 
-  initialN <- nrow(allTrainData)
-  completeRows <- !is.na(allTrainData[[response]]) &
-    complete.cases(allTrainData[, predictorVars])
-  cleanedData <- allTrainData[completeRows, ]
-  rowsRemoved <- initialN - nrow(cleanedData)
+#   initialN <- nrow(allTrainData)
+#   completeRows <- !is.na(allTrainData[[response]]) &
+#     complete.cases(allTrainData[, predictorVars])
+#   cleanedData <- allTrainData[completeRows, ]
+#   rowsRemoved <- initialN - nrow(cleanedData)
 
-  if (rowsRemoved > 0) {
-    warning(sprintf(
-      "Preprocessing: Removed %d rows with NA in '%s' or predictors.",
-      rowsRemoved,
-      response
-    ))
-  }
+#   if (rowsRemoved > 0) {
+#     warning(sprintf(
+#       "Preprocessing: Removed %d rows with NA in '%s' or predictors.",
+#       rowsRemoved,
+#       response
+#     ))
+#   }
 
-  return(cleanedData)
-}
+#   return(cleanedData)
+# }
 
 # Function to load a CNN model from separate .pt and .rds files
 loadCNNModel <- function(weights_path, metadata_path) {
