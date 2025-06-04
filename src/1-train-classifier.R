@@ -86,9 +86,6 @@ if (applyContextualization == TRUE) {
   trainingRasterList <- contextualizeRaster(trainingRasterList)
 }
 
-# Extract raster values for diagnostics
-rastLayerHistogram <- getRastLayerHistogram(trainingRasterList)
-
 # reclassify ground truth rasters --------------------------------------------
 groundTruthRasterList <- reclassifyGroundTruth(groundTruthRasterList)
 
@@ -107,6 +104,20 @@ trainingRasterList <- addCovariates(
 # check and mask NA values in training rasters -------------------
 trainingRasterList <- checkAndMaskNA(trainingRasterList)
 
+# Extract raster values for diagnostics
+rastLayerHistogram <- getRastLayerHistogram(trainingRasterList)
+
+# round rasters to integer if selected ----------------------------------
+if (
+  is.numeric(rasterDecimalPlaces) &&
+    length(rasterDecimalPlaces) > 0 &&
+    !is.na(rasterDecimalPlaces)
+) {
+  roundedRasters <- lapply(trainingRasterList, function(r) {
+    return(app(r, fun = function(x) round(x, rasterDecimalPlaces)))
+  })
+  trainingRasterList <- roundedRasters
+}
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(
@@ -172,7 +183,6 @@ if (modelType == "MaxEnt") {
 model <- modelOut[[1]]
 variableImportance <- modelOut[[2]]
 
-
 if (modelType == "CNN") {
   # Save Torch weights separately
   model_weights_path <- file.path(transferDir, "model_weights.pt")
@@ -183,8 +193,8 @@ if (modelType == "CNN") {
   metadata_path <- file.path(transferDir, "model_metadata.rds")
   saveRDS(metadata, metadata_path)
 } else {
-  modelPath <- file.path(transferDir, "model.rds")
-  saveRDS(model, modelPath)
+  model_path <- file.path(transferDir, "model.rds")
+  saveRDS(modelOut, model_path)
 }
 # add to output datasheet
 if (modelType == "CNN") {
@@ -196,7 +206,7 @@ if (modelType == "CNN") {
 } else {
   modelObjectOutputDataframe <- data.frame(
     # TODO: add warning if missing present/absent and threshold == 0
-    Model = modelPath,
+    Model = model_path,
     Threshold = threshold,
     Weights = ""
   )
@@ -230,7 +240,7 @@ for (t in seq_along(trainingRasterList)) {
   } else if (modelType == "Random Forest" || modelType == "MaxEnt") {
     predictionRasters <- getPredictionRasters(
       trainingRasterList[[t]],
-      model,
+      modelOut,
       threshold,
       modelType
     )
@@ -277,12 +287,15 @@ for (t in seq_along(trainingRasterList)) {
 # Predict response based on range of values
 responseHistogram <- predictResponseHistogram(
   rastLayerHistogram,
-  model,
+  modelOut,
   modelType
 )
+
 histogramJoin <- responseHistogram %>%
   left_join(rastLayerHistogram, by = c("layer", "predictor" = "bin_lower"))
+
 plotLayerHistogram(histogramJoin, transferDir)
+
 # add to output datasheet
 layerHistogramPlotOutputDataframe <- data.frame(
   LayerHistogramPlot = file.path(paste0(

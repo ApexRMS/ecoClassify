@@ -5,7 +5,6 @@
 
 ## load packages ---------------------------------------------------
 # suppress additional warnings ----
-
 load_pkg <- function(pkg) {
   if (!requireNamespace(pkg, quietly = TRUE)) {
     install.packages(pkg, repos = 'http://cran.us.r-project.org')
@@ -480,8 +479,9 @@ splitTrainTest <- function(
   ptsSf <- st_as_sf(pts) %>% st_join(gridSf, join = st_within)
   ptsSf <- filter(ptsSf, !is.na(block))
   if (nrow(ptsSf) < nObs * 0.5) {
-    warning(
-      "Lost >50% of points to NA blocks; you may want a finer grid or more samples."
+    updateRunLog(
+      "Lost >50% of points to NA blocks; you may want a finer grid or more samples.",
+    type = "warning"
     )
   }
 
@@ -519,14 +519,28 @@ splitTrainTest <- function(
       cbind(df, presence = trainPts$presence)
     })
   )
-  train_df <- train_df[!is.na(train_df$presence), ]
   test_df <- do.call(
     rbind,
     lapply(test_list, function(df) {
       cbind(df, presence = testPts$presence)
     })
   )
-  test_df <- test_df[!is.na(test_df$presence), ]
+  
+
+  # Drop rows with NA in predictors or presence
+  n_train_before <- nrow(train_df)
+  train_df <- train_df[stats::complete.cases(train_df), ]
+  n_train_dropped <- n_train_before - nrow(train_df)
+  if (n_train_dropped > 0) {
+    updateRunLog(sprintf("%d rows dropped from training data due to NA values.", n_train_dropped), type = "warning")
+  }
+
+  n_test_before <- nrow(test_df)
+  test_df <- test_df[stats::complete.cases(test_df), ]
+  n_test_dropped <- n_test_before - nrow(test_df)
+  if (n_test_dropped > 0) {
+    updateRunLog(sprintf("%d rows dropped from testing data due to NA values.", n_test_dropped), type = "warning")
+  }
 
   list(train = train_df, test = test_df)
 }
@@ -545,19 +559,30 @@ splitTrainTest <- function(
 #' Used inside getPredictionRasters wrapper function
 #' @noRd
 predictRanger <- function(raster, model) {
-  ## generate blank raster
   predictionRaster <- raster[[1]]
   names(predictionRaster) <- "present"
 
-  ## predict over raster decomposition
   rasterMatrix <- terra::values(raster, mat = TRUE)
   valid_idx <- complete.cases(rasterMatrix)
-  rasterMatrix <- rasterMatrix[valid_idx, ]
-  predictedValues <- data.frame(predict(model, rasterMatrix))[, 2]
+  rasterMatrix <- as.data.frame(rasterMatrix[valid_idx, ])
 
-  # assing values where raster is not NA
+  # Handle factor levels
+  for (var in model$cat_vars) {
+    if (!var %in% names(rasterMatrix)) next
+
+    # Safely coerce with unseen handling
+    f <- factor(as.character(rasterMatrix[[var]]), levels = model$factor_levels[[var]])
+    f <- addNA(f)
+    if (!"unseen" %in% levels(f)) {
+      levels(f) <- c(levels(f), "unseen")
+    }
+    f[is.na(f)] <- "unseen"
+    rasterMatrix[[var]] <- f
+  }
+
+  predictedValues <- data.frame(predict(model$model, data = rasterMatrix))[, 2]
+
   predictionRaster[valid_idx] <- predictedValues
-
   return(predictionRaster)
 }
 
@@ -590,7 +615,7 @@ getPredictionRasters <- function(
   } else if (modelType == "CNN") {
     probabilityRaster <- predictCNN(model, raster)
   } else if (modelType == "MaxEnt") {
-    probabilityRaster <- predict(model, raster, type = "logistic")
+    probabilityRaster <- predict(model$model, raster, type = "logistic")
   } else {
     stop("Model type not recognized")
   }
@@ -1191,6 +1216,14 @@ contextualizeRaster <- function(rasterList) {
 #'
 #' @import ENMeval
 getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
+  # Identify predictor variables
+  predictorVars <- grep("presence|kfold", colnames(allTrainData), invert = TRUE, value = TRUE)
+
+  # Split into categorical and numeric
+  predictorData <- allTrainData[, predictorVars, drop = FALSE]
+  cat_vars <- names(predictorData)[sapply(predictorData, is.factor)]
+  num_vars <- setdiff(predictorVars, cat_vars)
+
   ## Specifying feature classes and regularization parameters for Maxent
   if (isTuningOn) {
     tuneArgs <- list(
@@ -1203,24 +1236,41 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
 
   absenceTrainData <- allTrainData[
     allTrainData$presence == 0,
-    grep("presence|kfold", colnames(allTrainData), invert = T)
+    predictorVars
   ]
   presenceTrainData <- allTrainData[
     allTrainData$presence == 1,
-    grep("presence|kfold", colnames(allTrainData), invert = T)
+    predictorVars
   ]
 
-  max1 <- ENMevaluate(
-    occ = presenceTrainData,
-    bg.coords = absenceTrainData,
-    tune.args = tuneArgs,
-    progbar = F,
-    partitions = "randomkfold",
-    parallel = T,
-    numCores = nCores,
-    quiet = T, ## silence messages but not errors
-    algorithm = 'maxent.jar'
-  )
+  # limit java memory usage
+  nCores <- min(2, parallel::detectCores() - 1)
+
+  max1 <- tryCatch({
+    ENMevaluate(
+      occ = presenceTrainData,
+      bg.coords = absenceTrainData,
+      tune.args = tuneArgs,
+      progbar = FALSE,
+      partitions = "randomkfold",
+      parallel = TRUE,
+      numCores = nCores,
+      quiet = TRUE,
+      algorithm = 'maxent.jar'
+  )}, error = function(e) {
+    warning("Parallel Maxent failed due to memory issue. Retrying in serial mode...")
+    ENMevaluate(
+      occ = presenceTrainData,
+      bg.coords = absenceTrainData,
+      tune.args = tuneArgs,
+      progbar = FALSE,
+      partitions = "randomkfold",
+      parallel = FALSE,
+      numCores = nCores,
+      quiet = TRUE,
+      algorithm = 'maxent.jar'
+    )
+  })
 
   bestMax <- which.max(max1@results$cbi.val.avg)
   varImp <- max1@variable.importance[bestMax] %>% data.frame()
@@ -1232,9 +1282,13 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
   maxentImportance <- getMaxentImportance(varImp)
 
   model <- max1@models[[bestMax]]
-  # modelOut <- max1@results[bestMax,]
 
-  return(list(model, maxentImportance))
+  return(list(
+    model = model,
+    vimp = maxentImportance,
+    cat_vars = cat_vars,
+    num_vars = num_vars
+  ))
 }
 
 getMaxentImportance <- function(varImp) {
@@ -1317,23 +1371,17 @@ getOptimalThreshold <- function(
       }
     }
   } else if (modelType == "MaxEnt") {
-    maxent_model <- model[[1]]
+    # Optional: warn if factor levels in testing data don't match
     cat_vars <- names(testingData)[sapply(testingData, is.factor)]
     for (col in cat_vars) {
-      if (col %in% names(maxent_model@data@presence)) {
-        levels_train <- levels(maxent_model@data@presence[[col]])
-        if (!is.null(levels_train)) {
-          f <- factor(testingData[[col]], levels = levels_train)
-          f[is.na(f)] <- "__unknown__"
-          levels(f) <- c(levels_train, "__unknown__")
-          testingData[[col]] <- f
-        }
-      } else {
-        warning(sprintf(
-          "Skipping factor alignment for '%s': not found in trained MaxEnt model data",
+      # Try aligning factor levels to training data if you have access
+      # For now, we just drop NA-producing levels
+      if (any(is.na(testingData[[col]]))) {
+        updateRunLog(sprintf(
+          "Column '%s' in testing data contains unknown levels. NA values will be introduced in prediction.",
           col
-        ))
-        testingData[[col]] <- NA
+        ),
+        type = "warning")
       }
     }
   }
@@ -1400,6 +1448,10 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
     invert = TRUE,
     value = TRUE
   )
+
+  # Identify categorical and numeric variables
+  cat_vars <- names(allTrainData[, trainingVariables, drop = FALSE])[sapply(allTrainData[, trainingVariables, drop = FALSE], is.factor)]
+  num_vars <- setdiff(trainingVariables, cat_vars)
 
   mainModel <- formula(sprintf(
     "%s ~ %s",
@@ -1468,7 +1520,9 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   return(list(
     model = bestModel,
     vimp = bestModel$variable.importance,
-    factor_levels = factor_levels
+    factor_levels = factor_levels,
+    cat_vars = cat_vars,
+    num_vars = num_vars
   ))
 }
 
@@ -1603,10 +1657,10 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
     feature_names = names(predictors),
     cat_vars = cat_vars,
     num_vars = num_vars,
-    cat_levels = cat_levels
+    cat_levels = cat_levels,
+    embedding_dims = embedding_dims
   )
 }
-
 
 ## Predict presence using a trained CNN model
 #' @param model A trained CNN model (torchCNN object).
@@ -1842,29 +1896,29 @@ checkAndMaskNA <- function(rasterList) {
   return(processedRasterList)
 }
 
-preprocessTrainingData <- function(
-  allTrainData,
-  response = "presence",
-  exclude = c("kfold")
-) {
-  predictorVars <- setdiff(names(allTrainData), c(response, exclude))
+# preprocessTrainingData <- function(
+#   allTrainData,
+#   response = "presence",
+#   exclude = c("kfold")
+# ) {
+#   predictorVars <- setdiff(names(allTrainData), c(response, exclude))
 
-  initialN <- nrow(allTrainData)
-  completeRows <- !is.na(allTrainData[[response]]) &
-    complete.cases(allTrainData[, predictorVars])
-  cleanedData <- allTrainData[completeRows, ]
-  rowsRemoved <- initialN - nrow(cleanedData)
+#   initialN <- nrow(allTrainData)
+#   completeRows <- !is.na(allTrainData[[response]]) &
+#     complete.cases(allTrainData[, predictorVars])
+#   cleanedData <- allTrainData[completeRows, ]
+#   rowsRemoved <- initialN - nrow(cleanedData)
 
-  if (rowsRemoved > 0) {
-    warning(sprintf(
-      "Preprocessing: Removed %d rows with NA in '%s' or predictors.",
-      rowsRemoved,
-      response
-    ))
-  }
+#   if (rowsRemoved > 0) {
+#     warning(sprintf(
+#       "Preprocessing: Removed %d rows with NA in '%s' or predictors.",
+#       rowsRemoved,
+#       response
+#     ))
+#   }
 
-  return(cleanedData)
-}
+#   return(cleanedData)
+# }
 
 # Function to load a CNN model from separate .pt and .rds files
 loadCNNModel <- function(weights_path, metadata_path) {
@@ -1888,11 +1942,8 @@ loadCNNModel <- function(weights_path, metadata_path) {
         embed_dim <- 0
         self$embeddings <- NULL
       }
-      self$fc1 <- nn_linear(embed_dim + n_num, 64)
-      self$drop1 <- nn_dropout(p = 0.3)
-      self$fc2 <- nn_linear(64, 32)
-      self$drop2 <- nn_dropout(p = 0.3)
-      self$fc3 <- nn_linear(32, 2)
+      self$fc1 <- nn_linear(embed_dim + n_num, 16)  # <-- Match here
+      self$fc2 <- nn_linear(16, 2)                  # <-- Match here
     },
     forward = function(x_num, x_cat) {
       if (self$has_cat) {
@@ -1906,10 +1957,7 @@ loadCNNModel <- function(weights_path, metadata_path) {
         x <- x_num
       }
       x <- nnf_relu(self$fc1(x))
-      x <- self$drop1(x)
-      x <- nnf_relu(self$fc2(x))
-      x <- self$drop2(x)
-      x <- self$fc3(x)
+      x <- self$fc2(x)
     }
   )
 
@@ -1917,10 +1965,7 @@ loadCNNModel <- function(weights_path, metadata_path) {
   metadata <- readRDS(metadata_path)
 
   # Reconstruct model architecture
-  embedding_dims <- lapply(
-    unlist(metadata$cat_levels),
-    function(l) min(50, floor(l / 2) + 1)
-  )
+  embedding_dims <- metadata$embedding_dims
   net <- CNNWithEmbeddings(
     n_num = length(metadata$num_vars),
     cat_levels = unlist(metadata$cat_levels),
@@ -1975,75 +2020,129 @@ getValueRange <- function(rasterList, layerName, nBins = 20, nSample = 5000) {
   )
 }
 
-
 getRastLayerHistogram <- function(
   rasterList,
   nBins = 20,
   nSample = 10000
 ) {
-  # Basic checks --------------------------------------------------
-  layerNames <- names(rasterList[[1]])
+  first_raster <- rasterList[[1]]
+  layerNames <- names(first_raster)
   if (is.null(layerNames) || length(layerNames) == 0) {
     stop("rasterList[[1]] must have at least one named layer.")
   }
 
-  result_df <- foreach(
-    layerName = layerNames,
+  # Determine layer types
+  is_numeric_layer <- sapply(layerNames, function(name) {
+    vals <- terra::values(first_raster[[name]], mat = FALSE)
+    is.numeric(vals) && length(unique(vals)) > 15
+  })
+
+  numeric_layers <- layerNames[is_numeric_layer]
+  categorical_layers <- setdiff(layerNames, numeric_layers)
+
+  # Histogram for numeric layers
+  numeric_df <- foreach(
+    layerName = numeric_layers,
     .combine = rbind
-  ) %do%
-    {
-      getValueRange(rasterList, layerName, nBins, nSample)
-    }
+  ) %do% {
+    getValueRange(rasterList, layerName, nBins, nSample)
+  }
 
-  return(result_df)
+  # Placeholder for categorical layers
+  categorical_df <- tibble::tibble(
+    layer = categorical_layers,
+    bin_lower = NA_real_,
+    bin_upper = NA_real_,
+    count = NA_real_,
+    pct = NA_real_
+  )
+
+  return(bind_rows(numeric_df, categorical_df))
 }
-
 
 ## Predict the response across the range of values based on the histogram
 predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
-  layers <- unique(rastLayerHistogram$layer)
+  # Separate numeric and categorical variables in the model
+  numeric_layers <- intersect(unique(rastLayerHistogram$layer), model$num_vars)
+  categorical_layers <- intersect(model$cat_vars, unique(rastLayerHistogram$layer))
 
-  # Construct a wide-format dataframe of bin_lower values
+  # Prepare prediction grid for numeric layers
   rastHistogramPredict <- rastLayerHistogram %>%
+    filter(layer %in% numeric_layers) %>%
     select(layer, bin_lower) %>%
     group_by(layer) %>%
     mutate(row = row_number()) %>%
     ungroup() %>%
-    spread(layer, bin_lower) %>%
+    tidyr::spread(layer, bin_lower) %>%
     select(-row)
 
-  # Initialize dataframe for predicted results
-  predictedLayers <- map_dfr(layers, function(layerName) {
-    # Clone base grid
+  # Predict for numeric layers
+  numeric_predictions <- purrr::map_dfr(numeric_layers, function(layerName) {
     predictLayerTemp <- rastHistogramPredict
-
-    # Hold other layers constant at their mean
     fixed_cols <- setdiff(names(predictLayerTemp), layerName)
-    predictLayerTemp[fixed_cols] <- map_dfc(
+    predictLayerTemp[fixed_cols] <- purrr::map_dfc(
       predictLayerTemp[fixed_cols],
       ~ mean(.x, na.rm = TRUE)
     )
 
-    ## predict based on different models
-    if (modelType == "CNN") {
-      preds <- predict_cnn_dataframe(model, predictLayerTemp, "prob")
+    preds <- if (modelType == "CNN") {
+      # Add back missing categorical variables with a fixed level
+      missing_cat_vars <- setdiff(model$cat_vars, names(predictLayerTemp))
+      for (v in missing_cat_vars) {
+        num_levels <- model$cat_levels[[v]]
+        # Assign integer index directly, NOT factor
+        predictLayerTemp[[v]] <- rep(1L, nrow(predictLayerTemp))
+      }
+
+      # Ensure column order is correct
+      predictLayerTemp <- predictLayerTemp[, c(model$num_vars, model$cat_vars), drop = FALSE]
+
+      predict_cnn_dataframe(model, predictLayerTemp, "prob")
     } else {
-      preds <- predict(model, predictLayerTemp, type = "response")$predictions
+      # Add back missing categorical variables with a fixed level
+      missing_cat_vars <- setdiff(model$cat_vars, names(predictLayerTemp))
+      for (v in missing_cat_vars) {
+      num_levels <- model$cat_levels[[v]]
+      # Use index 1 for all rows (assuming it corresponds to a valid level)
+      predictLayerTemp[[v]] <- as.integer(1L)
     }
-    # Combine output
-    tibble(
+      predict(model$model, predictLayerTemp, type = "response")$predictions
+    }
+
+    tibble::tibble(
       layer = layerName,
       predictor = predictLayerTemp[[layerName]],
-      response = preds[, 2] # assuming binary classification, column 2 is P(class = 1)
+      response = preds[, 2]
     )
   })
+
+  # Generate empty rows for categorical variables
+  cat_predictions <- purrr::map_dfr(categorical_layers, function(layerName) {
+    tibble::tibble(
+      layer = layerName,
+      predictor = NA,
+      response = NA_real_
+    )
+  })
+
+  # Combine both
+  predictedLayers <- bind_rows(numeric_predictions, cat_predictions)
   return(predictedLayers)
 }
-
 
 ## plot histogram and responses to raster layers
 
 plotLayerHistogram <- function(histogramData, transferDir) {
+  # Only keep numeric predictors
+  histogramData <- histogramData %>%
+    dplyr::filter(!is.na(predictor))
+
+  # Skip plotting if there's nothing to show
+  if (nrow(histogramData) == 0) {
+    warning("No numeric data available to plot.")
+    return(NULL)
+  }
+
   n_vars <- unique(histogramData$layer) %>% length()
 
   # Adjust font size and image height based on number of variables
@@ -2059,13 +2158,12 @@ plotLayerHistogram <- function(histogramData, transferDir) {
 
   width_per_facet <- 1
   height_per_facet <- 0.66
-
   plot_width <- max(10, n_vars * width_per_facet)
   plot_height <- max(10, n_vars * height_per_facet)
 
   p <- ggplot2::ggplot(histogramData, aes(x = predictor, y = response)) +
     ggplot2::geom_col(
-      aes(y = pct * max(response)),
+      aes(y = pct * max(response, na.rm = TRUE)),
       fill = "gray80",
       width = 0.05
     ) +
@@ -2096,32 +2194,44 @@ plotLayerHistogram <- function(histogramData, transferDir) {
   )
 }
 
-
 predict_cnn_dataframe <- function(model, newdata, return = c("class", "prob")) {
   return <- match.arg(return)
 
-  if (!inherits(model, "nn_module")) {
-    stop("model must be a torch nn_module object")
+  if (!inherits(model$model, "nn_module")) {
+    stop("model$model must be a torch nn_module object")
   }
 
   if (!is.data.frame(newdata)) {
     stop("newdata must be a data.frame")
   }
 
-  if (any(is.na(newdata))) {
-    stop("newdata contains NA values. These must be handled before prediction.")
-  }
+  # Extract model metadata
+  num_vars <- model$num_vars
+  cat_vars <- model$cat_vars
+  cat_levels <- model$cat_levels
 
-  # Convert to tensor
-  input_tensor <- torch_tensor(as.matrix(newdata), dtype = torch_float())
+  # Handle numeric input
+  X_num <- as.matrix(newdata[, num_vars, drop = FALSE])
+  if (anyNA(X_num)) stop("NA values in numeric predictors not allowed.")
+  input_num <- torch_tensor(X_num, dtype = torch_float())
 
-  # Put model in eval mode and predict
-  model$eval()
-  with_no_grad({
-    output <- model(input_tensor)
+  # Handle categorical input
+  input_cat <- lapply(cat_vars, function(var) {
+    levels_train <- cat_levels[[var]]
+    x <- newdata[[var]]
+    if (!is.factor(x)) x <- factor(x, levels = levels_train)
+    idx <- as.integer(factor(x, levels = levels_train))
+    idx[is.na(idx)] <- length(levels_train) + 1  # handle unknowns
+    torch_tensor(idx, dtype = torch_long())
   })
 
-  # Return class or probabilities
+  # Predict using model$model
+  net <- model$model
+  net$eval()
+  with_no_grad({
+    output <- net(input_num, input_cat)
+  })
+
   if (return == "prob") {
     probs <- output$softmax(dim = 2)
     return(as_array(probs))
