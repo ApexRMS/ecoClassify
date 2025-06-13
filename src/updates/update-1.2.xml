@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<update comment="Update ecoClassify to version 1.2.0">
+
+  <!-- Add new columns to existing datasheets -->
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_InputTrainingCovariates">
+    <item>ALTER TABLE ecoClassify_InputTrainingCovariates ADD COLUMN trainingCovariateType INTEGER</item>
+  </action>
+
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_InputPredictingCovariates">
+    <item>ALTER TABLE ecoClassify_InputPredictingCovariates ADD COLUMN predictingCovariateType INTEGER</item>
+  </action>
+
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_ClassifierOptions">
+    <item>ALTER TABLE ecoClassify_ClassifierOptions ADD COLUMN rasterDecimalPlaces INTEGER</item>
+    <item>ALTER TABLE ecoClassify_ClassifierOptions ADD COLUMN contextualizationWindowSize INTEGER</item>
+    <item>ALTER TABLE ecoClassify_ClassifierOptions ADD COLUMN setSeed INTEGER</item>
+  </action>
+
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_ModelObject">
+    <item>ALTER TABLE ecoClassify_ModelObject ADD COLUMN Weights TEXT</item>
+  </action>
+
+  <!-- Create new datasheet for layer histogram output -->
+  <action code="Exec" condition="TableNotExists" criteria="ecoClassify_LayerHistogramPlotOutput">
+    <item>CREATE TABLE ecoClassify_LayerHistogramPlotOutput(LayerHistogramPlotOutputId INTEGER PRIMARY KEY, ScenarioId INTEGER, Iteration INTEGER, Timestep INTEGER, LayerHistogramPlot TEXT)</item>
+  </action>
+
+</update>

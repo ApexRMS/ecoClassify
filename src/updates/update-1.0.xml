@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<update comment="Updating to version 1.0.4">
+  
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_ClassifierOptions">
+      <item>ALTER TABLE ecoClassify_ClassifierOptions ADD COLUMN normalizeRasters BOOLEAN</item>
+  </action>
+
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_ClassifierOptions">
+      <item>ALTER TABLE ecoClassify_ClassifierOptions ADD COLUMN setManualThreshold BOOLEAN</item>
+      <item>ALTER TABLE ecoClassify_ClassifierOptions ADD COLUMN manualThreshold DOUBLE</item>
+
+  </action>
+
+  <action code="RenameColumn" tableName="ecoClassify_ModelObject" oldColumnName="OptimalThreshold" newColumnName="Threshold">
+  </action>
+
+</update>
