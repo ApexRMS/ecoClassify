@@ -41,6 +41,23 @@ quiet({
   invisible(lapply(pkgs, load_pkg))
 })
 
+## define functions ------------------------------------------------
+
+#' Install and load the torch package ---
+#'
+#' @description
+#' 'install_and_load_torch' installs the `torch` R package if not present,
+#' loads it, and ensures the backend is initialized. If loading fails,
+#' it retries a configurable number of times and reinstalls the backend if necessary.
+#'
+#' @param max_attempts The number of retry attempts to load the backend (default = 3).
+#' @param wait_seconds Seconds to wait between attempts (default = 5).
+#' @return None. Loads `torch` package and initializes the backend.
+#'
+#' @details
+#' Used during package initialization to ensure deep learning models
+#' using `torch` can be executed reliably.
+#' @noRd
 install_and_load_torch <- function(max_attempts = 3, wait_seconds = 5) {
   if (!requireNamespace("torch", quietly = TRUE)) {
     install.packages("torch", repos = 'http://cran.us.r-project.org')
@@ -89,8 +106,6 @@ install_and_load_torch <- function(max_attempts = 3, wait_seconds = 5) {
 
 install_and_load_torch()
 
-## define functions ------------------------------------------------
-
 #' Assign objects froma a datasheet of input variables ---
 #'
 #' @description
@@ -100,14 +115,18 @@ install_and_load_torch()
 #' @param myScenario syncrosim scenario object
 #' @param trainingRasterDataframe dataframe with input variables
 #' @param column integer specifying the column to extract
-#' @return list of objects (timesteps = numeric, nObs = numeric,
-#' filterresolution = numeric, filterPercent = numeric,
+#' @return list of objects (timestepList = numeric, nObs = numeric,
+#' filterResolution = numeric, filterPercent = numeric,
 #' applyFiltering = boolean, applyContextualization = boolean,
-#' modelType = String ("Random Forest" or "MaxENt"), modelTuning = boolean)
-#' that have been extracted from the syncrosim datasheet
+#' contextualizationWindowSize = numeric,
+#' modelType = String ("Random Forest", "MaxENt", or "CNN"),
+#' modelTuning = boolean, setManualThreshold = boolean,
+#' manualThreshold = numeric, normalizeRasters = boolean,
+#' rasterDecimalPlaces = numeric) that have been extracted from the
+#' syncrosim datasheet.
 #'
 #' @details
-#' This function is specifically designed for the the watchtower package
+#' This function extracts variables from the syncrosim datasheets.
 #' @noRd
 assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   # extract unique timesteps from trainingRasterDataframe --------------------------
@@ -365,7 +384,7 @@ decomposedRaster <- function(predRast, responseRast, nobs) {
 #' to where the plot was written
 #'
 #' @details
-#' transferDir is defined based on the ssim session.
+#' transferDir parameter is defined based on the ssim session.
 #' @noRd
 plotVariableImportance <- function(importanceData, transferDir) {
   if (is.null(names(importanceData))) {
@@ -432,27 +451,43 @@ plotVariableImportance <- function(importanceData, transferDir) {
   ))
 }
 
-#' Split image data for training and testing ---
+#' Split raster data into spatially stratified training and testing sets ---
 #'
 #' @description
-#' 'splitTrainTest' is a wrapper for the decomposeRaster function,
-#' splitting the output into testing and training data.
+#' `splitTrainTest` performs spatially stratified sampling of points from raster data,
+#' assigning them to training and testing sets using a grid-based block design. It ensures
+#' balanced sampling by block and class (presence/absence) and supports multi-temporal raster stacks.
 #'
-#' @param trainingRasterList list of training rasters (spatRasters)
-#' @param groundTruthRasterList list of ground truth rasters (spatRasters)
-#' @param nObs number of observations to sample from the training raster
-#' @return separate dataframes from testing and training data
+#' @param trainingRasterList A list of SpatRaster stacks representing training covariates for each timestep.
+#' @param groundTruthRasterList A list of SpatRasters representing ground truth (presence/absence) for each timestep.
+#' @param nObs Total number of points to sample across the spatial extent (integer).
+#' @param nBlocks The number of spatial blocks to divide the area into (must be a perfect square, default = 25).
+#' @param proportionTraining Proportion of blocks to assign to the training set (between 0 and 1, default = 0.8).
+#'
+#' @return A list containing two dataframes:
+#' \describe{
+#'   \item{train}{Dataframe with training predictors and `presence` column.}
+#'   \item{test}{Dataframe with testing predictors and `presence` column.}
+#' }
 #'
 #' @details
-#' Both input rasters lists must be the same length.
+#' The spatial extent is divided into equal-sized blocks using `sf::st_make_grid`, then sampling
+#' is performed to ensure spatial stratification and class balance. A warning is issued if >50%
+#' of points fall outside valid blocks due to NA masking. The function then extracts predictor values
+#' at sampled points for all timesteps, combines results across stacks, and returns cleaned datasets
+#' with complete cases only.
+#'
+#' This function supports downstream model training and evaluation by promoting spatial independence
+#' between training and test data and reducing spatial autocorrelation bias.
+#'
 #' @noRd
 
 splitTrainTest <- function(
-  trainingRasterList, # list of SpatRaster stacks (one per time step)
-  groundTruthRasterList, # same structure, but single-band (0/1) rasters
-  nObs, # total number of pixels to sample
-  nBlocks = 25, # must be a perfect square
-  proportionTraining = 0.8 # fraction of blocks to use for training
+  trainingRasterList,
+  groundTruthRasterList,
+  nObs,
+  nBlocks = 25,
+  proportionTraining = 0.8
 ) {
   blockDim <- sqrt(nBlocks)
   if (blockDim != floor(blockDim)) {
@@ -525,7 +560,6 @@ splitTrainTest <- function(
       cbind(df, presence = testPts$presence)
     })
   )
-  
 
   # Drop rows with NA in predictors or presence
   n_train_before <- nrow(train_df)
@@ -545,18 +579,31 @@ splitTrainTest <- function(
   list(train = train_df, test = test_df)
 }
 
-#' Predict presence over area ---
+#' Predict presence probability using a Random Forest model ---
 #'
 #' @description
-#' 'predictRanger' uses a random forest model to predict presence
-#' accross the full extent of the training rasters
+#' `predictRanger` applies a trained Random Forest model to a multi-layer raster
+#' and produces a continuous probability raster representing the likelihood of presence.
+#' It handles categorical predictors robustly by aligning factor levels with those seen
+#' during model training.
 #'
-#' @param raster training raster (spatRaster)
-#' @param model random forest model (random forest object)
-#' @return raster of predicted presence (spatRaster)
+#' @param raster A SpatRaster object containing the input predictor layers.
+#' @param model A trained Random Forest model object returned by `getRandomForestModel()`,
+#' including `$model`, `$cat_vars`, and `$factor_levels`.
+#'
+#' @return A SpatRaster with predicted presence probabilities, with the same extent
+#' and resolution as the input raster. NA values are preserved.
 #'
 #' @details
-#' Used inside getPredictionRasters wrapper function
+#' The function first extracts all raster values as a matrix and removes rows with NA values.
+#' Categorical variables are coerced into factors using levels stored in the model object.
+#' Unseen levels are safely handled by introducing a synthetic `"unseen"` level.
+#'
+#' The trained `ranger` model is then used to predict probabilities of presence for
+#' each valid cell. Predicted values are inserted back into the original raster structure.
+#'
+#' This function is typically called within `getPredictionRasters()` to generate prediction maps
+#' for full raster extents.
 #' @noRd
 predictRanger <- function(raster, model) {
   predictionRaster <- raster[[1]]
@@ -586,21 +633,36 @@ predictRanger <- function(raster, model) {
   return(predictionRaster)
 }
 
-#' Predict presence and generate probability values over area ---
+#' Generate binary presence and probability rasters from model predictions ---
 #'
 #' @description
-#' 'getPredictionRasters' is a wrapper function for predictRanger,
-#' generating a raster of predicted presence and a raster
-#' of probabilities
+#' `getPredictionRasters` applies a trained model to a multi-band raster input and returns
+#' both a binary presence/absence raster and a continuous probability raster. It supports
+#' multiple model types including Random Forest, MaxEnt, and CNN.
 #'
-#' @param trainingRaster training raster for predictRanger (spatRaster)
-#' @param model predictive model for generating probability values (random forest, maxent, or CNN object)
-#' @param threshold threshold for converted results into binary outcomes (numeric)
-#' @param modelType type of model used (character)
-#' @return raster of predicted presence and probability values (spatRaster)
+#' @param raster A SpatRaster containing predictor layers to classify.
+#' @param model A trained model object, such as the output from `getRandomForestModel()`,
+#' `getMaxentModel()`, or `getCNNModel()`. The structure must include at least `$model`.
+#' @param threshold A numeric value (0–1) used to convert predicted probabilities into binary
+#' presence/absence classifications.
+#' @param modelType A string specifying the type of model to apply: `"Random Forest"`,
+#' `"MaxEnt"`, or `"CNN"`. Case sensitive.
+#'
+#' @return A list containing two SpatRaster objects:
+#' \describe{
+#'   \item{[[1]]}{Binary presence raster based on thresholded predictions.}
+#'   \item{[[2]]}{Continuous probability raster from the model output.}
+#' }
 #'
 #' @details
-#'
+#' Internally, this function dispatches to the appropriate prediction method based on `modelType`:
+#' \itemize{
+#'   \item Random Forest: calls `predictRanger()` and handles factor alignment.
+#'   \item MaxEnt: calls `predict()` from the `dismo` or `ENMeval` package.
+#'   \item CNN: calls `predictCNN()` to run forward passes through a torch-based model.
+#' }
+#' The output probability raster is reclassified into binary form using the supplied threshold via `reclassifyRaster()`.
+#' This function is commonly used when generating per-timestep prediction maps across a study area.
 #' @noRd
 getPredictionRasters <- function(
   raster,
@@ -625,6 +687,19 @@ getPredictionRasters <- function(
   return(list(predictedPresence, probabilityRaster))
 }
 
+#' Reclassify raster to binary presence/absence ---
+#'
+#' @description
+#' 'reclassifyRaster' converts a continuous raster of probabilities into
+#' a binary presence/absence raster based on a given threshold.
+#'
+#' @param raster Raster to reclassify (spatRaster).
+#' @param threshold Threshold above which presence is assigned (numeric).
+#' @return Binary raster (spatRaster).
+#'
+#' @details
+#' Used to convert probability outputs from classifiers into discrete predictions.
+#' @noRd
 reclassifyRaster <- function(raster, threshold) {
   raster[raster >= threshold] <- 1
   raster[raster < threshold] <- 0
@@ -665,23 +740,37 @@ filterFun <- function(raster, resolution, percent) {
   }
 }
 
-#' Generate raster output dataframe ---
+#' Generate and document prediction raster outputs ---
 #'
 #' @description
-#' 'generateRasterDataframe' saves output raster files and generates output dataframe
-#' for rasterOutput syncrosim datasheet.
+#' `generateRasterDataframe` saves predicted presence and probability rasters to disk
+#' and builds a structured dataframe row referencing these files for SyncroSim output
+#' datasheets. Optionally applies spatial filtering to reduce spurious presence pixels
+#' based on neighborhood context.
 #'
-#' @param applyFiltering determines whether filtering is to be applied (boolean)
-#' @param predictedPresence raster of predicted presence from predictRanger (spatRaster)
-#' @param filterResolution resolution to apply filtering (numeric)
-#' @param filterResolution threshold for filtering (numeric)
-#' @param t iteration (integer)
-#' @param trandferDir directory for saving files (character)
-#' @return filtered raster (spatRaster)
+#' @param applyFiltering Logical; whether to apply spatial filtering to the presence raster.
+#' @param predictedPresence A SpatRaster object representing predicted binary presence values.
+#' @param filterResolution Size of the moving window used in filtering (numeric, e.g., 5 = 5x5).
+#' @param filterPercent Proportion threshold of non-presence cells required to flip presence (numeric).
+#' @param category Category label used in file naming (e.g., "predicting" or "training").
+#' @param timestep Integer representing the current model timestep.
+#' @param transferDir File path to the directory where rasters will be saved.
+#' @param OutputDataframe Existing dataframe to which output file references will be appended.
+#' @param hasGroundTruth Logical; whether ground truth data is available for this timestep.
+#'
+#' @return A dataframe with paths to raster output files, including predicted presence
+#' (filtered and unfiltered), probability raster, and optionally ground truth raster. The
+#' structure of the dataframe differs depending on whether `hasGroundTruth` is `TRUE`.
 #'
 #' @details
-#' Uses filterFun if applyFiltering is TRUE. If filtering is not applied the filtered output
-#' raster cell in the dataframe is left empty
+#' If `applyFiltering` is `TRUE`, a focal filter is applied using `filterFun()` with a square
+#' window (default 5x5) to suppress isolated presence pixels. Filtered rasters are saved with
+#' `filteredPredictedPresence-*.tif` naming. If ground truth is available, the resulting
+#' dataframe includes columns: `Timestep`, `PredictedUnfiltered`, `PredictedFiltered`,
+#' `GroundTruth`, and `Probability`. If not, column names are `ClassifiedUnfiltered`,
+#' `ClassifiedFiltered`, and `ClassifiedProbability` instead.
+#'
+#' Used when preparing outputs for the `ecoClassify_RasterOutput` SyncroSim datasheet.
 #' @noRd
 generateRasterDataframe <- function(
   applyFiltering,
@@ -869,20 +958,30 @@ generateRasterDataframe <- function(
   return(OutputDataframe)
 }
 
-#' Generate RGB output dataframe ---
+#' Append RGB image path to output dataframe ---
 #'
 #' @description
-#' 'getRgbDataframe' generates output dataframe for RgbOutput syncrosim datasheet.
+#' `getRgbDataframe` creates a new row referencing an RGB image file for a given
+#' timestep and appends it to the output dataframe used by the SyncroSim `RgbOutput`
+#' datasheet.
 #'
-#' @param rgbOutputDataframe RGB dataframe to be added to (dataframe)
-#' @param category category for RGB image for file naming ("predicting" or "training" (character)
-#' @param timestep timestep value (integer)
-#' @param trandferDir directory for saving files (character)
-#' @return filtered raster (spatRaster)
+#' @param rgbOutputDataframe A dataframe used to collect output paths for RGB images
+#' across timesteps.
+#' @param category A string specifying the image category (e.g., `"predicting"` or `"training"`).
+#' This is used in the image filename.
+#' @param timestep Integer value indicating the timestep of the image.
+#' @param transferDir Directory path where the image is stored.
+#'
+#' @return A dataframe with a new row containing the `Timestep` and corresponding
+#' `RGBImage` file path.
 #'
 #' @details
-#'
+#' This function assumes that the corresponding RGB image has already been saved
+#' to the specified `transferDir` using a consistent filename format:
+#' `"RGBImage-{category}-t{timestep}.png"`. It is used in workflows that require
+#' visual inspection of RGB representations of predictor data at each timestep.
 #' @noRd
+
 getRgbDataframe <- function(
   rgbOutputDataframe,
   category,
@@ -906,19 +1005,34 @@ getRgbDataframe <- function(
   return(rgbOutputDataframe)
 }
 
-#' Save raster and image files ---
+#' Save raster and RGB image files to disk ---
 #'
 #' @description
-#' 'saveFiles' saves raster and images files to transfer directory so they can be
-#' referenced in the syncrosim datasheets.
+#' `saveFiles` writes out the predicted presence raster, probability raster,
+#' optional ground truth raster, and a PNG RGB image to the specified
+#' transfer directory. This prepares output artifacts for linkage with
+#' SyncroSim datasheets or visual inspection.
 #'
-#' @param predictedPresence predicted presence raster (spatRaster)
-#' @param groundTruth ground truth raster (spatRaster)
-#' @param probabilityRaster probability raster (spatRaster)
-#' @param trainingRasterList list of training rasters for generating RGB image ( list of spatRasters)
-#' @param timestep timestep (integer)
-#' @param trandferDir directory for saving files (character)
+#' @param predictedPresence A SpatRaster representing binary presence/absence predictions.
+#' @param groundTruth Optional SpatRaster containing ground truth presence values
+#' (can be NULL if unavailable).
+#' @param probabilityRaster A SpatRaster containing continuous probability predictions.
+#' @param trainingRasterList A list of SpatRaster stacks used to generate the RGB image.
+#' @param category A character string used to label file outputs (e.g., "training" or "predicting").
+#' @param timestep Integer indicating the current timestep for file naming.
+#' @param transferDir File path to the directory where outputs will be written.
 #'
+#' @return None. This function performs file I/O only.
+#'
+#' @details
+#' The function saves three GeoTIFF rasters:
+#' \itemize{
+#'   \item `PredictedPresence-{category}-t{timestep}.tif`
+#'   \item `Probability-{category}-t{timestep}.tif`
+#'   \item `GroundTruth-t{timestep}.tif` (optional)
+#' }
+#' Additionally, a PNG RGB image is generated using bands 3 (R), 2 (G), and 1 (B)
+#' from the training raster and saved as `RGBImage-{category}-t{timestep}.png`.
 #' @noRd
 saveFiles <- function(
   predictedPresence,
@@ -983,21 +1097,36 @@ saveFiles <- function(
   dev.off()
 }
 
-#' Calculate statistics from random forest model predictions ---
+#' Compute classification metrics and generate confusion matrix plot ---
 #'
 #' @description
-#' 'calculateStatistics' predicts presence based on all test data and
-#' calculates a confusion matrix and other key statistics
+#' `calculateStatistics` evaluates model performance on test data by generating
+#' predicted probabilities, classifying outcomes based on a threshold, and computing
+#' classification metrics and a formatted confusion matrix.
 #'
-#' @param model random forest model (random forest object)
-#' @param testData test data to make prediction with (dataframe)
-#' @param threshold threshold for converted results into binary outcomes (numeric)
-#' @param confusionOutputDataframe empty dataframe for confusion matrix results (dataframe)
-#' @param modelOutputDataframe empty dataframe for model statistics (dataframe)
-#' @return data frames with confusion matrix results and model statistics
+#' @param model A model object, such as the output from `getRandomForestModel()`,
+#' `getMaxentModel()`, or `getCNNModel()`; must contain a `$model` element.
+#' @param testData A dataframe containing test predictors and a `presence` column
+#' with true class labels (0/1).
+#' @param threshold Numeric threshold between 0 and 1 used to convert predicted probabilities
+#' into binary presence/absence classes.
+#' @param confusionOutputDataFrame An existing dataframe to which confusion matrix results
+#' will be appended.
+#' @param modelOutputDataFrame An existing dataframe to which accuracy, precision, recall,
+#' and other metrics will be appended.
+#'
+#' @return A list with three components:
+#' \describe{
+#'   \item{[[1]]}{Updated confusionOutputDataFrame including prediction/reference counts.}
+#'   \item{[[2]]}{Updated modelOutputDataFrame with classification metrics (accuracy, sensitivity, etc.).}
+#'   \item{[[3]]}{A ggplot2 object containing a visual confusion matrix plot.}
+#' }
 #'
 #' @details
-#' Output dataframes are saved to ConfusionMatrix and modelStatistics output datasheets
+#' The function supports Random Forest (ranger), MaxEnt (maxnet), and CNN (torch) models.
+#' Predictions are converted to binary classifications using the provided threshold.
+#' Outputs are suitable for export to SyncroSim `ConfusionMatrix` and `ModelStatistics` datasheets.
+#' A high-resolution `ggplot` visualization of the confusion matrix is returned for reporting.
 #' @noRd
 calculateStatistics <- function(
   model,
@@ -1070,6 +1199,26 @@ calculateStatistics <- function(
   ))
 }
 
+#' Perform PCA on sampled raster pixel values ---
+#'
+#' @description
+#' `getPCAFromRaster` samples pixel values from a multi-layer SpatRaster and performs
+#' Principal Component Analysis (PCA) on the extracted data to reduce dimensionality
+#' and capture dominant variation patterns across layers.
+#'
+#' @param r A SpatRaster with at least two layers (predictor bands).
+#' @param pcaSample The maximum number of pixel samples to use for PCA computation
+#' (default = 100000).
+#'
+#' @return A `prcomp` object containing the PCA model, which includes component loadings,
+#' standard deviations, and transformed values.
+#'
+#' @details
+#' The function uses `terra::spatSample()` to randomly sample up to `pcaSample` valid
+#' (non-NA) pixel rows, and then applies `prcomp()` with standardization. This PCA model
+#' can be applied to the full raster using `terra::predict()` to extract principal components.
+#'
+#' @noRd
 getPCAFromRaster <- function(r, pcaSample = 100000) {
   if (nlyr(r) < 2) {
     stop("Need ≥2 layers for PCA")
@@ -1085,12 +1234,35 @@ getPCAFromRaster <- function(r, pcaSample = 100000) {
   prcomp(sampleDF, scale. = TRUE)
 }
 
-# context functions ------------------------------
-#’ Compute 8‐neighbour mean and first 2 PCA components for a multi‐layer image
-#’
-#’ @param rasterIn A SpatRaster with N predictor layers
-#’ @param pcaSample Number of pixels to sample for building the PCA model
-#’ @return A SpatRaster with N adjacent‐means plus 2 PC layers
+#' Add spatial context and PCA layers to raster stack ---
+#'
+#' @description
+#' `addRasterAdjacencyValues` augments a multi-layer raster by computing local spatial
+#' statistics (mean, standard deviation, range, entropy) over a square moving window,
+#' and by appending the first two PCA components derived from sampled pixel values.
+#'
+#' @param rasterIn A SpatRaster with N predictor layers to contextualize.
+#' @param adjacencyWindow Size of the square focal window (default = `contextualizationWindowSize`).
+#' @param pcaSample Maximum number of pixels to use when computing PCA (default = 100000).
+#' @param nBins Number of bins to use when calculating entropy (default = 16).
+#'
+#' @return A SpatRaster with the following layers concatenated:
+#' \itemize{
+#'   \item Original predictor layers
+#'   \item Local means (per layer)
+#'   \item Local standard deviations
+#*   \item Local ranges
+#'   \item Local entropy values
+#'   \item First two PCA components (`PC1`, `PC2`)
+#' }
+#'
+#' @details
+#' Spatial statistics are computed using `terra::focal()` with a square kernel defined
+#' by `adjacencyWindow`. PCA components are derived using `prcomp()` on a random sample
+#' of complete pixel rows, and applied to the raster using `terra::predict()`.
+#' This function supports contextualization of image data prior to classifier training.
+#'
+#' @noRd
 addRasterAdjacencyValues <- function(
   rasterIn,
   adjacencyWindow = contextualizationWindowSize,
@@ -1183,7 +1355,17 @@ addRasterAdjacencyValues <- function(
   return(rasterOut)
 }
 
-
+#' Contextualize Raster List
+#'
+#' @description
+#' `contextualizeRaster` applies spatial contextualization to a list of raster objects
+#' by computing local statistics and principal components for each raster.
+#'
+#' @param rasterList A list of SpatRaster objects.
+#'
+#' @return A list of contextualized SpatRaster objects.
+#'
+#' @noRd
 contextualizeRaster <- function(rasterList) {
   contextualizedRasterList <- c()
 
@@ -1291,15 +1473,34 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
   ))
 }
 
+#' Extract Maxent Variable Importance
+#'
+#' @description
+#' Extracts and formats variable importance from a Maxent model.
+#'
+#' @param varImp A data.frame with columns 'variable' and 'percent.contribution'.
+#'
+#' @return A named numeric vector of variable importance values.
+#'
+#' @noRd
 getMaxentImportance <- function(varImp) {
   maxentImportance <- as.numeric(varImp$percent.contribution)
   attr(maxentImportance, "names") <- varImp$variable
   return(maxentImportance)
 }
 
-### Random forest training
-
-## find sensitivity and specificity values
+#' Calculate Sensitivity and Specificity
+#'
+#' @description
+#' Calculates sensitivity and specificity based on predicted probabilities and actual labels.
+#'
+#' @param probs Numeric vector of predicted probabilities.
+#' @param actual Numeric vector of actual class labels.
+#' @param threshold Numeric threshold to convert probabilities to binary predictions.
+#'
+#' @return A numeric vector with sensitivity and specificity.
+#'
+#' @noRd
 getSensSpec <- function(probs, actual, threshold) {
   predicted <- ifelse(probs >= threshold, 1, 0)
 
@@ -1314,7 +1515,18 @@ getSensSpec <- function(probs, actual, threshold) {
   return(c(sens, spec))
 }
 
-
+#' Determine Optimal Classification Threshold
+#'
+#' @description
+#' Selects a classification threshold by maximizing the Youden index.
+#'
+#' @param model The trained model object (CNN, RF, or MaxEnt).
+#' @param testingData The data to make predictions on.
+#' @param modelType Model type: "CNN", "Random Forest", or "MaxEnt".
+#'
+#' @return Optimal threshold value as a numeric.
+#'
+#' @noRd
 getOptimalThreshold <- function(
   model,
   testingData,
@@ -1526,7 +1738,19 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   ))
 }
 
-# Updated getCNNModel function to use embeddings for specified categorical variables, with dynamic embedding dimension
+#' Train a Convolutional Neural Network (CNN)
+#'
+#' @description
+#' Trains a CNN on numeric and categorical predictors, using embedding layers for factors.
+#'
+#' @param allTrainData Data frame with predictors and 'presence' column.
+#' @param nCores Number of threads to use.
+#' @param isTuningOn Logical; use more epochs and batch size if TRUE.
+#'
+#' @return A list with model, variable importance, and training metadata.
+#'
+#' @import torch
+#' @noRd
 getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   torch_set_num_threads(nCores)
 
@@ -1662,10 +1886,18 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   )
 }
 
-## Predict presence using a trained CNN model
-#' @param model A trained CNN model (torchCNN object).
-#' @param newdata A SpatRaster object containing the data to predict on.
-#' @param ... Additional arguments (not used).
+#' Predict Using a CNN Model
+#'
+#' @description
+#' Predicts presence probabilities using a trained CNN model on raster or tabular data.
+#'
+#' @param model A torchCNN object.
+#' @param newdata A SpatRaster or dataframe of predictors.
+#' @param isRaster Logical; TRUE for raster input.
+#'
+#' @return A SpatRaster or numeric vector of predicted probabilities.
+#'
+#' @noRd
 predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
   if (isRaster) {
     df_full <- as.data.frame(newdata, xy = FALSE, cells = FALSE, na.rm = FALSE)
@@ -1732,7 +1964,16 @@ predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
   }
 }
 
-# function to reclassify ground truth rasters
+#' Reclassify Ground Truth Rasters
+#'
+#' @description
+#' Converts ground truth raster values to binary 0/1.
+#'
+#' @param groundTruthRasterList List of SpatRasters.
+#'
+#' @return List of reclassified SpatRasters.
+#'
+#' @noRd
 reclassifyGroundTruth <- function(groundTruthRasterList) {
   reclassifiedGroundTruthList <- c()
 
@@ -1754,6 +1995,17 @@ reclassifyGroundTruth <- function(groundTruthRasterList) {
   return(reclassifiedGroundTruthList)
 }
 
+#' Load and Process Covariate Rasters
+#'
+#' @description
+#' Reads raster covariates and converts them to factor or numeric types.
+#'
+#' @param trainingCovariateDataframe Dataframe with paths and data types.
+#' @param modelType Character, used for conditional processing.
+#'
+#' @return A SpatRaster with all covariates merged.
+#'
+#' @noRd
 processCovariates <- function(trainingCovariateDataframe, modelType) {
   # filter for NA values
   trainingCovariateDataframe <- trainingCovariateDataframe %>%
@@ -1788,7 +2040,17 @@ processCovariates <- function(trainingCovariateDataframe, modelType) {
   }
 }
 
-# add covariate rasters to training data
+#' Add Covariates to Raster List
+#'
+#' @description
+#' Adds covariate rasters to each raster in a list.
+#'
+#' @param rasterList List of SpatRasters.
+#' @param covariateRaster SpatRaster of covariates to append.
+#'
+#' @return Updated list of SpatRasters.
+#'
+#' @noRd
 addCovariates <- function(rasterList, covariateRaster) {
   # Merge covariateFiles with each raster in trainingRasterList
   for (i in seq_along(rasterList)) {
@@ -1798,15 +2060,32 @@ addCovariates <- function(rasterList, covariateRaster) {
   return(rasterList)
 }
 
-# normalize raster values between 0 and 1 ------------------------------
-# Normalize bands ---
+#' Normalize Raster Band
+#'
+#' @description
+#' Scales raster values to 0–1 range.
+#'
+#' @param band A SpatRaster layer.
+#'
+#' @return A normalized SpatRaster.
+#'
+#' @noRd
 normalizeBand <- function(band) {
   min_val <- min(values(band), na.rm = TRUE)
   max_val <- max(values(band), na.rm = TRUE)
   (band - min_val) / (max_val - min_val)
 }
 
-# use normalizeBand function to normalize all bands in a raster --------
+#' Normalize All Bands in Raster List
+#'
+#' @description
+#' Applies 0–1 normalization to each band in a list of raster stacks.
+#'
+#' @param rasterList List of SpatRasters.
+#'
+#' @return List of normalized SpatRasters.
+#'
+#' @noRd
 normalizeRaster <- function(rasterList) {
   # make an empty list for normalized rasters
   normalizedRasterList <- c()
@@ -1826,7 +2105,15 @@ normalizeRaster <- function(rasterList) {
   return(normalizedRasterList)
 }
 
-# Save only the model’s state_dict (weights) as plain R arrays
+#' Save CNN Model as RDS
+#'
+#' @description
+#' Converts a CNN model to plain R objects and saves it.
+#'
+#' @param model A trained torch model.
+#' @param path File path to save the RDS.
+#'
+#' @noRd
 saveTorchCNNasRDS <- function(model, path) {
   # 1a) pull out the state dict (a named list of torch_tensors)
   sd <- model$state_dict()
@@ -1836,6 +2123,16 @@ saveTorchCNNasRDS <- function(model, path) {
   saveRDS(sd_r, path)
 }
 
+#' Load CNN Model from RDS
+#'
+#' @description
+#' Loads a CNN model saved using `saveTorchCNNasRDS`.
+#'
+#' @param path File path to the RDS object.
+#'
+#' @return A CNN model restored with weights.
+#'
+#' @noRd
 loadTorchCNNfromRDS <- function(path, n_feat, hidden_chs = 16, device = "cpu") {
   # 2a) read the plain‐R list of arrays
   sd_r <- readRDS(path)
@@ -1858,7 +2155,16 @@ loadTorchCNNfromRDS <- function(path, n_feat, hidden_chs = 16, device = "cpu") {
   return(model)
 }
 
-# preprocess rasters to ensure each layer has the same pattern of NA values
+#' Ensure Consistent NA Masking
+#'
+#' @description
+#' Applies a consistent NA mask across all layers in a raster.
+#'
+#' @param rasterList List of SpatRasters.
+#'
+#' @return List of SpatRasters with uniform NA pattern.
+#'
+#' @noRd
 checkAndMaskNA <- function(rasterList) {
   processedRasterList <- list()
 
@@ -1896,31 +2202,17 @@ checkAndMaskNA <- function(rasterList) {
   return(processedRasterList)
 }
 
-# preprocessTrainingData <- function(
-#   allTrainData,
-#   response = "presence",
-#   exclude = c("kfold")
-# ) {
-#   predictorVars <- setdiff(names(allTrainData), c(response, exclude))
-
-#   initialN <- nrow(allTrainData)
-#   completeRows <- !is.na(allTrainData[[response]]) &
-#     complete.cases(allTrainData[, predictorVars])
-#   cleanedData <- allTrainData[completeRows, ]
-#   rowsRemoved <- initialN - nrow(cleanedData)
-
-#   if (rowsRemoved > 0) {
-#     warning(sprintf(
-#       "Preprocessing: Removed %d rows with NA in '%s' or predictors.",
-#       rowsRemoved,
-#       response
-#     ))
-#   }
-
-#   return(cleanedData)
-# }
-
-# Function to load a CNN model from separate .pt and .rds files
+#' Load a CNN from Saved Files
+#'
+#' @description
+#' Loads a CNN model from weights and metadata files.
+#'
+#' @param weights_path Path to saved .pt file.
+#' @param metadata_path Path to RDS file with metadata.
+#'
+#' @return A list containing the loaded CNN model and metadata.
+#'
+#' @noRd
 loadCNNModel <- function(weights_path, metadata_path) {
   # Define CNNWithEmbeddings inside the function scope
   CNNWithEmbeddings <- nn_module(
@@ -1981,7 +2273,19 @@ loadCNNModel <- function(weights_path, metadata_path) {
 }
 
 
-### Get the range of raster values in the raster
+#' Get Raster Layer Value Range
+#'
+#' @description
+#' Samples raster values to compute a value range histogram.
+#'
+#' @param rasterList List of SpatRasters.
+#' @param layerName Character; name of the layer.
+#' @param nBins Number of bins.
+#' @param nSample Number of values to sample.
+#'
+#' @return A dataframe of histogram bins and percentages.
+#'
+#' @noRd
 getValueRange <- function(rasterList, layerName, nBins = 20, nSample = 5000) {
   mins <- vapply(
     rasterList,
@@ -2020,6 +2324,18 @@ getValueRange <- function(rasterList, layerName, nBins = 20, nSample = 5000) {
   )
 }
 
+#' Get Histograms for Raster Layers
+#'
+#' @description
+#' Computes value distributions for numeric raster layers.
+#'
+#' @param rasterList List of SpatRasters.
+#' @param nBins Number of bins.
+#' @param nSample Number of samples per raster.
+#'
+#' @return A combined dataframe of histograms for all layers.
+#'
+#' @noRd
 getRastLayerHistogram <- function(
   rasterList,
   nBins = 20,
@@ -2060,7 +2376,18 @@ getRastLayerHistogram <- function(
   return(bind_rows(numeric_df, categorical_df))
 }
 
-## Predict the response across the range of values based on the histogram
+#' Predict Response Across Value Ranges
+#'
+#' @description
+#' Predicts the response for values across the observed range of raster layers.
+#'
+#' @param rastLayerHistogram A histogram dataframe from `getRastLayerHistogram()`.
+#' @param model A trained model (CNN, RF, MaxEnt).
+#' @param modelType Character string specifying model type.
+#'
+#' @return A dataframe with predicted response values.
+#'
+#' @noRd
 predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
   # Separate numeric and categorical variables in the model
   numeric_layers <- intersect(unique(rastLayerHistogram$layer), model$num_vars)
@@ -2130,8 +2457,15 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
   return(predictedLayers)
 }
 
-## plot histogram and responses to raster layers
-
+#' Plot Histogram and Predicted Response
+#'
+#' @description
+#' Creates a faceted plot showing histograms and predicted responses.
+#'
+#' @param histogramData Output from `predictResponseHistogram()`.
+#' @param transferDir Directory to save PNG.
+#'
+#' @noRd
 plotLayerHistogram <- function(histogramData, transferDir) {
   # Only keep numeric predictors
   histogramData <- histogramData %>%
@@ -2194,6 +2528,18 @@ plotLayerHistogram <- function(histogramData, transferDir) {
   )
 }
 
+#' Predict CNN from Dataframe
+#'
+#' @description
+#' Generates predictions for CNN models using tabular input.
+#'
+#' @param model Trained CNN model.
+#' @param newdata A dataframe of input features.
+#' @param return Either "class" or "prob".
+#'
+#' @return A numeric vector of predicted classes or probabilities.
+#'
+#' @noRd
 predict_cnn_dataframe <- function(model, newdata, return = c("class", "prob")) {
   return <- match.arg(return)
 
