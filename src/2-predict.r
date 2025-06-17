@@ -5,7 +5,14 @@
 
 # set up workspace ---------------------------------------------------------
 packageDir <- (Sys.getenv("ssim_package_directory"))
-source(file.path(packageDir, "0-helper-functions.r"))
+
+sourceScripts <- list.files(
+  path = file.path(packageDir, "/functions"),
+  pattern = "\\.[rR]$",
+  full.names = TRUE
+)
+
+invisible(lapply(sourceScripts, source))
 
 # Set up -------------------------------------------------------------------
 myScenario <- scenario() # Get the SyncroSim Scenario that is currently running
