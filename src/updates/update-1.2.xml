@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<update comment="Update ecoClassify to version 1.2.0">
+<update comment="Update ecoClassify to version 1.2">
 
   <!-- Add new columns to existing datasheets -->
   <action code="Exec" condition="TableExists" criteria="ecoClassify_InputTrainingCovariates">

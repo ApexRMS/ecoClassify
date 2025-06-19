@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<update comment="Updating to version 1.0.4">
+<update comment="Updating to version 1.0">
 
   <action code="Exec" condition="TableExists" criteria="ecoClassify_ClassifierOptions">
       <item>ALTER TABLE ecoClassify_ClassifierOptions ADD COLUMN normalizeRasters BOOLEAN</item>
