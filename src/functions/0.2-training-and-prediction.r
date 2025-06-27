@@ -39,6 +39,7 @@ splitTrainTest <- function(
     nObs,
     nBlocks = 25,
     proportionTraining = 0.8) {
+  
   blockDim <- sqrt(nBlocks)
   if (blockDim != floor(blockDim)) {
     stop("`nBlocks` must be a perfect square, e.g.  100, 144, 256.")
@@ -46,50 +47,59 @@ splitTrainTest <- function(
   if (proportionTraining <= 0 || proportionTraining >= 1) {
     stop("`proportionTraining` must be between 0 and 1 (exclusive).")
   }
-  nTrainBlocks <- floor(nBlocks * proportionTraining)
-  if (nTrainBlocks < 1) {
-    stop(
-      "With that `proportionTraining`, you end up with zero training blocks."
-    )
+
+  # Get a reference raster (single layer from the first stack)
+  r0 <- trainingRasterList[[1]][[1]]
+
+  # Mask of valid (non-NA) cells
+  valid_mask <- !is.na(r0)
+  valid_cells <- which(values(valid_mask) == 1)
+
+  if (length(valid_cells) < nObs) {
+    stop("Not enough valid cells to sample the requested number of points.")
   }
 
-  ## Build spatial grid over first raster
-  r0 <- trainingRasterList[[1]][[1]] # pick one layer just to get extent/CRS
-  bbox_sf <- st_as_sfc(st_bbox(r0))
-  grid <- st_make_grid(bbox_sf, n = c(blockDim, blockDim), square = TRUE)
-  gridSf <- st_sf(block = seq_along(grid), geometry = grid)
+  # Get raster dimensions
+  dims <- dim(valid_mask)
+  nrow_r <- dims[1]
+  ncol_r <- dims[2]
 
-  # Sample points & assign to blocks
-  pts <- terra::spatSample(r0, size = nObs, as.points = TRUE, na.rm = TRUE)
-  ptsSf <- st_as_sf(pts) %>% st_join(gridSf, join = st_intersects)
-  ptsSf <- filter(ptsSf, !is.na(block))
+  # Create row and column indices for each cell
+  row_indices <- rep(1:nrow_r, times = ncol_r)
+  col_indices <- rep(1:ncol_r, each = nrow_r)
+
+  # Assign each cell to a grid block using equal-area binning
+  row_bins <- cut(row_indices, breaks = blockDim, labels = FALSE)
+  col_bins <- cut(col_indices, breaks = blockDim, labels = FALSE)
+  block_ids <- (row_bins - 1) * blockDim + col_bins
+
+  # Build block ID raster
+  block_raster <- rast(r0)
+  values(block_raster) <- NA
+  values(block_raster)[valid_cells] <- block_ids[valid_cells]
+
+  # Sample nObs points randomly from valid cells
+  sampled_pts <- spatSample(r0, size = nObs, as.points = TRUE, na.rm = TRUE)
+  sampled_sf <- st_as_sf(sampled_pts)
+
+  # Extract block ID and presence values
+  block_vals <- terra::extract(block_raster, vect(sampled_sf), df = TRUE)[, 2]
+  presence_vals <- terra::extract(groundTruthRasterList[[1]], vect(sampled_sf), df = TRUE)[, 2]
+
+  # Combine into sf object
+  ptsSf <- sampled_sf
+  ptsSf$block <- block_vals
+  ptsSf$presence <- presence_vals
+  ptsSf <- filter(ptsSf, !is.na(block) & !is.na(presence))
+
   if (nrow(ptsSf) < nObs * 0.5) {
     updateRunLog(
-      "Lost >50% of points to NA blocks; you may want a finer grid or more samples.",
+      "Lost >50% of points due to invalid (NA) values. Consider more samples or fewer blocks.",
       type = "warning"
     )
   }
 
-  # Extract true presence/absence
-  resp_df <- terra::extract(groundTruthRasterList[[1]], vect(ptsSf), df = TRUE)
-  ptsSf$presence <- resp_df[[2]] # assume second column is your 0/1 band
-
-  # # Stratified sampling by block & class
-  # # roughly equal points per block, half presence/half absence
-  # samplesPerBlock <- ceiling(nObs / nBlocks)
-  # samplesPerClass <- ceiling(samplesPerBlock / 2)
-
-  # balancedPts <- ptsSf %>%
-  #   group_by(block, presence) %>%
-  #   slice_sample(n = samplesPerClass, replace = TRUE) %>%
-  #   ungroup()
-
-  # # Split blocks into train vs test
-  # trainBlocks <- sample(unique(balancedPts$block), nTrainBlocks)
-  # trainPts <- filter(balancedPts, block %in% trainBlocks)
-  # testPts <- filter(balancedPts, !block %in% trainBlocks)
-
-  # split into train vs test
+  # Stratified sampling by presence
   trainPts <- ptsSf %>%
     group_by(presence) %>%
     slice_sample(prop = proportionTraining) %>%
@@ -97,44 +107,31 @@ splitTrainTest <- function(
 
   testPts <- anti_join(ptsSf, st_drop_geometry(trainPts), by = colnames(trainPts)[!colnames(trainPts) %in% c("geometry")])
 
-  # Extract predictors for each time step
+  # Extract predictors at each time step
   extract_at_pts <- function(rStack, pts) {
-    terra::extract(rStack, vect(pts), df = TRUE)[, -1] # drop ID col
+    terra::extract(rStack, vect(pts), df = TRUE)[, -1]
   }
 
   train_list <- lapply(trainingRasterList, extract_at_pts, pts = trainPts)
   test_list <- lapply(trainingRasterList, extract_at_pts, pts = testPts)
 
-  # Combine & return
-  train_df <- do.call(
-    rbind,
-    lapply(train_list, function(df) {
-      cbind(df, presence = trainPts$presence)
-    })
-  )
-  test_df <- do.call(
-    rbind,
-    lapply(test_list, function(df) {
-      cbind(df, presence = testPts$presence)
-    })
-  )
+  train_df <- do.call(rbind, lapply(train_list, function(df) cbind(df, presence = trainPts$presence)))
+  test_df <- do.call(rbind, lapply(test_list, function(df) cbind(df, presence = testPts$presence)))
 
-  # Drop rows with NA in predictors or presence
+  # Drop NA rows
   n_train_before <- nrow(train_df)
-  train_df <- train_df[stats::complete.cases(train_df), ]
-  n_train_dropped <- n_train_before - nrow(train_df)
-  if (n_train_dropped > 0) {
-    updateRunLog(sprintf("%d rows dropped from training data due to NA values.", n_train_dropped), type = "warning")
+  train_df <- train_df[complete.cases(train_df), ]
+  if ((n_train_before - nrow(train_df)) > 0) {
+    updateRunLog(sprintf("%d rows dropped from training data due to NA values.", n_train_before - nrow(train_df)), type = "warning")
   }
 
   n_test_before <- nrow(test_df)
-  test_df <- test_df[stats::complete.cases(test_df), ]
-  n_test_dropped <- n_test_before - nrow(test_df)
-  if (n_test_dropped > 0) {
-    updateRunLog(sprintf("%d rows dropped from testing data due to NA values.", n_test_dropped), type = "warning")
+  test_df <- test_df[complete.cases(test_df), ]
+  if ((n_test_before - nrow(test_df)) > 0) {
+    updateRunLog(sprintf("%d rows dropped from testing data due to NA values.", n_test_before - nrow(test_df)), type = "warning")
   }
 
-  list(train = train_df, test = test_df)
+  return(list(train = train_df, test = test_df))
 }
 
 #' Calculate Sensitivity and Specificity ----
