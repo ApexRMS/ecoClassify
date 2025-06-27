@@ -82,23 +82,54 @@ install_and_load_torch()
 getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   torch_set_num_threads(nCores)
 
+  # Check for minimum data size and class balance
+  if (nrow(allTrainData) < 2) {
+    stop("Insufficient training data (< 2 rows). Check presence balance or NA filtering.")
+  }
+  if (length(unique(allTrainData$presence)) < 2) {
+    stop("Training data must include at least one presence (1) and one absence (0).")
+  }
+
   # Identify categorical and numeric variables
-  predictors <- allTrainData[, grep(
-    "presence|kfold",
-    colnames(allTrainData),
-    invert = T
-  )]
+  predictors <- allTrainData[, grep("presence|kfold", colnames(allTrainData), invert = TRUE)]
   cat_vars <- names(predictors)[sapply(predictors, is.factor)]
   num_vars <- setdiff(names(predictors), cat_vars)
 
-  # Map factor levels to integers
-  cat_indices <- lapply(predictors[cat_vars], function(x) as.integer(x))
-  cat_levels <- if (length(cat_vars))
-    lapply(predictors[cat_vars], function(x) length(levels(x))) else list()
-  embedding_dims <- if (length(cat_levels))
-    lapply(cat_levels, function(l) min(50, floor(l / 2) + 1)) else list()
-  cat_indices <- as.data.frame(cat_indices)
+  # Validate numeric predictors
   X_num <- as.matrix(predictors[num_vars])
+  storage.mode(X_num) <- "double"
+  if (anyNA(X_num)) stop("NA values detected in numeric predictors. Ensure complete cases before training.")
+  if (nrow(X_num) < 2) stop("Numeric input matrix has fewer than 2 samples after filtering.")
+
+  # Optional warning for zero-variance predictors
+  zero_var <- apply(X_num, 2, function(x) var(x, na.rm = TRUE) == 0)
+  if (any(zero_var)) {
+    warn_vars <- names(zero_var)[zero_var]
+    warning(sprintf("The following numeric predictors have zero variance: %s", paste(warn_vars, collapse = ", ")))
+  }
+
+  # Validate and encode categorical variables
+  for (v in cat_vars) {
+    if (!is.factor(predictors[[v]])) {
+      stop(sprintf("Categorical variable '%s' is not a factor in training data.", v))
+    }
+  }
+  cat_indices <- if (length(cat_vars)) {
+    lapply(predictors[cat_vars], function(x) as.integer(x))
+  } else {
+    list()
+  }
+  cat_levels <- if (length(cat_vars)) {
+    lapply(predictors[cat_vars], function(x) length(levels(x)))
+  } else {
+    list()
+  }
+  embedding_dims <- if (length(cat_levels)) {
+    lapply(cat_levels, function(l) min(50, floor(l / 2) + 1))
+  } else {
+    list()
+  }
+  cat_indices <- as.data.frame(cat_indices)
 
   y_raw <- allTrainData$presence
   y_int <- if (is.factor(y_raw)) as.integer(y_raw) - 1L else as.integer(y_raw)
@@ -107,14 +138,15 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   ds <- dataset(
     initialize = function(X_num, X_cat, y) {
       self$X_num <- torch_tensor(X_num, dtype = torch_float())
-      self$X_cat <- lapply(
-        X_cat,
-        function(x) torch_tensor(x, dtype = torch_long())
-      )
+      self$X_cat <- if (length(X_cat)) {
+        lapply(X_cat, function(x) torch_tensor(x, dtype = torch_long()))
+      } else {
+        list()
+      }
       self$y <- torch_tensor(y + 1L, dtype = torch_long())
     },
     .getitem = function(i) {
-      cat_feats <- lapply(self$X_cat, function(x) x[i])
+      cat_feats <- if (length(self$X_cat)) lapply(self$X_cat, function(x) x[i]) else list()
       list(x_num = self$X_num[i, ], x_cat = cat_feats, y = self$y[i])
     },
     .length = function() self$X_num$size()[1]
@@ -131,8 +163,7 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
       if (self$has_cat) {
         self$embeddings <- nn_module_list(
           mapply(
-            function(l, d)
-              nn_embedding(num_embeddings = l + 2, embedding_dim = d),
+            function(l, d) nn_embedding(num_embeddings = l + 2, embedding_dim = d),
             cat_levels,
             embedding_dims,
             SIMPLIFY = FALSE
@@ -147,11 +178,8 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
       self$fc2 <- nn_linear(16, 2)
     },
     forward = function(x_num, x_cat) {
-      if (self$has_cat) {
-        embeds <- lapply(
-          seq_along(x_cat),
-          function(i) self$embeddings[[i]](x_cat[[i]])
-        )
+      if (self$has_cat && length(x_cat)) {
+        embeds <- lapply(seq_along(x_cat), function(i) self$embeddings[[i]](x_cat[[i]]))
         x_cat_emb <- torch_cat(embeds, dim = 2)
         x <- torch_cat(list(x_num, x_cat_emb), dim = 2)
       } else {
@@ -237,33 +265,42 @@ predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
     if (length(drop)) df <- df[, setdiff(names(df), drop), drop = FALSE]
     valid_idx <- rep(TRUE, nrow(df))
   } else {
-    stop(
-      "`newdata` must be a SpatRaster or a data.frame / matrix of predictors"
-    )
+    stop("`newdata` must be a SpatRaster or a data.frame / matrix of predictors")
   }
 
-  # Extract numeric and categorical variables
+  # Extract metadata
   num_vars <- model$num_vars
   cat_vars <- model$cat_vars
   cat_levels <- model$cat_levels
 
+  # Prepare numeric matrix
   X_num <- as.matrix(df[, num_vars, drop = FALSE])
   storage.mode(X_num) <- "double"
 
-  # Convert categorical variables to integer indices
+  # Convert categorical variables to integer indices with unseen level warning
   X_cat <- lapply(seq_along(cat_vars), function(i) {
-    f <- factor(df[[cat_vars[i]]], levels = seq_len(cat_levels[[i]]))
-    x <- as.integer(f)
-    x[is.na(x)] <- cat_levels[[i]] + 1
-    x
+    var <- cat_vars[i]
+    levels_train <- cat_levels[[i]]
+    x <- df[[var]]
+    if (!is.factor(x)) x <- factor(x, levels = levels_train)
+    else x <- factor(x, levels = levels_train)
+
+    unseen <- sum(is.na(x))
+    if (unseen > 0) {
+      updateRunLog(sprintf(
+        "Variable '%s' contains %d unseen level(s) not present during training. They will be handled as a special 'unknown' category.",
+        var, unseen
+      ), type = "warning")
+    }
+
+    idx <- as.integer(x)
+    idx[is.na(idx)] <- length(levels_train) + 1
+    idx
   })
 
   # Prepare tensors
   X_num_tensor <- torch_tensor(X_num, dtype = torch_float())
-  X_cat_tensor <- lapply(
-    X_cat,
-    function(x) torch_tensor(x, dtype = torch_long())
-  )
+  X_cat_tensor <- lapply(X_cat, function(x) torch_tensor(x, dtype = torch_long()))
 
   # Predict
   dev <- if (cuda_is_available()) torch_device("cuda") else torch_device("cpu")
@@ -442,20 +479,36 @@ predict_cnn_dataframe <- function(model, newdata, return = c("class", "prob")) {
 
   # Handle numeric input
   X_num <- as.matrix(newdata[, num_vars, drop = FALSE])
-  if (anyNA(X_num)) stop("NA values in numeric predictors not allowed.")
+  if (anyNA(X_num)) {
+    na_summary <- colSums(is.na(X_num))
+    warning("NA values found in numeric predictors:\n", paste(names(na_summary[na_summary > 0]), collapse = ", "))
+    stop("NA values in numeric predictors not allowed.")
+  }
   input_num <- torch_tensor(X_num, dtype = torch_float())
 
   # Handle categorical input
   input_cat <- lapply(cat_vars, function(var) {
     levels_train <- cat_levels[[var]]
+    if (is.null(levels_train)) stop(sprintf("Missing levels for variable: %s", var))
+
     x <- newdata[[var]]
     if (!is.factor(x)) x <- factor(x, levels = levels_train)
-    idx <- as.integer(factor(x, levels = levels_train))
-    idx[is.na(idx)] <- length(levels_train) + 1  # handle unknowns
+    else x <- factor(x, levels = levels_train)
+
+    unseen <- sum(is.na(x))
+    if (unseen > 0) {
+      updateRunLog(sprintf(
+        "Variable '%s' contains %d unseen level(s) not present during training. They will be handled as a special 'unknown' category.",
+        var, unseen
+      ), type = "warning")
+    }
+
+    idx <- as.integer(x)
+    idx[is.na(idx)] <- length(levels_train) + 1  # assign to unknown slot
     torch_tensor(idx, dtype = torch_long())
   })
 
-  # Predict using model$model
+  # Predict using model
   net <- model$model
   net$eval()
   with_no_grad({
