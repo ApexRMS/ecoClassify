@@ -111,9 +111,6 @@ trainingRasterList <- addCovariates(
 # check and mask NA values in training rasters -------------------
 trainingRasterList <- checkAndMaskNA(trainingRasterList)
 
-# Extract raster values for diagnostics
-rastLayerHistogram <- getRastLayerHistogram(trainingRasterList)
-
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(
   Timestep = numeric(0),
@@ -177,6 +174,9 @@ if (modelType == "MaxEnt") {
 }
 model <- modelOut[[1]]
 variableImportance <- modelOut[[2]]
+
+# Extract raster values for diagnostics
+rastLayerHistogram <- getRastLayerHistogram(trainingRasterList, modelOut, nBins = 20, nSample = 10000)
 
 if (modelType == "CNN") {
   # Save Torch weights separately
