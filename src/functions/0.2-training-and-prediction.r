@@ -60,8 +60,8 @@ splitTrainTest <- function(
   gridSf <- st_sf(block = seq_along(grid), geometry = grid)
 
   # Sample points & assign to blocks
-  pts <- terra::spatSample(r0, size = nObs, as.points = TRUE)
-  ptsSf <- st_as_sf(pts) %>% st_join(gridSf, join = st_within)
+  pts <- terra::spatSample(r0, size = nObs, as.points = TRUE, na.rm = TRUE)
+  ptsSf <- st_as_sf(pts) %>% st_join(gridSf, join = st_intersects)
   ptsSf <- filter(ptsSf, !is.na(block))
   if (nrow(ptsSf) < nObs * 0.5) {
     updateRunLog(
@@ -74,20 +74,28 @@ splitTrainTest <- function(
   resp_df <- terra::extract(groundTruthRasterList[[1]], vect(ptsSf), df = TRUE)
   ptsSf$presence <- resp_df[[2]] # assume second column is your 0/1 band
 
-  # Stratified sampling by block & class
-  # roughly equal points per block, half presence/half absence
-  samplesPerBlock <- ceiling(nObs / nBlocks)
-  samplesPerClass <- ceiling(samplesPerBlock / 2)
+  # # Stratified sampling by block & class
+  # # roughly equal points per block, half presence/half absence
+  # samplesPerBlock <- ceiling(nObs / nBlocks)
+  # samplesPerClass <- ceiling(samplesPerBlock / 2)
 
-  balancedPts <- ptsSf %>%
-    group_by(block, presence) %>%
-    slice_sample(n = samplesPerClass, replace = TRUE) %>%
+  # balancedPts <- ptsSf %>%
+  #   group_by(block, presence) %>%
+  #   slice_sample(n = samplesPerClass, replace = TRUE) %>%
+  #   ungroup()
+
+  # # Split blocks into train vs test
+  # trainBlocks <- sample(unique(balancedPts$block), nTrainBlocks)
+  # trainPts <- filter(balancedPts, block %in% trainBlocks)
+  # testPts <- filter(balancedPts, !block %in% trainBlocks)
+
+  # split into train vs test
+  trainPts <- ptsSf %>%
+    group_by(presence) %>%
+    slice_sample(prop = proportionTraining) %>%
     ungroup()
 
-  # Split blocks into train vs test
-  trainBlocks <- sample(unique(balancedPts$block), nTrainBlocks)
-  trainPts <- filter(balancedPts, block %in% trainBlocks)
-  testPts <- filter(balancedPts, !block %in% trainBlocks)
+  testPts <- anti_join(ptsSf, st_drop_geometry(trainPts), by = colnames(trainPts)[!colnames(trainPts) %in% c("geometry")])
 
   # Extract predictors for each time step
   extract_at_pts <- function(rStack, pts) {
