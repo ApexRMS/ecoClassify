@@ -73,6 +73,14 @@ if (setManualThreshold == FALSE) {
 # extract list of testing rasters --------------------------------------------
 predictRasterList <- extractRasters(predictingRasterDataframe, column = 2)
 
+# round rasters to integer if selected ----------------------------------
+if (is.numeric(rasterDecimalPlaces) && length(rasterDecimalPlaces) > 0 && !is.na(rasterDecimalPlaces)) {
+  roundedRasters <- lapply(predictRasterList, function(r) {
+    return(app(r, fun = function(x) round(x, rasterDecimalPlaces)))
+  })
+  predictRasterList <- roundedRasters
+}
+
 # normalize predicting rasters if selected -------------------------------------
 if (normalizeRasters == TRUE) {
   predictRasterList <- normalizeRaster(predictRasterList)
@@ -95,14 +103,6 @@ predictRasterList <- addCovariates(
 
 # check and mask NA values in predicting rasters -------------------
 predictRasterList <- checkAndMaskNA(predictRasterList)
-
-# round rasters to integer if selected ----------------------------------
-if (is.numeric(rasterDecimalPlaces) && length(rasterDecimalPlaces) > 0 && !is.na(rasterDecimalPlaces)) {
-  roundedRasters <- lapply(predictRasterList, function(r) {
-    return(app(r, fun = function(x) round(x, rasterDecimalPlaces)))
-  })
-  predictRasterList <- roundedRasters
-}
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 classifiedRasterOutputDataframe <- data.frame(

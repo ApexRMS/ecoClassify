@@ -71,11 +71,6 @@ trainingRasterList <- extractRasters(trainingRasterDataframe, column = 2)
 
 groundTruthRasterList <- extractRasters(trainingRasterDataframe, column = 3)
 
-# normalize training rasters if selected -------------------------------------
-if (normalizeRasters == TRUE) {
-  trainingRasterList <- normalizeRaster(trainingRasterList)
-}
-
 # round rasters to integer if selected ----------------------------------
 if (
   is.numeric(rasterDecimalPlaces) &&
@@ -86,6 +81,11 @@ if (
     return(app(r, fun = function(x) round(x, rasterDecimalPlaces)))
   })
   trainingRasterList <- roundedRasters
+}
+
+# normalize training rasters if selected -------------------------------------
+if (normalizeRasters == TRUE) {
+  trainingRasterList <- normalizeRaster(trainingRasterList)
 }
 
 # apply contextualization to training rasters if selected ---------------------
