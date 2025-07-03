@@ -38,8 +38,8 @@ splitTrainTest <- function(
     groundTruthRasterList,
     nObs,
     nBlocks = 25,
-    proportionTraining = 0.8) {
-  
+    proportionTraining = 0.8
+) {
   blockDim <- sqrt(nBlocks)
   if (blockDim != floor(blockDim)) {
     stop("`nBlocks` must be a perfect square, e.g.  100, 144, 256.")
@@ -129,6 +129,13 @@ splitTrainTest <- function(
   test_df <- test_df[complete.cases(test_df), ]
   if ((n_test_before - nrow(test_df)) > 0) {
     updateRunLog(sprintf("%d rows dropped from testing data due to NA values.", n_test_before - nrow(test_df)), type = "warning")
+  }
+
+  if (nrow(train_df) < 2) {
+    stop("Insufficient training data (< 2 rows). Check presence balance or NA filtering.")
+  }
+  if (length(unique(train_df$presence)) < 2) {
+    stop("Training data must include at least one presence (1) and one absence (0).")
   }
 
   return(list(train = train_df, test = test_df))

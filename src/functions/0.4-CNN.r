@@ -298,7 +298,7 @@ predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
       unseen <- sum(is.na(x))
       if (unseen > 0) {
         updateRunLog(sprintf(
-          "Variable '%s' contains %d unseen level(s) not present during training. They will be handled as a special 'unknown' category.",
+          "PredictCNN: Variable '%s' contains %d unseen level(s) not present during training. They will be handled as a special 'unknown' category.",
           var, unseen
         ), type = "warning")
       }
@@ -510,7 +510,7 @@ predict_cnn_dataframe <- function(model, newdata, return = c("class", "prob")) {
       unseen <- sum(is.na(x))
       if (unseen > 0) {
         updateRunLog(sprintf(
-          "Variable '%s' contains %d unseen level(s) not present during training. They will be handled as a special 'unknown' category.",
+          "predict_cnn_dataframe: Variable '%s' contains %d unseen level(s) not present during training. They will be handled as a special 'unknown' category.",
           var, unseen
         ), type = "warning")
       }
