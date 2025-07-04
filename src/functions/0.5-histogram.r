@@ -68,6 +68,7 @@ getValueRange <- function(rasterList, layerName, nBins = 20, nSample = 5000) {
 #' @noRd
 getRastLayerHistogram <- function(
   rasterList,
+  model,
   nBins = 20,
   nSample = 10000
 ) {
@@ -77,14 +78,9 @@ getRastLayerHistogram <- function(
     stop("rasterList[[1]] must have at least one named layer.")
   }
 
-  # Determine layer types
-  is_numeric_layer <- sapply(layerNames, function(name) {
-    vals <- terra::values(first_raster[[name]], mat = FALSE)
-    is.numeric(vals) && length(unique(vals)) > 15
-  })
-
-  numeric_layers <- layerNames[is_numeric_layer]
-  categorical_layers <- setdiff(layerNames, numeric_layers)
+  # Use declared model variables to determine layer type
+  numeric_layers <- intersect(model$num_vars, layerNames)
+  categorical_layers <- intersect(model$cat_vars, layerNames)
 
   # Histogram for numeric layers
   numeric_df <- foreach(
@@ -103,7 +99,7 @@ getRastLayerHistogram <- function(
     pct = NA_real_
   )
 
-  return(bind_rows(numeric_df, categorical_df))
+  bind_rows(numeric_df, categorical_df)
 }
 
 #' Predict Response Across Value Ranges ----
