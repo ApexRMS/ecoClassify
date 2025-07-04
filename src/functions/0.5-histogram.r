@@ -116,8 +116,8 @@ getRastLayerHistogram <- function(
 #' @noRd
 predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
   # Separate numeric and categorical variables in the model
-  numeric_layers <- intersect(unique(rastLayerHistogram$layer), model$num_vars)
-  categorical_layers <- intersect(model$cat_vars, unique(rastLayerHistogram$layer))
+  numeric_layers <- intersect(unique(rastLayerHistogram$layer), model$num_vars) # numeric_layers <- model$num_vars
+  categorical_layers <- intersect(model$cat_vars, unique(rastLayerHistogram$layer)) # categorical_layers <- model$cat_vars
 
   # Prepare prediction grid for numeric layers
   rastHistogramPredict <- rastLayerHistogram %>%
@@ -126,12 +126,21 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
     dplyr::group_by(layer) %>%
     dplyr::mutate(row = dplyr::row_number()) %>%
     dplyr::ungroup() %>%
-    tidyr::spread(layer, bin_lower) %>%
-    dplyr::select(-row)
+    tidyr::pivot_wider(names_from = layer, values_from = bin_lower)  # Updated spread() to pivot_wider()
+
+  if (nrow(rastHistogramPredict) == 0) {
+    warning("predictResponseHistogram: No data to predict from — raster histogram is empty.")
+    return(tibble::tibble(layer = character(), predictor = numeric(), response = numeric()))
+  }
 
   # Predict for numeric layers
   numeric_predictions <- purrr::map_dfr(numeric_layers, function(layerName) {
     predictLayerTemp <- rastHistogramPredict
+
+    if (nrow(predictLayerTemp) == 0) {
+      warning(sprintf("Skipping response prediction for layer '%s' due to empty prediction grid.", layerName))
+      return(NULL)
+    }
 
     # Fix non-focal predictors to their mean
     fixed_cols <- setdiff(names(predictLayerTemp), layerName)
@@ -140,44 +149,43 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
       ~ mean(.x, na.rm = TRUE)
     )
 
-    if (modelType == "CNN") {
-      # Add missing categorical variables with fallback
+    # Handle categorical predictors
+    if (modelType %in% c("CNN", "Random Forest", "MaxEnt")) {
       missing_cat_vars <- setdiff(model$cat_vars, names(predictLayerTemp))
       for (v in missing_cat_vars) {
-        lvl <- model$cat_levels[[v]]
-        predictLayerTemp[[v]] <- factor(rep(lvl[1], nrow(predictLayerTemp)), levels = lvl)
-      }
-
-      # Reformat all categorical variables
-      for (v in model$cat_vars) {
-        if (!is.factor(predictLayerTemp[[v]])) {
-          predictLayerTemp[[v]] <- factor(predictLayerTemp[[v]], levels = model$cat_levels[[v]])
+        lvl <- model$factor_levels[[v]]
+        if (nrow(predictLayerTemp) > 0) {
+          predictLayerTemp[[v]] <- factor(rep(lvl[1], nrow(predictLayerTemp)), levels = lvl)
         }
       }
-
-      # Align column order
-      predictLayerTemp <- predictLayerTemp[, c(model$num_vars, model$cat_vars), drop = FALSE]
-
-      preds <- predict_cnn_dataframe(model, predictLayerTemp, "prob")
-
-    } else {
-      # Add missing categorical variables with fallback
-      missing_cat_vars <- setdiff(model$cat_vars, names(predictLayerTemp))
-      for (v in missing_cat_vars) {
-        lvl <- model$cat_levels[[v]]
-        predictLayerTemp[[v]] <- factor(rep(lvl[1], nrow(predictLayerTemp)), levels = lvl)
-      }
-
-      # Reformat all categorical variables
       for (v in model$cat_vars) {
         if (!is.factor(predictLayerTemp[[v]])) {
-          predictLayerTemp[[v]] <- factor(predictLayerTemp[[v]], levels = model$cat_levels[[v]])
+          lvl <- model$factor_levels[[v]]
+          predictLayerTemp[[v]] <- factor(predictLayerTemp[[v]], levels = lvl)
         }
       }
-
-      preds <- predict(model$model, predictLayerTemp, type = "response")$predictions
     }
 
+    # Align column order
+    predictLayerTemp <- predictLayerTemp[, c(model$num_vars, model$cat_vars), drop = FALSE]
+
+    # Perform prediction
+    preds <- tryCatch({
+      if (modelType == "CNN") {
+        predict_cnn_dataframe(model, predictLayerTemp, "prob")
+      } else if (modelType == "Random Forest") {
+        predict(model$model, predictLayerTemp, type = "response")$predictions
+      } else if (modelType == "MaxEnt") {
+        predict(model$model, predictLayerTemp, type = "logistic")
+      } else {
+        stop("Model type not recognized.")
+      }
+    }, error = function(e) {
+      warning(sprintf("Prediction failed for layer '%s': %s", layerName, e$message))
+      return(rep(NA_real_, nrow(predictLayerTemp)))
+    })
+
+    # Build output
     tibble::tibble(
       layer = layerName,
       predictor = predictLayerTemp[[layerName]],
@@ -185,7 +193,7 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
     )
   })
 
-  # Generate empty rows for categorical variables
+  # Create placeholder rows for categorical variables
   cat_predictions <- purrr::map_dfr(categorical_layers, function(layerName) {
     tibble::tibble(
       layer = layerName,
@@ -194,7 +202,7 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
     )
   })
 
-  # Combine numeric and categorical outputs
+  # Combine and return
   predictedLayers <- dplyr::bind_rows(numeric_predictions, cat_predictions)
 
   return(predictedLayers)
@@ -277,6 +285,4 @@ plotLayerHistogram <- function(histogramData, transferDir, max_vars = 48) {
     dpi = 300,
     limitsize = FALSE  # ← allows larger plots if needed
   )
-
-  return(NULL)
 }

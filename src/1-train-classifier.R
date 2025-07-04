@@ -109,7 +109,8 @@ trainingRasterList <- addCovariates(
 )
 
 # check and mask NA values in training rasters -------------------
-trainingRasterList <- checkAndMaskNA(trainingRasterList)
+# removed mask, now it just adds a message to run log if uneven number of NA values across training data
+checkNA(trainingRasterList)
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(
