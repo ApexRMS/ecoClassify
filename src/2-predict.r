@@ -102,7 +102,7 @@ predictRasterList <- addCovariates(
 )
 
 # check and mask NA values in predicting rasters -------------------
-predictRasterList <- checkAndMaskNA(predictRasterList)
+checkNA(predictRasterList)
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 classifiedRasterOutputDataframe <- data.frame(
