@@ -358,7 +358,7 @@ checkNA <- function(rasterList) {
 
     if (length(unique(cellCounts)) != 1) {
       msg <- sprintf(
-        "Input raster %d: Layers have unequal number of cells. Applying NA mask to standardize NA pattern.",
+        "Input raster %d: Layers have unequal number of cells.",
         i
       )
       if (exists("updateRunLog")) {
