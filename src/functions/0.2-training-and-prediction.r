@@ -189,68 +189,6 @@ getOptimalThreshold <- function(
   # define testing observations (subtract 1 for factor level)
   testingObservations <- as.numeric(testingData$presence)
 
-  # handle categorical variables by aligning factor levels
-  if (modelType == "CNN") {
-    if (!is.null(model$cat_vars) && length(model$cat_vars) > 0) {
-      for (i in seq_along(model$cat_vars)) {
-        col <- model$cat_vars[i]
-        if (col %in% names(testingData)) {
-          f <- factor(
-            testingData[[col]],
-            levels = seq_len(model$cat_levels[[i]])
-          )
-          x <- as.integer(f)
-          x[is.na(x)] <- model$cat_levels[[i]] + 1 # assign 'unknown' category index
-          testingData[[col]] <- x
-        }
-      }
-    }
-  } else if (modelType == "Random Forest") {
-    rf_model <- model$model
-    rf_levels <- model$factor_levels
-    rf_vars <- names(rf_levels)
-    if (is.null(rf_levels) || length(rf_levels) == 0) {
-      warning(
-        "Random Forest model does not include categorical level info. Skipping factor alignment."
-      )
-    } else {
-      cat_vars <- names(testingData)[
-        sapply(testingData, is.factor) & names(testingData) %in% rf_vars
-      ]
-      for (col in cat_vars) {
-        levels_train <- rf_levels[[col]]
-        if (!is.null(levels_train)) {
-          f <- factor(as.character(testingData[[col]]), levels = levels_train)
-          f[is.na(f)] <- "__unknown__"
-          levels(f) <- c(levels_train, "__unknown__")
-          testingData[[col]] <- f
-        } else {
-          warning(sprintf(
-            "Skipping factor alignment for '%s': not found in trained RF model levels",
-            col
-          ))
-          testingData[[col]] <- NA
-        }
-      }
-    }
-  } else if (modelType == "MaxEnt") {
-    # Optional: warn if factor levels in testing data don't match
-    cat_vars <- names(testingData)[sapply(testingData, is.factor)]
-    for (col in cat_vars) {
-      # Try aligning factor levels to training data if you have access
-      # For now, we just drop NA-producing levels
-      if (any(is.na(testingData[[col]]))) {
-        updateRunLog(
-          sprintf(
-            "Column '%s' in testing data contains unknown levels. NA values will be introduced in prediction.",
-            col
-          ),
-          type = "warning"
-        )
-      }
-    }
-  }
-
   ## predicting data
   if (modelType == "Random Forest") {
     testingPredictions <- predict(model$model, testingData)$predictions[, 2]

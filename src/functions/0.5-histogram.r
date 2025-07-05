@@ -150,7 +150,22 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
     )
 
     # Handle categorical predictors
-    if (modelType %in% c("CNN", "Random Forest", "MaxEnt")) {
+    if (modelType %in% c("CNN", "MaxEnt")) {
+      missing_cat_vars <- setdiff(model$cat_vars, names(predictLayerTemp))
+      for (v in missing_cat_vars) {
+        lvl <- model$cat_levels[[v]]
+        if (nrow(predictLayerTemp) > 0) {
+          predictLayerTemp[[v]] <- factor(rep(lvl[1], nrow(predictLayerTemp)), levels = lvl)
+        }
+      }
+      for (v in model$cat_vars) {
+        if (!is.factor(predictLayerTemp[[v]])) {
+          lvl <- model$cat_levels[[v]]
+          predictLayerTemp[[v]] <- factor(predictLayerTemp[[v]], levels = lvl)
+        }
+      }
+    }
+    else if (modelType == "Random Forest") {
       missing_cat_vars <- setdiff(model$cat_vars, names(predictLayerTemp))
       for (v in missing_cat_vars) {
         lvl <- model$factor_levels[[v]]

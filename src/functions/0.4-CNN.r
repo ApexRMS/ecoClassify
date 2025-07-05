@@ -119,13 +119,18 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   } else {
     list()
   }
-  cat_levels <- if (length(cat_vars)) {
+  cat_level_lengths <- if (length(cat_vars)) {
     lapply(predictors[cat_vars], function(x) length(levels(x)))
   } else {
     list()
   }
-  embedding_dims <- if (length(cat_levels)) {
-    lapply(cat_levels, function(l) min(50, floor(l / 2) + 1))
+  cat_levels <- if (length(cat_vars)) {
+    lapply(predictors[cat_vars], function(x) levels(x))
+  } else {
+    list()
+  }
+  embedding_dims <- if (length(cat_level_lengths)) {
+    lapply(cat_level_lengths, function(l) min(50, floor(l / 2) + 1))
   } else {
     list()
   }
@@ -158,13 +163,13 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
 
   net <- nn_module(
     "CNNWithEmbeddings",
-    initialize = function(n_num, cat_levels, embedding_dims) {
-      self$has_cat <- length(cat_levels) > 0
+    initialize = function(n_num, cat_level_lengths, embedding_dims) {
+      self$has_cat <- length(cat_level_lengths) > 0
       if (self$has_cat) {
         self$embeddings <- nn_module_list(
           mapply(
             function(l, d) nn_embedding(num_embeddings = l + 2, embedding_dim = d),
-            cat_levels,
+            cat_level_lengths,
             embedding_dims,
             SIMPLIFY = FALSE
           )
@@ -188,7 +193,7 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
       x <- nnf_relu(self$fc1(x))
       self$fc2(x)
     }
-  )(ncol(X_num), unlist(cat_levels), unlist(embedding_dims))
+  )(ncol(X_num), unlist(cat_level_lengths), unlist(embedding_dims))
 
   device <- torch_device("cpu")
   net <- net$to(device = device)
@@ -237,6 +242,7 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
     feature_names = names(predictors),
     cat_vars = cat_vars,
     num_vars = num_vars,
+    cat_level_lengths = cat_level_lengths,
     cat_levels = cat_levels,
     embedding_dims = embedding_dims
   )
@@ -290,10 +296,9 @@ predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
   } else {
     X_cat <- lapply(seq_along(cat_vars), function(i) {
       var <- cat_vars[i]
-      levels_train <- cat_levels[[i]]
+      levels_train <- cat_levels[i]
       x <- df[[var]]
       if (!is.factor(x)) x <- factor(x, levels = levels_train)
-      else x <- factor(x, levels = levels_train)
 
       unseen <- sum(is.na(x))
       if (unseen > 0) {
