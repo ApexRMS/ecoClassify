@@ -4,10 +4,10 @@
   <action code="Exec" condition="TableExists" criteria="ecoClassify_ClassifierOptions">
       <item>ALTER TABLE ecoClassify_ClassifierOptions ADD COLUMN setManualThreshold BOOLEAN</item>
       <item>ALTER TABLE ecoClassify_ClassifierOptions ADD COLUMN manualThreshold DOUBLE</item>
-
   </action>
 
-  <action code="RenameColumn" tableName="ecoClassify_ModelObject" oldColumnName="OptimalThreshold" newColumnName="Threshold">
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_ModelObject">
+    <item>ALTER TABLE ecoClassify_ModelObject RENAME COLUMN OptimalThreshold TO Threshold</item>
   </action>
 
 </update>

@@ -71,11 +71,6 @@ trainingRasterList <- extractRasters(trainingRasterDataframe, column = 2)
 
 groundTruthRasterList <- extractRasters(trainingRasterDataframe, column = 3)
 
-# normalize training rasters if selected -------------------------------------
-if (normalizeRasters == TRUE) {
-  trainingRasterList <- normalizeRaster(trainingRasterList)
-}
-
 # round rasters to integer if selected ----------------------------------
 if (
   is.numeric(rasterDecimalPlaces) &&
@@ -86,6 +81,11 @@ if (
     return(app(r, fun = function(x) round(x, rasterDecimalPlaces)))
   })
   trainingRasterList <- roundedRasters
+}
+
+# normalize training rasters if selected -------------------------------------
+if (normalizeRasters == TRUE) {
+  trainingRasterList <- normalizeRaster(trainingRasterList)
 }
 
 # apply contextualization to training rasters if selected ---------------------
@@ -109,10 +109,8 @@ trainingRasterList <- addCovariates(
 )
 
 # check and mask NA values in training rasters -------------------
-trainingRasterList <- checkAndMaskNA(trainingRasterList)
-
-# Extract raster values for diagnostics
-rastLayerHistogram <- getRastLayerHistogram(trainingRasterList)
+# removed mask, now it just adds a message to run log if uneven number of NA values across training data
+checkNA(trainingRasterList)
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format ------
 rasterOutputDataframe <- data.frame(
@@ -177,6 +175,14 @@ if (modelType == "MaxEnt") {
 }
 model <- modelOut[[1]]
 variableImportance <- modelOut[[2]]
+
+# Extract raster values for diagnostics
+rastLayerHistogram <- getRastLayerHistogram(
+  trainingRasterList,
+  modelOut,
+  nBins = 20,
+  nSample = 10000
+)
 
 if (modelType == "CNN") {
   # Save Torch weights separately

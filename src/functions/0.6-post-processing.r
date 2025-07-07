@@ -156,22 +156,40 @@ plotVariableImportance <- function(importanceData, transferDir) {
   if (is.null(names(importanceData))) {
     stop("`importanceData` must be a named numeric vector.")
   }
+
   df <- tibble::tibble(
     variable = names(importanceData),
     value = as.numeric(importanceData)
   )
 
-  n_vars <- nrow(df)
+  # Sort by importance
+  df <- dplyr::arrange(df, desc(abs(value)))
 
-  # Adjust font size and image height based on number of variables
-  font_size <- if (n_vars <= 10) 20 else if (n_vars <= 20) 18 else if (
-    n_vars <= 40
-  )
-    16 else 14
-  plot_height <- max(4, min(10, 0.3 * n_vars)) # height scales with variable count, capped at 10 in
+  # Limit number of variables shown (adjustable)
+  max_display_vars <- 40
+  df_display <- if (nrow(df) > max_display_vars) {
+    df[1:max_display_vars, ]
+  } else {
+    df
+  }
 
+  n_vars <- nrow(df_display)
+
+  # Adjust font size and height based on number of vars shown
+  font_size <- if (n_vars <= 10) {
+    20
+  } else if (n_vars <= 20) {
+    18
+  } else if (n_vars <= 30) {
+    16
+  } else {
+    14
+  }
+  plot_height <- max(4, min(10, 0.3 * n_vars))
+
+  # Build plot
   p <- ggplot2::ggplot(
-    df,
+    df_display,
     aes(
       x = reorder(variable, value),
       y = value,
@@ -198,6 +216,7 @@ plotVariableImportance <- function(importanceData, transferDir) {
       guide = "none"
     )
 
+  # Save to file
   outfile <- file.path(transferDir, "VariableImportance.png")
   ggplot2::ggsave(
     filename = outfile,

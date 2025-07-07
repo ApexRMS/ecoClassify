@@ -341,20 +341,24 @@ normalizeRaster <- function(rasterList) {
 #' @return List of SpatRasters with uniform NA pattern.
 #'
 #' @noRd
-checkAndMaskNA <- function(rasterList) {
-  processedRasterList <- list()
+checkNA <- function(rasterList) {
 
   for (i in seq_along(rasterList)) {
     raster <- rasterList[[i]]
 
     # Check if each layer has the same number of non NA cells
     cellCounts <- sapply(1:nlyr(raster), function(j) {
-      sum(!is.na(terra::values(raster[[j]])))
+      lyr <- raster[[j]]
+      if (is.factor(lyr)) {
+        return(sum(!is.na(as.character(values(lyr)))))
+      } else {
+        return(sum(!is.na(values(lyr))))
+      }
     })
 
     if (length(unique(cellCounts)) != 1) {
       msg <- sprintf(
-        "Input raster %d: Layers have unequal number of cells. Applying NA mask to standardize NA pattern.",
+        "Input raster %d: Layers have unequal number of cells.",
         i
       )
       if (exists("updateRunLog")) {
@@ -362,18 +366,6 @@ checkAndMaskNA <- function(rasterList) {
       } else {
         message(msg)
       }
-
-      # Create a mask of cells that are NA in any layer
-      naMask <- terra::app(raster, fun = function(x) any(is.na(x)))
-
-      # Apply mask so all layers share the same NA pattern
-      processedRaster <- terra::mask(raster, naMask, maskvalues = 1)
-    } else {
-      processedRaster <- raster
     }
-
-    processedRasterList[[i]] <- processedRaster
   }
-
-  return(processedRasterList)
 }

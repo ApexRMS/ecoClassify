@@ -68,6 +68,7 @@ getValueRange <- function(rasterList, layerName, nBins = 20, nSample = 5000) {
 #' @noRd
 getRastLayerHistogram <- function(
   rasterList,
+  model,
   nBins = 20,
   nSample = 10000
 ) {
@@ -77,14 +78,9 @@ getRastLayerHistogram <- function(
     stop("rasterList[[1]] must have at least one named layer.")
   }
 
-  # Determine layer types
-  is_numeric_layer <- sapply(layerNames, function(name) {
-    vals <- terra::values(first_raster[[name]], mat = FALSE)
-    is.numeric(vals) && length(unique(vals)) > 15
-  })
-
-  numeric_layers <- layerNames[is_numeric_layer]
-  categorical_layers <- setdiff(layerNames, numeric_layers)
+  # Use declared model variables to determine layer type
+  numeric_layers <- intersect(model$num_vars, layerNames)
+  categorical_layers <- intersect(model$cat_vars, layerNames)
 
   # Histogram for numeric layers
   numeric_df <- foreach(
@@ -103,7 +99,7 @@ getRastLayerHistogram <- function(
     pct = NA_real_
   )
 
-  return(bind_rows(numeric_df, categorical_df))
+  bind_rows(numeric_df, categorical_df)
 }
 
 #' Predict Response Across Value Ranges ----
@@ -120,52 +116,91 @@ getRastLayerHistogram <- function(
 #' @noRd
 predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
   # Separate numeric and categorical variables in the model
-  numeric_layers <- intersect(unique(rastLayerHistogram$layer), model$num_vars)
-  categorical_layers <- intersect(model$cat_vars, unique(rastLayerHistogram$layer))
+  numeric_layers <- intersect(unique(rastLayerHistogram$layer), model$num_vars) # numeric_layers <- model$num_vars
+  categorical_layers <- intersect(model$cat_vars, unique(rastLayerHistogram$layer)) # categorical_layers <- model$cat_vars
 
   # Prepare prediction grid for numeric layers
   rastHistogramPredict <- rastLayerHistogram %>%
-    filter(layer %in% numeric_layers) %>%
-    select(layer, bin_lower) %>%
-    group_by(layer) %>%
-    mutate(row = row_number()) %>%
-    ungroup() %>%
-    tidyr::spread(layer, bin_lower) %>%
-    select(-row)
+    dplyr::filter(layer %in% numeric_layers) %>%
+    dplyr::select(layer, bin_lower) %>%
+    dplyr::group_by(layer) %>%
+    dplyr::mutate(row = dplyr::row_number()) %>%
+    dplyr::ungroup() %>%
+    tidyr::pivot_wider(names_from = layer, values_from = bin_lower)  # Updated spread() to pivot_wider()
+
+  if (nrow(rastHistogramPredict) == 0) {
+    warning("predictResponseHistogram: No data to predict from — raster histogram is empty.")
+    return(tibble::tibble(layer = character(), predictor = numeric(), response = numeric()))
+  }
 
   # Predict for numeric layers
   numeric_predictions <- purrr::map_dfr(numeric_layers, function(layerName) {
     predictLayerTemp <- rastHistogramPredict
+
+    if (nrow(predictLayerTemp) == 0) {
+      warning(sprintf("Skipping response prediction for layer '%s' due to empty prediction grid.", layerName))
+      return(NULL)
+    }
+
+    # Fix non-focal predictors to their mean
     fixed_cols <- setdiff(names(predictLayerTemp), layerName)
     predictLayerTemp[fixed_cols] <- purrr::map_dfc(
       predictLayerTemp[fixed_cols],
       ~ mean(.x, na.rm = TRUE)
     )
 
-    preds <- if (modelType == "CNN") {
-      # Add back missing categorical variables with a fixed level
+    # Handle categorical predictors
+    if (modelType %in% c("CNN", "MaxEnt")) {
       missing_cat_vars <- setdiff(model$cat_vars, names(predictLayerTemp))
       for (v in missing_cat_vars) {
-        num_levels <- model$cat_levels[[v]]
-        # Assign integer index directly, NOT factor
-        predictLayerTemp[[v]] <- rep(1L, nrow(predictLayerTemp))
+        lvl <- model$cat_levels[[v]]
+        if (nrow(predictLayerTemp) > 0) {
+          predictLayerTemp[[v]] <- factor(rep(lvl[1], nrow(predictLayerTemp)), levels = lvl)
+        }
       }
-
-      # Ensure column order is correct
-      predictLayerTemp <- predictLayerTemp[, c(model$num_vars, model$cat_vars), drop = FALSE]
-
-      predict_cnn_dataframe(model, predictLayerTemp, "prob")
-    } else {
-      # Add back missing categorical variables with a fixed level
+      for (v in model$cat_vars) {
+        if (!is.factor(predictLayerTemp[[v]])) {
+          lvl <- model$cat_levels[[v]]
+          predictLayerTemp[[v]] <- factor(predictLayerTemp[[v]], levels = lvl)
+        }
+      }
+    }
+    else if (modelType == "Random Forest") {
       missing_cat_vars <- setdiff(model$cat_vars, names(predictLayerTemp))
       for (v in missing_cat_vars) {
-      num_levels <- model$cat_levels[[v]]
-      # Use index 1 for all rows (assuming it corresponds to a valid level)
-      predictLayerTemp[[v]] <- as.integer(1L)
-    }
-      predict(model$model, predictLayerTemp, type = "response")$predictions
+        lvl <- model$factor_levels[[v]]
+        if (nrow(predictLayerTemp) > 0) {
+          predictLayerTemp[[v]] <- factor(rep(lvl[1], nrow(predictLayerTemp)), levels = lvl)
+        }
+      }
+      for (v in model$cat_vars) {
+        if (!is.factor(predictLayerTemp[[v]])) {
+          lvl <- model$factor_levels[[v]]
+          predictLayerTemp[[v]] <- factor(predictLayerTemp[[v]], levels = lvl)
+        }
+      }
     }
 
+    # Align column order
+    predictLayerTemp <- predictLayerTemp[, c(model$num_vars, model$cat_vars), drop = FALSE]
+
+    # Perform prediction
+    preds <- tryCatch({
+      if (modelType == "CNN") {
+        predict_cnn_dataframe(model, predictLayerTemp, "prob")
+      } else if (modelType == "Random Forest") {
+        predict(model$model, predictLayerTemp, type = "response")$predictions
+      } else if (modelType == "MaxEnt") {
+        predict(model$model, predictLayerTemp, type = "logistic")
+      } else {
+        stop("Model type not recognized.")
+      }
+    }, error = function(e) {
+      warning(sprintf("Prediction failed for layer '%s': %s", layerName, e$message))
+      return(rep(NA_real_, nrow(predictLayerTemp)))
+    })
+
+    # Build output
     tibble::tibble(
       layer = layerName,
       predictor = predictLayerTemp[[layerName]],
@@ -173,7 +208,7 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
     )
   })
 
-  # Generate empty rows for categorical variables
+  # Create placeholder rows for categorical variables
   cat_predictions <- purrr::map_dfr(categorical_layers, function(layerName) {
     tibble::tibble(
       layer = layerName,
@@ -182,8 +217,9 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
     )
   })
 
-  # Combine both
-  predictedLayers <- bind_rows(numeric_predictions, cat_predictions)
+  # Combine and return
+  predictedLayers <- dplyr::bind_rows(numeric_predictions, cat_predictions)
+
   return(predictedLayers)
 }
 
@@ -196,7 +232,7 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
 #' @param transferDir Directory to save PNG.
 #'
 #' @noRd
-plotLayerHistogram <- function(histogramData, transferDir) {
+plotLayerHistogram <- function(histogramData, transferDir, max_vars = 48) {
   # Only keep numeric predictors
   histogramData <- histogramData %>%
     dplyr::filter(!is.na(predictor))
@@ -207,9 +243,15 @@ plotLayerHistogram <- function(histogramData, transferDir) {
     return(NULL)
   }
 
-  n_vars <- unique(histogramData$layer) %>% length()
+  # Limit to top 12 variables (or fewer)
+  unique_layers <- unique(histogramData$layer)
+  selected_layers <- head(unique_layers, max_vars)
+  histogramData <- histogramData %>%
+    dplyr::filter(layer %in% selected_layers)
 
-  # Adjust font size and image height based on number of variables
+  n_vars <- length(unique(histogramData$layer))
+
+  # Adjust font size based on number of variables
   font_size <- if (n_vars <= 6) {
     20
   } else if (n_vars <= 12) {
@@ -220,10 +262,11 @@ plotLayerHistogram <- function(histogramData, transferDir) {
     10
   }
 
+  # Adjust plot dimensions based on number of facets
   width_per_facet <- 1
   height_per_facet <- 0.66
-  plot_width <- max(10, n_vars * width_per_facet)
-  plot_height <- max(10, n_vars * height_per_facet)
+  plot_width <- min(50, max(10, n_vars * width_per_facet))
+  plot_height <- min(30, max(10, n_vars * height_per_facet))
 
   p <- ggplot2::ggplot(histogramData, aes(x = predictor, y = response)) +
     ggplot2::geom_col(
@@ -254,6 +297,7 @@ plotLayerHistogram <- function(histogramData, transferDir) {
     height = plot_height,
     width = plot_width,
     units = "in",
-    dpi = 300
+    dpi = 300,
+    limitsize = FALSE  # ← allows larger plots if needed
   )
 }
