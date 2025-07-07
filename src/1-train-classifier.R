@@ -177,7 +177,12 @@ model <- modelOut[[1]]
 variableImportance <- modelOut[[2]]
 
 # Extract raster values for diagnostics
-rastLayerHistogram <- getRastLayerHistogram(trainingRasterList, modelOut, nBins = 20, nSample = 10000)
+rastLayerHistogram <- getRastLayerHistogram(
+  trainingRasterList,
+  modelOut,
+  nBins = 20,
+  nSample = 10000
+)
 
 if (modelType == "CNN") {
   # Save Torch weights separately
