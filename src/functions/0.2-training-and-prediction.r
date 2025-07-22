@@ -331,189 +331,258 @@ reclassifyRaster <- function(raster, threshold) {
 #' Used when preparing outputs for the `ecoClassify_RasterOutput` SyncroSim datasheet.
 #' @noRd
 generateRasterDataframe <- function(
-    applyFiltering,
     predictedPresence,
-    filterResolution,
-    filterPercent,
     category,
     timestep,
     transferDir,
     OutputDataframe,
     hasGroundTruth) {
   if (hasGroundTruth == TRUE) {
-    if (applyFiltering == TRUE) {
-      # filter out presence pixels surrounded by non-presence
-      filteredPredictedPresence <- focal(
-        predictedPresence,
-        w = matrix(1, 5, 5),
-        fun = filterFun,
-        resolution = filterResolution,
-        percent = filterPercent
-      )
-
-      # save raster
-      writeRaster(
-        filteredPredictedPresence,
-        filename = file.path(paste0(
-          transferDir,
-          "/filteredPredictedPresence-",
-          category,
-          "-t",
-          timestep,
-          ".tif"
+    # build dataframe
+    rasterDataframe <- data.frame(
+      Timestep = timestep,
+      PredictedUnfiltered = file.path(paste0(
+        transferDir,
+        "/PredictedPresence-",
+        category,
+        "-t",
+        timestep,
+        ".tif"
         )),
-        overwrite = TRUE
-      )
-
-      # build dataframe
-      rasterDataframe <- data.frame(
-        Timestep = timestep,
-        PredictedUnfiltered = file.path(paste0(
-          transferDir,
-          "/PredictedPresence-",
-          category,
-          "-t",
-          timestep,
-          ".tif"
-        )),
-        PredictedFiltered = file.path(paste0(
-          transferDir,
-          "/filteredPredictedPresence-",
-          category,
-          "-t",
-          timestep,
-          ".tif"
-        )),
-        GroundTruth = file.path(paste0(
-          transferDir,
-          "/GroundTruth-t",
-          timestep,
-          ".tif"
-        )),
-        Probability = file.path(paste0(
-          transferDir,
-          "/Probability-",
-          category,
-          "-t",
-          timestep,
-          ".tif"
-        ))
-      )
-    } else {
-      # build dataframe
-      rasterDataframe <- data.frame(
-        Timestep = timestep,
-        PredictedUnfiltered = file.path(paste0(
-          transferDir,
-          "/PredictedPresence-",
-          category,
-          "-t",
-          timestep,
-          ".tif"
-        )),
-        PredictedFiltered = "",
-        GroundTruth = file.path(paste0(
-          transferDir,
-          "/GroundTruth-t",
-          timestep,
-          ".tif"
-        )),
-        Probability = file.path(paste0(
-          transferDir,
-          "/Probability-",
-          category,
-          "-t",
-          timestep,
-          ".tif"
-        ))
-      )
-    }
-
-    # add to output dataframe
-    OutputDataframe <- addRow(OutputDataframe, rasterDataframe)
+      PredictedFiltered = "",
+      GroundTruth = file.path(paste0(
+        transferDir,
+        "/GroundTruth-t",
+        timestep,
+        ".tif"
+      )),
+      Probability = file.path(paste0(
+        transferDir,
+        "/Probability-",
+        category,
+        "-t",
+        timestep,
+        ".tif"
+      ))
+    )
+  # add to output dataframe
+  OutputDataframe <- addRow(OutputDataframe, rasterDataframe)
+  
   } else {
-    if (applyFiltering == TRUE) {
-      # filter out presence pixels surrounded by non-presence
-      filteredPredictedPresence <- focal(
-        predictedPresence,
-        w = matrix(1, 5, 5),
-        fun = filterFun,
-        resolution = filterResolution,
-        percent = filterPercent
-      )
-
-      # save raster
-      writeRaster(
-        filteredPredictedPresence,
-        filename = file.path(paste0(
-          transferDir,
-          "/filteredPredictedPresence-",
-          category,
-          "-t",
-          timestep,
-          ".tif"
-        )),
-        overwrite = TRUE
-      )
-
-      # build dataframe
-      rasterDataframe <- data.frame(
-        Timestep = timestep,
-        ClassifiedUnfiltered = file.path(paste0(
-          transferDir,
-          "/PredictedPresence-",
-          category,
-          "-t",
-          timestep,
-          ".tif"
-        )),
-        ClassifiedFiltered = file.path(paste0(
-          transferDir,
-          "/filteredPredictedPresence-",
-          category,
-          "-t",
-          timestep,
-          ".tif"
-        )),
-        ClassifiedProbability = file.path(paste0(
-          transferDir,
-          "/Probability-",
-          category,
-          "-t",
-          timestep,
-          ".tif"
-        ))
-      )
-    } else {
-      # build dataframe
-      rasterDataframe <- data.frame(
-        Timestep = timestep,
-        ClassifiedUnfiltered = file.path(paste0(
-          transferDir,
-          "/PredictedPresence-",
-          category,
-          "-t",
-          timestep,
-          ".tif"
-        )),
-        ClassifiedFiltered = "",
-        ClassifiedProbability = file.path(paste0(
-          transferDir,
-          "/Probability-",
-          category,
-          "-t",
-          timestep,
-          ".tif"
-        ))
-      )
-    }
+  
+    # build dataframe
+    rasterDataframe <- data.frame(
+      Timestep = timestep,
+      ClassifiedUnfiltered = file.path(paste0(
+        transferDir,
+        "/PredictedPresence-",
+        category,
+        "-t",
+        timestep,
+        ".tif"
+      )),
+      ClassifiedFiltered = "",
+      ClassifiedProbability = file.path(paste0(
+        transferDir,
+        "/Probability-",
+        category,
+        "-t",
+        timestep,
+        ".tif"
+      ))
+    )
 
     # add to output dataframe
     OutputDataframe <- addRow(OutputDataframe, rasterDataframe)
+    
   }
-
+  
   return(OutputDataframe)
 }
+# generateRasterDataframe <- function(
+#     applyFiltering,
+#     predictedPresence,
+#     filterResolution,
+#     filterPercent,
+#     category,
+#     timestep,
+#     transferDir,
+#     OutputDataframe,
+#     hasGroundTruth) {
+#   if (hasGroundTruth == TRUE) {
+#     if (applyFiltering == TRUE) {
+#       # filter out presence pixels surrounded by non-presence
+#       filteredPredictedPresence <- focal(
+#         predictedPresence,
+#         w = matrix(1, 5, 5),
+#         fun = filterFun,
+#         resolution = filterResolution,
+#         percent = filterPercent
+#       )
+#       
+#       # save raster
+#       writeRaster(
+#         filteredPredictedPresence,
+#         filename = file.path(paste0(
+#           transferDir,
+#           "/filteredPredictedPresence-",
+#           category,
+#           "-t",
+#           timestep,
+#           ".tif"
+#         )),
+#         overwrite = TRUE
+#       )
+#       
+#       # build dataframe
+#       rasterDataframe <- data.frame(
+#         Timestep = timestep,
+#         PredictedUnfiltered = file.path(paste0(
+#           transferDir,
+#           "/PredictedPresence-",
+#           category,
+#           "-t",
+#           timestep,
+#           ".tif"
+#         )),
+#         PredictedFiltered = file.path(paste0(
+#           transferDir,
+#           "/filteredPredictedPresence-",
+#           category,
+#           "-t",
+#           timestep,
+#           ".tif"
+#         )),
+#         GroundTruth = file.path(paste0(
+#           transferDir,
+#           "/GroundTruth-t",
+#           timestep,
+#           ".tif"
+#         )),
+#         Probability = file.path(paste0(
+#           transferDir,
+#           "/Probability-",
+#           category,
+#           "-t",
+#           timestep,
+#           ".tif"
+#         ))
+#       )
+#     } else {
+#       # build dataframe
+#       rasterDataframe <- data.frame(
+#         Timestep = timestep,
+#         PredictedUnfiltered = file.path(paste0(
+#           transferDir,
+#           "/PredictedPresence-",
+#           category,
+#           "-t",
+#           timestep,
+#           ".tif"
+#         )),
+#         PredictedFiltered = "",
+#         GroundTruth = file.path(paste0(
+#           transferDir,
+#           "/GroundTruth-t",
+#           timestep,
+#           ".tif"
+#         )),
+#         Probability = file.path(paste0(
+#           transferDir,
+#           "/Probability-",
+#           category,
+#           "-t",
+#           timestep,
+#           ".tif"
+#         ))
+#       )
+#     }
+#     
+#     # add to output dataframe
+#     OutputDataframe <- addRow(OutputDataframe, rasterDataframe)
+#   } else {
+#     if (applyFiltering == TRUE) {
+#       # filter out presence pixels surrounded by non-presence
+#       filteredPredictedPresence <- focal(
+#         predictedPresence,
+#         w = matrix(1, 5, 5),
+#         fun = filterFun,
+#         resolution = filterResolution,
+#         percent = filterPercent
+#       )
+#       
+#       # save raster
+#       writeRaster(
+#         filteredPredictedPresence,
+#         filename = file.path(paste0(
+#           transferDir,
+#           "/filteredPredictedPresence-",
+#           category,
+#           "-t",
+#           timestep,
+#           ".tif"
+#         )),
+#         overwrite = TRUE
+#       )
+#       
+#       # build dataframe
+#       rasterDataframe <- data.frame(
+#         Timestep = timestep,
+#         ClassifiedUnfiltered = file.path(paste0(
+#           transferDir,
+#           "/PredictedPresence-",
+#           category,
+#           "-t",
+#           timestep,
+#           ".tif"
+#         )),
+#         ClassifiedFiltered = file.path(paste0(
+#           transferDir,
+#           "/filteredPredictedPresence-",
+#           category,
+#           "-t",
+#           timestep,
+#           ".tif"
+#         )),
+#         ClassifiedProbability = file.path(paste0(
+#           transferDir,
+#           "/Probability-",
+#           category,
+#           "-t",
+#           timestep,
+#           ".tif"
+#         ))
+#       )
+#     } else {
+#       # build dataframe
+#       rasterDataframe <- data.frame(
+#         Timestep = timestep,
+#         ClassifiedUnfiltered = file.path(paste0(
+#           transferDir,
+#           "/PredictedPresence-",
+#           category,
+#           "-t",
+#           timestep,
+#           ".tif"
+#         )),
+#         ClassifiedFiltered = "",
+#         ClassifiedProbability = file.path(paste0(
+#           transferDir,
+#           "/Probability-",
+#           category,
+#           "-t",
+#           timestep,
+#           ".tif"
+#         ))
+#       )
+#     }
+#     
+#     # add to output dataframe
+#     OutputDataframe <- addRow(OutputDataframe, rasterDataframe)
+#   }
+#   
+#   return(OutputDataframe)
+# }
 
 #' Append RGB image path to output dataframe ---
 #'

@@ -1,5 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
-<package name="ecoClassify" displayName="ecoClassify" description="Image classifier using semantic image segmentation" version="1.2.2" url="https://apexrms.github.io/ecoClassify/" minSyncroSimVersion="3.1.0">
+
+<package 
+    name="ecoClassify" displayName="ecoClassify" version="2.0.0"
+    description="Image classifier using semantic image segmentation" 
+    url="https://apexrms.github.io/ecoClassify/" 
+    minSyncroSimVersion="3.1.0">
 
     <!--Project Level-->
     <dataSheet name="Terminology" isSingleRow="True" dataScope="Project">
@@ -13,7 +18,7 @@
     <dataSheet name="InputTrainingRasters" displayName="Training Rasters">
         <column name="Timesteps" dataType="Integer" displayName="Timestep"/>
         <column name="TrainingRasterFile" dataType="String" displayName="Training Raster" isExternalFile="True"/>
-        <column name="GroundTruthRasterFile" dataType="String" displayName="Ground Truth Raster" isExternalFile="True"/>
+        <column name="GroundTruthRasterFile" dataType="String" displayName="User Classified Raster" isExternalFile="True"/>
     </dataSheet>
 
     <dataSheet name="InputPredictingRasters" displayName="Predicting Rasters">
@@ -24,7 +29,6 @@
     <dataSheet name="InputTrainingCovariates" displayName="Covariates">
         <column name="trainingCovariateRasterFile" dataType="String" displayName="Covariate Raster" isExternalFile="True"/>
         <column name="trainingCovariateType" displayName="Data Type" dataType="Integer" validationType="List" formula1="0:Categorical|1:Continuous"/>
-
     </dataSheet>
 
     <dataSheet name="InputPredictingCovariates" displayName="Covariates">
@@ -34,28 +38,47 @@
 
     <dataSheet name="ClassifierOptions" displayName="Classifier Options" isSingleRow="True">
         <column name="nObs" dataType="Integer" displayName="Sample Size"/>
+        <column name="modelType" displayName="Model Type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt|2:CNN"/>
+        <record columns="nObs|modelType" values="10000|0"/>
+    </dataSheet>
+
+    <dataSheet name="AdvancedClassifierOptions" displayName="Advanced" isSingleRow="True">
         <column name="normalizeRasters" dataType="Boolean" displayName="Normalize Rasters"/>
         <column name="rasterDecimalPlaces" displayName="Raster Decimal Places (Rounding)" dataType="Integer" isOptional="True"/>
-        <column name="modelType" displayName="Model Type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt|2:CNN"/>
         <column name="modelTuning" displayName="Enable Automated Tuning" dataType="Boolean"/>
         <column name="setManualThreshold" displayName="Set Probability Threshold" dataType="Boolean"/>
         <column name="manualThreshold" displayName="Probability Threshold" dataType="Double" isOptional="True"/>
         <column name="applyContextualization" dataType="Boolean" displayName="Apply Contextualization"/>
         <column name="contextualizationWindowSize" dataType="Integer" displayName="Contextualization Window Size" isOptional="True"/>
-         <column name="setSeed" dataType="Integer" displayName="Random Seed" isOptional="True"/>
+        <column name="setSeed" dataType="Integer" displayName="Random Seed" isOptional="True"/>
+        <record columns="normalizeRasters|modelTuning|setManualThreshold|applyContextualization" values="0|0|0|0"/>
     </dataSheet>
-
+    
     <dataSheet name="PostProcessingOptions" displayName="Post-processing options" isSingleRow="True">
         <column name="applyFiltering" dataType="Boolean" displayName="Apply Filtering"/>
         <column name="filterResolution" dataType="Double" displayName="Filter Resolution"/>
         <column name="filterPercent" dataType="Double" displayName="Filter Threshold"/>
     </dataSheet>
 
+    <dataSheet name="PostProcessingFilter" displayName="Filtering" isSingleRow="True">
+        <column name="applyFiltering" dataType="Boolean" displayName="Apply Filtering"/>
+        <column name="filterResolution" dataType="Double" displayName="Filter Resolution"/>
+        <column name="filterPercent" dataType="Double" displayName="Filter Threshold"/>
+    </dataSheet>
+
+    <dataSheet name="PostProcessingRule" displayName="Rule-Based Restrictions" isSingleRow="False">
+        <column name="ruleClass" dataType="Integer" displayName="Class"/>
+        <column name="ruleRasterFile" dataType="String" displayName="Condition Raster" isExternalFile="True"/>
+        <column name="ruleMinValue" dataType="Double" displayName="Minimum Value"/>
+        <column name="ruleMaxValue" dataType="Double" displayName="Maximum Value"/>
+        <column name="ruleReclassValue" dataType="Integer" displayName="Reclassify Value"/>
+    </dataSheet>
+
     <!--Output-->
     <dataSheet name="RasterOutput" displayName="Training Rasters" hasTimestep="True">
         <column name="PredictedUnfiltered" dataType="String" displayName="Predicted" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="PredictedFiltered" dataType="String" displayName="Predicted Filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
-        <column name="GroundTruth" dataType="String" displayName="Ground Truth" isExternalFile="True" isRaster="True"/>
+        <column name="GroundTruth" dataType="String" displayName="User Classification" isExternalFile="True" isRaster="True"/>
         <column name="Probability" dataType="String" displayName="Probability" isExternalFile="True" isRaster="True"/>
         <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True"/>
     </dataSheet>
@@ -123,7 +146,7 @@
         <dataSheet name="InputPredictingRasters" type="Input"/>
         <dataSheet name="InputTrainingCovariates" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Input"/>
-        <dataSheet name="PostProcessingOptions" type="Input"/>
+        <dataSheet name="AdvancedClassifierOptions" type="Input"/>
         <dataSheet name="RasterOutput" type="Output"/>
         <dataSheet name="ConfusionMatrix" type="Output"/>
         <dataSheet name="ModelStatistics" type="Output"/>
@@ -140,10 +163,21 @@
         <dataSheet name="InputPredictingRasters" type="Input"/>
         <dataSheet name="InputPredictingCovariates" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Input"/>
-        <dataSheet name="PostProcessingOptions" type="Input"/>
+        <dataSheet name="AdvancedClassifierOptions" type="Input"/>
         <dataSheet name="ModelObject" type="Input"/>
         <dataSheet name="ClassifiedRasterOutput" type="Output"/>
         <dataSheet name="ClassifiedRgbOutput" type="Output"/>
+    </transformer>
+
+    <!--Transformer 3: filtering-->
+    <transformer name="PostProcessing" displayName="3-Post-Process" programName="Rscript" programArguments="3-postprocess.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.3">
+        <dataSheet name="RasterOutput" type="Both"/>
+        <dataSheet name="ClassifiedRasterOutput" type="Both"/>
+        <dataSheet name="PostProcessingOptions" type="Input"/>
+        <dataSheet name="PostProcessingFilter" type="Input"/>
+        <dataSheet name="PostProcessingRule" type="Input"/>
+        <dataSheet name="InputTrainingRasters" type="Input"/>
+        <dataSheet name="InputPredictingRasters" type="Input"/>
     </transformer>
 
     <!--Export transformers-->
@@ -168,7 +202,6 @@
 
         <group name="AllInputs" displayName="Input">
             <item name="ClassifierOptions"/>
-            <item name="PostProcessingOptions"/>
             <group name="InputRasters" displayName="Rasters">
                 <group name="trainingRasters" displayName="Training">
                     <item name="InputTrainingRasters"/>
@@ -178,6 +211,12 @@
                     <item name="InputPredictingRasters"/>
                     <item name="InputPredictingCovariates"/>
                 </group>
+            </group>
+            <item name="AdvancedClassifierOptions"/>
+            <group name="PostProcessingOptions" displayName="Post-Processing Options">
+                <item name="PostProcessingOptions"/>
+                <item name="PostProcessingFilter"/>
+                <item name="PostProcessingRule"/>
             </group>
         </group>
 
@@ -204,7 +243,7 @@
 		    <item name="PredictedUnfilteredMap" displayName="Unfiltered" dataSheet="RasterOutput" column="PredictedUnfiltered"/>
             <item name="PredictedFilteredMap" displayName="Filtered" dataSheet="RasterOutput" column="PredictedFiltered"/>
             <item name="ProbabilityMap" displayName="Probability" dataSheet="RasterOutput" column="Probability"/>
-            <item name="GroundTruthMap" displayName="Ground Truth" dataSheet="RasterOutput" column="GroundTruth"/>
+            <item name="GroundTruthMap" displayName="User Classification" dataSheet="RasterOutput" column="GroundTruth"/>
         </group>
         <group name="ClassifiedPredictionMaps" displayName="Predictions">
 		    <item name="ClassifiedUnfilteredMap" displayName="Unfiltered" dataSheet="ClassifiedRasterOutput" column="ClassifiedUnfiltered"/>
@@ -236,7 +275,7 @@
                 <item name="PredictedUnfilteredExport" displayName="Unfiltered Prediction"/>
                 <item name="PredictedFilteredExport" displayName="Filtered Prediction"/>
                 <item name="ProbabilityExport" displayName="Probability"/>
-                <item name="GroundTruthExport" displayName="Ground Truth"/>
+                <item name="GroundTruthExport" displayName="User Classification"/>
             </group>
             <group name="PredictingMapExport" displayName="Prediction">
                 <item name="ClassifiedUnfilteredExport" displayName="Unfiltered Prediction"/>
