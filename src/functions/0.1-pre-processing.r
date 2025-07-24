@@ -133,12 +133,12 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
     )
   }
 
-  # Load post-processing options datasheet
-  postProcessingDataframe <- datasheet(
-    myScenario,
-    name = "ecoClassify_PostProcessingOptions"
-  )
-
+  # # Load post-processing options datasheet
+  # postProcessingDataframe <- datasheet(
+  #   myScenario,
+  #   name = "ecoClassify_PostProcessingOptions"
+  # )
+  # 
   # # Extract post-processing values
   # filterResolution <- postProcessingDataframe$filterResolution
   # filterPercent <- postProcessingDataframe$filterPercent

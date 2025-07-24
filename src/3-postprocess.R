@@ -1,7 +1,6 @@
-## ---------------------------------------
 ## ecoClassify - Filtering training or predicting steps
 ## ApexRMS, November 2024
-## ---------------------------------------
+
 
 # Set up workspace -------------------------------------------------------------
 
@@ -29,7 +28,7 @@ transferDir <- e$TransferDirectory
 
 # Load post-processing settings ------------------------------------------------
 
-# Filtering -----------------------------------------------------
+### Filtering -----------------------------------------------------
 
 postProcessingDataframe <- datasheet(
   myScenario,
@@ -40,22 +39,32 @@ filterPercent <- postProcessingDataframe$filterPercent
 applyFiltering <- postProcessingDataframe$applyFiltering
 
 # Apply default filtering values if not specified
-if (is.na(filterResolution) && applyFiltering == TRUE) {
-  filterResolution <- 5
-  updateRunLog(
-    "Filter resolution was not supplied; using default value of 5",
-    type = "info"
-  )
-}
-if (is.na(filterPercent) && applyFiltering == TRUE) {
-  filterPercent <- 0.25
-  updateRunLog(
-    "Filter percent was not supplied; using default value of 0.25",
-    type = "info"
-  )
+if(dim(postProcessingDataframe)[1] != 0){
+  if(is.na(filterResolution) && applyFiltering == TRUE) {
+    filterResolution <- 5
+    updateRunLog(
+      "Filter resolution was not supplied; using default value of 5",
+      type = "info"
+    )
+  }
+  if(is.na(filterPercent) && applyFiltering == TRUE) {
+    filterPercent <- 0.25
+    updateRunLog(
+      "Filter percent was not supplied; using default value of 0.25",
+      type = "info"
+    )
+  }
 }
 
-# Output datasheets ---------------------------------------------
+
+### Rule-based reclassification -----------------------------------
+
+ruleReclassDataframe <- datasheet(
+  myScenario,
+  name = "ecoClassify_PostProcessingRule")
+
+
+### Output datasheets ---------------------------------------------
 
 trainingOutputDataframe <- datasheet(
   myScenario,
@@ -66,7 +75,7 @@ predictingOutputDataframe <- datasheet(
   name = "ecoClassify_ClassifiedRasterOutput")
 
 
-# Unique timesteps ----------------------------------------------
+### Unique timesteps ----------------------------------------------
 
 trainingRasterDataframe <- datasheet(
   myScenario,
@@ -132,7 +141,7 @@ filterRasterDataframe <- function(
 progressBar(type = "message", 
             message = "Filtering")
 
-# Training step -------------------------------------------------
+### Training step -------------------------------------------------
 
 for(t in trainTimestepList){
 
@@ -161,7 +170,7 @@ for(t in trainTimestepList){
   }
 }
 
-# Predicting step -----------------------------------------------
+### Predicting step -----------------------------------------------
 
 for(t in predTimestepList){
   
@@ -193,6 +202,160 @@ for(t in predTimestepList){
   }
 }
 
+
+
+# Reclassify probability raster ------------------------------------------------
+
+progressBar(type = "message", 
+            message = "Reclassifying")
+
+
+## Training ------------------------------------------------------
+
+if(!is_empty(trainTimestepList)){
+  for(t in trainTimestepList){
+    
+    # Get file paths
+    unfilteredTrainFilepath <- trainingOutputDataframe$PredictedUnfiltered[
+      trainingOutputDataframe$Timestep == t]
+    
+    # Load unfiltered raster
+    unfilteredTrainRaster <- reclassedUnfilteredTrain <- rast(
+        unfilteredTrainFilepath)
+    
+    for(i in 1:dim(ruleReclassDataframe)[1]){
+      if(!is.na(unfilteredTrainFilepath)){
+        
+        # Load rule raster
+        ruleRaster <- rast(ruleReclassDataframe$ruleRasterFile[i])
+        
+        # Categorical vs. Continuous
+        if(ruleReclassDataframe$ruleMinValue[i] == 
+           ruleReclassDataframe$ruleMaxValue[i]){
+          
+          # Reclass table
+          reclassTable <- matrix(
+            c(ruleReclassDataframe$ruleMinValue[i],
+              as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))),
+            ncol = 2, byrow = TRUE)
+          
+          # Reclassify categorical
+          reclassedUnfilteredTrain[ruleRaster == reclassTable[,1]] <- 
+            reclassTable[,2]
+          
+        } else {
+          # Reclass table
+          reclassTable <- matrix(
+            c(ruleReclassDataframe$ruleMinValue,
+              ruleReclassDataframe$ruleMaxValue,
+              as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))),
+            ncol = 3, byrow = T)
+          # Reclassify continuous
+          ruleReclassRaster <- classify(ruleRaster, reclassTable, others = NA)
+          reclassedUnfilteredTrain[] <- mask(
+            unfilteredTrainRaster, ruleReclassRaster,
+            maskvalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i])),
+            updatevalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i])))
+        }
+        
+      }
+    }
+    
+    # File path for timestep t
+    reclassedPathTrain <- file.path(paste0(transferDir,
+                                           "/PredictedPresenceRestricted-",
+                                           "training",
+                                           "-t",
+                                           t,
+                                           ".tif"))
+    # Save raster for timestep t
+    writeRaster(reclassedUnfilteredTrain,
+                filename = reclassedPathTrain,
+                overwrite = TRUE)
+    
+    # Add raster for timestep t to results
+    trainingOutputDataframe$PredictedUnfilteredRestricted[
+      trainingOutputDataframe$Timestep == t] <- reclassedPathTrain
+    
+  }
+}
+
+
+## Predicting ----------------------------------------------------
+
+if(!is_empty(predTimestepList)){
+  for(t in predTimestepList){
+    
+    # Get file paths
+    unfilteredPredFilepath <- predictingOutputDataframe$ClassifiedUnfiltered[
+      predictingOutputDataframe$Timestep == t]
+    
+    # Load unfiltered raster
+    unfilteredPredRaster <- reclassedUnfilteredPred <- rast(
+      unfilteredPredFilepath)
+   
+    for(i in 1:dim(ruleReclassDataframe)[1]){
+      if(!is.na(unfilteredPredFilepath)){
+        
+        # Load rule raster
+        ruleRaster <- rast(ruleReclassDataframe$ruleRasterFile[i])
+        
+        # Categorical vs. Continuous
+        if(ruleReclassDataframe$ruleMinValue[i] == 
+           ruleReclassDataframe$ruleMaxValue[i]){
+          
+          # Reclass table
+          reclassTable <- matrix(
+            c(ruleReclassDataframe$ruleMinValue[i],
+              as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))),
+            ncol = 2, byrow = TRUE)
+          
+          # Reclassify categorical
+          reclassedUnfilteredPred[ruleRaster == reclassTable[,1]] <- 
+            reclassTable[,2]
+          
+        } else {
+          # Reclass table
+          reclassTable <- matrix(
+            c(ruleReclassDataframe$ruleMinValue,
+              ruleReclassDataframe$ruleMaxValue,
+              as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))),
+            ncol = 3, byrow = T)
+          # Reclassify continuous
+          ruleReclassRaster <- classify(ruleRaster, reclassTable, others = NA)
+          reclassedUnfilteredPred[] <- mask(
+            unfilteredPredRaster, ruleReclassRaster,
+            maskvalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i])),
+            updatevalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i])))
+        }
+        
+      }
+    }
+      
+    # File path for timestep t
+    reclassedPathPred <- file.path(paste0(transferDir,
+                                          "/PredictedPresenceRestricted-",
+                                          "predicting",
+                                          "-t",
+                                          t,
+                                          ".tif"))
+    # Save raster for timestep t
+    writeRaster(reclassedUnfilteredPred,
+                filename = reclassedPathPred,
+                overwrite = TRUE)
+      
+    # Add raster for timestep t to results
+    predictingOutputDataframe$ClassifiedUnfilteredRestricted[
+      predictingOutputDataframe$Timestep == t] <- reclassedPathPred
+      
+  }
+}
+
+
+
+
+# Save datasheets --------------------------------------------------------------
+
 # Save datasheets back to SyncroSim
 if(dim(trainingOutputDataframe)[1] != 0){
   saveDatasheet(
@@ -208,3 +371,4 @@ if(dim(predictingOutputDataframe)[1] != 0){
     name = "ecoClassify_ClassifiedRasterOutput"
   )
 }
+
