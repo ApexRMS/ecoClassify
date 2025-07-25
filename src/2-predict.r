@@ -15,8 +15,10 @@ sourceScripts <- list.files(
 
 invisible(lapply(sourceScripts, source))
 
-progressBar(type = "message", 
-            message = "Loading input data and setting up scenario")
+progressBar(
+  type = "message",
+  message = "Loading input data and setting up scenario"
+)
 
 # Get the SyncroSim Scenario that is currently running
 myScenario <- scenario()
@@ -24,7 +26,6 @@ myScenario <- scenario()
 # Retrieve the transfer directory for storing output rasters
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
-
 
 
 # Load raster input datasheets -------------------------------------------------
@@ -42,7 +43,6 @@ predictingCovariateDataframe <- datasheet(
 modelObjectDataframe <- datasheet(myScenario, name = "ecoClassify_ModelObject")
 
 
-
 # Assign variables -------------------------------------------------------------
 
 inputVariables <- assignVariables(
@@ -52,9 +52,6 @@ inputVariables <- assignVariables(
 )
 timestepList <- inputVariables[[1]]
 nObs <- inputVariables[[2]]
-#filterResolution <- inputVariables[[3]] # TO DO: give warnings for lower limits (must be >=1?)
-#filterPercent <- inputVariables[[4]]
-#applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[3]]
 contextualizationWindowSize <- inputVariables[[4]]
 modelType <- inputVariables[[5]]
@@ -67,8 +64,8 @@ rasterDecimalPlaces <- inputVariables[[10]]
 # Load model and threshold
 if (modelType == "CNN") {
   model <- loadCNNModel(
-    weights_path = modelObjectDataframe$Weights,     # e.g. "model_weights.pt"
-    metadata_path = modelObjectDataframe$Model    # e.g. "model_metadata.rds"
+    weights_path = modelObjectDataframe$Weights, # e.g. "model_weights.pt"
+    metadata_path = modelObjectDataframe$Model # e.g. "model_metadata.rds"
   )
 } else if (modelType == "Random Forest" || modelType == "MaxEnt") {
   model <- readRDS(modelObjectDataframe$Model)
@@ -89,8 +86,11 @@ predictRasterList <- extractRasters(predictingRasterDataframe, column = 2)
 progressBar(type = "message", message = "Pre-processing input data")
 
 # Round rasters to integer, if selected
-if (is.numeric(rasterDecimalPlaces) && length(rasterDecimalPlaces) > 0 &&
-   !is.na(rasterDecimalPlaces)) {
+if (
+  is.numeric(rasterDecimalPlaces) &&
+    length(rasterDecimalPlaces) > 0 &&
+    !is.na(rasterDecimalPlaces)
+) {
   roundedRasters <- lapply(predictRasterList, function(r) {
     return(app(r, fun = function(x) round(x, rasterDecimalPlaces)))
   })
@@ -108,8 +108,10 @@ if (applyContextualization == TRUE) {
 }
 
 # Extract covariate rasters and convert to correct data type
-predictingCovariateRaster <- processCovariates(predictingCovariateDataframe,
-                                               modelType)
+predictingCovariateRaster <- processCovariates(
+  predictingCovariateDataframe,
+  modelType
+)
 
 # Add covariate data to predicting rasters
 predictRasterList <- addCovariates(
@@ -119,7 +121,6 @@ predictRasterList <- addCovariates(
 
 # Check and mask NA values in predicting rasters
 checkNA(predictRasterList)
-
 
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format --------
@@ -140,7 +141,6 @@ classifiedRgbOutputDataframe <- data.frame(
 progressBar(type = "message", message = "Predicting")
 
 for (t in seq_along(predictRasterList)) {
-  
   # Get timestep for the current raster
   timestep <- timestepList[t]
 
