@@ -171,8 +171,8 @@ for (t in trainTimestepList) {
     filteredTraining <- filterRasterDataframe(
       applyFiltering,
       predictedPresence,
-      filterResolution,
-      filterPercent,
+      filterValue,
+      fillValue,
       "training",
       t,
       transferDir
@@ -201,8 +201,8 @@ for (t in predTimestepList) {
     filteredPredicting <- filterRasterDataframe(
       applyFiltering,
       predictedPresence,
-      filterResolution,
-      filterPercent,
+      filterValue,
+      fillValue,
       "predicting",
       t,
       transferDir
