@@ -6,34 +6,56 @@
 #' Filter prediction raster ----
 #'
 #' @description
-#' 'filterFun' filters out presence cells in input raster based on the classification
-#' of surrounding cells.
+#' Applies binary presence/absence filtering to a prediction raster. Can filter
+#' isolated presence cells and/or fill absence cells surrounded by presence.
 #'
-#' @param raster prediction raster to filter (spatRaster)
-#' @param resolution resolution to apply filtering (numeric)
-#' @param percent threshold for filtering (numeric)
-#' @return filtered raster (spatRaster)
+#' @param r Input prediction raster (SpatRaster)
+#' @param filterValue Minimum neighbor count to retain presence cells (numeric, optional)
+#' @param fillValue Minimum neighbor count to fill absence cells (numeric, optional)
+#'
+#' @return Filtered and/or filled raster (SpatRaster)
 #'
 #' @details
 #' Used in generateRasterDataframe wrapper function if filtering is selected.
+#' Applies `filterValue` to remove isolated presence cells, and `fillValue` to
+#' convert central absence pixels to presence if surrounded by nearby presence cells.
+#'
 #' @noRd
-filterFun <- function(raster, resolution, percent) {
-  # define parameters
-  npixels <- resolution^2
-  midPixel <- (npixels + 1) / 2
-  threshold <- round(npixels * percent, 0)
 
-  # filter
-  if (is.na(raster[midPixel])) {
-    return(NA)
-  } else if (
-    raster[midPixel] == 1 &&
-      sum(raster[-midPixel] == 0, na.rm = TRUE) > threshold
-  ) {
-    return(0)
-  } else {
-    return(raster[midPixel])
+filterPredictionRaster <- function(r, filterValue = NULL, fillValue = NULL) {
+  rBin <- classify(
+    r,
+    matrix(c(-Inf, 0.5, 0, 0.5, Inf, 1), ncol = 3, byrow = TRUE)
+  )
+
+  w <- matrix(1, 3, 3)
+  w[2, 2] <- 0
+
+  if (!is.null(filterValue)) {
+    neighborCount <- focal(
+      rBin,
+      w = w,
+      fun = sum,
+      na.policy = "omit",
+      filename = "",
+      overwrite = TRUE
+    )
+    rBin <- ifel(neighborCount >= filterValue, rBin, 0)
   }
+
+  if (!is.null(fillValue)) {
+    neighborSum <- focal(
+      rBin,
+      w = w,
+      fun = sum,
+      na.policy = "omit",
+      filename = "",
+      overwrite = TRUE
+    )
+    rBin <- ifel(rBin == 0 & neighborSum >= fillValue, 1, rBin)
+  }
+
+  return(rBin)
 }
 
 #' Compute classification metrics and generate confusion matrix plot ----
