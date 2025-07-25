@@ -8,8 +8,8 @@
 
     <!--Project Level-->
     <dataSheet name="Terminology" isSingleRow="True" dataScope="Project">
-        <column name="bandNames" dataType="String" displayName="Training Raster Band Names" isExternalFile="True"/>
-        <column name="timestepName" dataType="String" displayName="Raster Group Name"/>
+        <column name="bandNames" dataType="String" displayName="Training raster band names" isExternalFile="True"/>
+        <column name="timestepName" dataType="String" displayName="Raster group name"/>
         <record columns="timestepName" values="Timestep"/>
     </dataSheet>
 
@@ -37,30 +37,30 @@
     </dataSheet>
 
     <dataSheet name="ClassifierOptions" displayName="Classifier Options" isSingleRow="True">
-        <column name="nObs" dataType="Integer" displayName="Sample Size"/>
-        <column name="modelType" displayName="Model Type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt|2:CNN"/>
+        <column name="nObs" dataType="Integer" displayName="Sample size"/>
+        <column name="modelType" displayName="Model type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt|2:CNN"/>
         <record columns="nObs|modelType" values="10000|0"/>
     </dataSheet>
 
     <dataSheet name="AdvancedClassifierOptions" displayName="Advanced" isSingleRow="True">
-        <column name="normalizeRasters" dataType="Boolean" displayName="Normalize Rasters"/>
-        <column name="rasterDecimalPlaces" displayName="Raster Decimal Places (Rounding)" dataType="Integer" isOptional="True"/>
-        <column name="modelTuning" displayName="Enable Automated Tuning" dataType="Boolean"/>
-        <column name="setManualThreshold" displayName="Set Probability Threshold" dataType="Boolean"/>
-        <column name="manualThreshold" displayName="Probability Threshold" dataType="Double" isOptional="True"/>
-        <column name="applyContextualization" dataType="Boolean" displayName="Apply Contextualization"/>
-        <column name="contextualizationWindowSize" dataType="Integer" displayName="Contextualization Window Size" isOptional="True"/>
-        <column name="setSeed" dataType="Integer" displayName="Random Seed" isOptional="True"/>
+        <column name="normalizeRasters" dataType="Boolean" displayName="Normalize rasters"/>
+        <column name="rasterDecimalPlaces" displayName="Raster decimal places (rounding)" dataType="Integer" isOptional="True"/>
+        <column name="modelTuning" displayName="Enable automated tuning" dataType="Boolean"/>
+        <column name="setManualThreshold" displayName="Set probability threshold" dataType="Boolean"/>
+        <column name="manualThreshold" displayName="Probability threshold" dataType="Double" isOptional="True"/>
+        <column name="applyContextualization" dataType="Boolean" displayName="Apply contextualization"/>
+        <column name="contextualizationWindowSize" dataType="Integer" displayName="Contextualization window size" isOptional="True"/>
+        <column name="setSeed" dataType="Integer" displayName="Random seed" isOptional="True"/>
         <record columns="normalizeRasters|modelTuning|setManualThreshold|applyContextualization" values="0|0|0|0"/>
     </dataSheet>
     
     <dataSheet name="PostProcessingFilter" displayName="Filtering" isSingleRow="True">
-        <column name="applyFiltering" dataType="Boolean" displayName="Apply Filtering"/>
-        <column name="filterResolution" dataType="Double" displayName="Filter Resolution"/>
-        <column name="filterPercent" dataType="Double" displayName="Filter Threshold"/>
+        <column name="applyFiltering" dataType="Boolean" displayName="Apply filtering"/>
+        <column name="filterResolution" dataType="Double" displayName="Filter resolution"/>
+        <column name="filterPercent" dataType="Double" displayName="Filter threshold"/>
     </dataSheet>
 
-    <dataSheet name="PostProcessingRule" displayName="Rule-Based Restrictions" isSingleRow="False">
+    <dataSheet name="PostProcessingRule" displayName="Rule-Based Restrictions">
         <column name="ruleClass" dataType="Integer" displayName="Class"/>
         <column name="ruleRasterFile" dataType="String" displayName="Condition Raster" isExternalFile="True"/>
         <column name="ruleMinValue" dataType="Double" displayName="Minimum Value"/>
@@ -139,7 +139,6 @@
     <!--Transformer 1: training classifier-->
     <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.3">
         <dataSheet name="InputTrainingRasters" type="Input"/>
-        <dataSheet name="InputPredictingRasters" type="Input"/>
         <dataSheet name="InputTrainingCovariates" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Input"/>
         <dataSheet name="AdvancedClassifierOptions" type="Input"/>
