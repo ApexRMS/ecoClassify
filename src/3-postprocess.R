@@ -210,12 +210,10 @@ for (t in predTimestepList) {
       transferDir
     )
 
-    # Rename column
-    names(filteredPredicting)[2] <-
-      # Combine results
-      predictingOutputDataframe$ClassifiedFiltered[
-        predictingOutputDataframe$Timestep == t
-      ] <- filteredPredicting$PredictedFiltered
+    # Combine results
+    predictingOutputDataframe$ClassifiedFiltered[
+      predictingOutputDataframe$Timestep == t
+    ] <- filteredPredicting$PredictedFiltered
   }
 }
 
