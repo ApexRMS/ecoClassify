@@ -74,7 +74,6 @@ extractRasters <- function(dataframe, column) {
 #' This function extracts variables from the syncrosim datasheets.
 #' @noRd
 assignVariables <- function(myScenario, trainingRasterDataframe, column) {
-  
   # extract unique timesteps from trainingRasterDataframe
   timestepList <- trainingRasterDataframe %>%
     filter(!is.na(column)) %>%
@@ -132,34 +131,6 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
       type = "info"
     )
   }
-
-  # # Load post-processing options datasheet
-  # postProcessingDataframe <- datasheet(
-  #   myScenario,
-  #   name = "ecoClassify_PostProcessingOptions"
-  # )
-  # 
-  # # Extract post-processing values
-  # filterResolution <- postProcessingDataframe$filterResolution
-  # filterPercent <- postProcessingDataframe$filterPercent
-  # applyFiltering <- postProcessingDataframe$applyFiltering
-
-  # # apply default filtering values if not specified
-  # if (is.na(filterResolution) && applyFiltering == TRUE) {
-  #   filterResolution <- 5
-  #   updateRunLog(
-  #     "Filter resolution was not supplied; using default value of 5",
-  #     type = "info"
-  #   )
-  # }
-  # 
-  # if (is.na(filterPercent) && applyFiltering == TRUE) {
-  #   filterPercent <- 0.25
-  #   updateRunLog(
-  #     "Filter percent was not supplied; using default value of 0.25",
-  #     type = "info"
-  #   )
-  # }
 
   if (setManualThreshold == TRUE) {
     if (
@@ -346,7 +317,6 @@ normalizeRaster <- function(rasterList) {
 #'
 #' @noRd
 checkNA <- function(rasterList) {
-
   for (i in seq_along(rasterList)) {
     raster <- rasterList[[i]]
 
