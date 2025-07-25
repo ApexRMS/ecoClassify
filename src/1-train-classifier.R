@@ -15,16 +15,17 @@ sourceScripts <- list.files(
 
 invisible(lapply(sourceScripts, source))
 
-progressBar(type = "message", 
-            message = "Loading input data and setting up scenario")
+progressBar(
+  type = "message",
+  message = "Loading input data and setting up scenario"
+)
 
 # Get the SyncroSim Scenario that is currently running
-myScenario <- scenario() 
+myScenario <- scenario()
 
 # Retrieve the transfer directory for storing output rasters
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
-
 
 
 # Load raster input datasheets -------------------------------------------------
@@ -50,7 +51,6 @@ if (!is.null(classifierOptions$setSeed) && !is.na(classifierOptions$setSeed)) {
 }
 
 
-
 # Assign variables -------------------------------------------------------------
 
 inputVariables <- assignVariables(
@@ -60,9 +60,6 @@ inputVariables <- assignVariables(
 )
 timestepList <- inputVariables[[1]]
 nObs <- inputVariables[[2]]
-#filterResolution <- inputVariables[[3]] # TO DO: give warnings for lower limits (must be >=1?)
-#filterPercent <- inputVariables[[4]]
-#applyFiltering <- inputVariables[[5]]
 applyContextualization <- inputVariables[[3]]
 contextualizationWindowSize <- inputVariables[[4]]
 modelType <- inputVariables[[5]]
@@ -77,13 +74,11 @@ mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
 nCores <- setCores(mulitprocessingSheet)
 
 
-
 # Extract list of training and ground truth rasters ----------------------------
 
 trainingRasterList <- extractRasters(trainingRasterDataframe, column = 2)
 
 groundTruthRasterList <- extractRasters(trainingRasterDataframe, column = 3)
-
 
 
 # Pre-processing ---------------------------------------------------------------
@@ -142,7 +137,6 @@ allTrainData <- splitData[[1]]
 allTestData <- splitData[[2]]
 
 
-
 # Setup empty dataframes to accept output in SyncroSim datasheet format --------
 
 rasterOutputDataframe <- data.frame(
@@ -162,7 +156,6 @@ confusionOutputDataframe <- data.frame(
 modelOutputDataframe <- data.frame(Statistic = character(0), Value = numeric(0))
 
 rgbOutputDataframe <- data.frame(Timestep = numeric(0), RGBImage = character(0))
-
 
 
 # Train model ------------------------------------------------------------------
@@ -213,7 +206,6 @@ rastLayerHistogram <- getRastLayerHistogram(
 )
 
 if (modelType == "CNN") {
-  
   # Save Torch weights separately
   model_weights_path <- file.path(transferDir, "model_weights.pt")
   torch::torch_save(modelOut$model$state_dict(), model_weights_path)
@@ -222,7 +214,6 @@ if (modelType == "CNN") {
   metadata <- modelOut[names(modelOut) != "model"]
   metadata_path <- file.path(transferDir, "model_metadata.rds")
   saveRDS(metadata, metadata_path)
-
 } else {
   model_path <- file.path(transferDir, "model.rds")
   saveRDS(modelOut, model_path)
@@ -259,14 +250,11 @@ varImportanceOutputDataframe <- as.data.frame(variableImportance) %>%
   rename(Importance = "variableImportance")
 
 
-
-
 # Predict presence for training rasters in each timestep group -----------------
 
 progressBar(type = "message", message = "Predict training rasters")
 
 for (t in seq_along(trainingRasterList)) {
-  
   # Get timestep for the current raster
   timestep <- timestepList[t]
 
@@ -392,11 +380,6 @@ confusionMatrixPlotOutputDataframe <- data.frame(
 
 progressBar(type = "message", message = "Saving results")
 
-# filterOutputDataframe <- data.frame(
-#   applyFiltering = applyFiltering,
-#   filterResolution = filterResolution,
-#   filterPercent = filterPercent
-# )
 
 if (is.null(rasterDecimalPlaces)) {
   rasterDecimalPlaces <- ""
@@ -421,12 +404,6 @@ advClassifierOptionsOutputDataframe <- data.frame(
 )
 
 # Save dataframes back to SyncroSim library's output datasheets ----------------
-# saveDatasheet(
-#   myScenario,
-#   data = filterOutputDataframe,
-#   name = "ecoClassify_PostProcessingOptions"
-# )
-
 saveDatasheet(
   myScenario,
   data = classifierOptionsOutputDataframe,
@@ -499,4 +476,3 @@ saveDatasheet(
   data = modelChartDataframe,
   name = "ecoClassify_ModelChartData"
 )
-
