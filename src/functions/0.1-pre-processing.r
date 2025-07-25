@@ -61,8 +61,6 @@ extractRasters <- function(dataframe, column) {
 #' @param trainingRasterDataframe dataframe with input variables
 #' @param column integer specifying the column to extract
 #' @return list of objects (timestepList = numeric, nObs = numeric,
-#' filterResolution = numeric, filterPercent = numeric,
-#' applyFiltering = boolean, applyContextualization = boolean,
 #' contextualizationWindowSize = numeric,
 #' modelType = String ("Random Forest", "MaxENt", or "CNN"),
 #' modelTuning = boolean, setManualThreshold = boolean,
@@ -151,9 +149,6 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   return(list(
     timestepList,
     nObs,
-    #filterResolution,
-    #filterPercent,
-    #applyFiltering,
     applyContextualization,
     contextualizationWindowSize,
     modelType,

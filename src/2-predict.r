@@ -155,10 +155,7 @@ for (t in seq_along(predictRasterList)) {
 
   # Generate rasterDataframe based on filtering argument
   classifiedRasterOutputDataframe <- generateRasterDataframe(
-    #applyFiltering,
     classifiedPresence,
-    #filterResolution,
-    #filterPercent,
     category = "predicting",
     timestep,
     transferDir,
