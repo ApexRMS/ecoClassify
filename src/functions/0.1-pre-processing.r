@@ -74,7 +74,6 @@ extractRasters <- function(dataframe, column) {
 #' This function extracts variables from the syncrosim datasheets.
 #' @noRd
 assignVariables <- function(myScenario, trainingRasterDataframe, column) {
-  
   # extract unique timesteps from trainingRasterDataframe
   timestepList <- trainingRasterDataframe %>%
     filter(!is.na(column)) %>%
@@ -86,17 +85,21 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
     myScenario,
     name = "ecoClassify_ClassifierOptions"
   )
+  advClassifierOptionsDataframe <- datasheet(
+    myScenario,
+    name = "ecoClassify_AdvancedClassifierOptions"
+  )
 
   # Extract model input values
   nObs <- classifierOptionsDataframe$nObs
-  applyContextualization <- classifierOptionsDataframe$applyContextualization
-  contextualizationWindowSize <- classifierOptionsDataframe$contextualizationWindowSize
+  applyContextualization <- advClassifierOptionsDataframe$applyContextualization
+  contextualizationWindowSize <- advClassifierOptionsDataframe$contextualizationWindowSize
   modelType <- as.character(classifierOptionsDataframe$modelType)
-  modelTuning <- classifierOptionsDataframe$modelTuning
-  setManualThreshold <- classifierOptionsDataframe$setManualThreshold
-  manualThreshold <- classifierOptionsDataframe$manualThreshold
-  normalizeRasters <- classifierOptionsDataframe$normalizeRasters
-  rasterDecimalPlaces <- classifierOptionsDataframe$rasterDecimalPlaces
+  modelTuning <- advClassifierOptionsDataframe$modelTuning
+  setManualThreshold <- advClassifierOptionsDataframe$setManualThreshold
+  manualThreshold <- advClassifierOptionsDataframe$manualThreshold
+  normalizeRasters <- advClassifierOptionsDataframe$normalizeRasters
+  rasterDecimalPlaces <- advClassifierOptionsDataframe$rasterDecimalPlaces
 
   # assign value of 3 to contextualizationWindowSize if not specified
   if (applyContextualization == TRUE) {
@@ -129,34 +132,6 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
     )
   }
 
-  # Load post-processing options datasheet
-  postProcessingDataframe <- datasheet(
-    myScenario,
-    name = "ecoClassify_PostProcessingOptions"
-  )
-
-  # Extract post-processing values
-  filterResolution <- postProcessingDataframe$filterResolution
-  filterPercent <- postProcessingDataframe$filterPercent
-  applyFiltering <- postProcessingDataframe$applyFiltering
-
-  # apply default filtering values if not specified
-  if (is.na(filterResolution) && applyFiltering == TRUE) {
-    filterResolution <- 5
-    updateRunLog(
-      "Filter resolution was not supplied; using default value of 5",
-      type = "info"
-    )
-  }
-
-  if (is.na(filterPercent) && applyFiltering == TRUE) {
-    filterPercent <- 0.25
-    updateRunLog(
-      "Filter percent was not supplied; using default value of 0.25",
-      type = "info"
-    )
-  }
-
   if (setManualThreshold == TRUE) {
     if (
       is.null(manualThreshold) ||
@@ -176,9 +151,9 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   return(list(
     timestepList,
     nObs,
-    filterResolution,
-    filterPercent,
-    applyFiltering,
+    #filterResolution,
+    #filterPercent,
+    #applyFiltering,
     applyContextualization,
     contextualizationWindowSize,
     modelType,
@@ -342,7 +317,6 @@ normalizeRaster <- function(rasterList) {
 #'
 #' @noRd
 checkNA <- function(rasterList) {
-
   for (i in seq_along(rasterList)) {
     raster <- rasterList[[i]]
 
