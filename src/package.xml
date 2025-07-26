@@ -56,8 +56,8 @@
     
     <dataSheet name="PostProcessingFilter" displayName="Filtering" isSingleRow="True">
         <column name="applyFiltering" dataType="Boolean" displayName="Apply filtering"/>
-        <column name="filterValue" dataType="Double" displayName="Min neighbors to keep"/>
-        <column name="fillValue" dataType="Double" displayName="Min neighbors to fill"/>
+        <column name="filterValue" dataType="Integer" displayName="Min neighbors to keep"/>
+        <column name="fillValue" dataType="Integer" displayName="Min neighbors to fill"/>
     </dataSheet>
 
     <dataSheet name="PostProcessingRule" displayName="Rule-Based Restrictions">
