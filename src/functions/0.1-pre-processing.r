@@ -61,8 +61,6 @@ extractRasters <- function(dataframe, column) {
 #' @param trainingRasterDataframe dataframe with input variables
 #' @param column integer specifying the column to extract
 #' @return list of objects (timestepList = numeric, nObs = numeric,
-#' filterResolution = numeric, filterPercent = numeric,
-#' applyFiltering = boolean, applyContextualization = boolean,
 #' contextualizationWindowSize = numeric,
 #' modelType = String ("Random Forest", "MaxENt", or "CNN"),
 #' modelTuning = boolean, setManualThreshold = boolean,
@@ -151,9 +149,6 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   return(list(
     timestepList,
     nObs,
-    #filterResolution,
-    #filterPercent,
-    #applyFiltering,
     applyContextualization,
     contextualizationWindowSize,
     modelType,
@@ -316,30 +311,36 @@ normalizeRaster <- function(rasterList) {
 #' @return List of SpatRasters with uniform NA pattern.
 #'
 #' @noRd
-checkNA <- function(rasterList) {
+checkNA <- function(rasterList, verbose = TRUE) {
+  if (!is.list(rasterList)) {
+    rasterList <- list(rasterList)
+  }
+
+  issues <- FALSE
+
   for (i in seq_along(rasterList)) {
     raster <- rasterList[[i]]
 
-    # Check if each layer has the same number of non NA cells
-    cellCounts <- sapply(1:nlyr(raster), function(j) {
-      lyr <- raster[[j]]
-      if (is.factor(lyr)) {
-        return(sum(!is.na(as.character(values(lyr)))))
-      } else {
-        return(sum(!is.na(values(lyr))))
-      }
-    })
+    if (terra::nlyr(raster) == 1) {
+      next
+    }
+
+    # Fast check using global function - correct syntax
+    cellCounts <- terra::global(raster, fun = function(x) sum(!is.na(x)))
+    cellCounts <- as.numeric(cellCounts[, 1])
 
     if (length(unique(cellCounts)) != 1) {
-      msg <- sprintf(
-        "Input raster %d: Layers have unequal number of cells.",
-        i
-      )
-      if (exists("updateRunLog")) {
-        updateRunLog(msg, type = "info")
-      } else {
-        message(msg)
+      issues <- TRUE
+      if (verbose) {
+        message(sprintf(
+          "Raster %d: Inconsistent NA patterns (range: %d-%d valid cells)",
+          i,
+          min(cellCounts),
+          max(cellCounts)
+        ))
       }
     }
   }
+
+  return(issues)
 }

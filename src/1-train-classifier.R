@@ -91,10 +91,9 @@ if (
     length(rasterDecimalPlaces) > 0 &&
     !is.na(rasterDecimalPlaces)
 ) {
-  roundedRasters <- lapply(trainingRasterList, function(r) {
-    return(app(r, fun = function(x) round(x, rasterDecimalPlaces)))
+  trainingRasterList <- lapply(trainingRasterList, function(r) {
+    round(r, digits = rasterDecimalPlaces)
   })
-  trainingRasterList <- roundedRasters
 }
 
 # Normalize training rasters, if selected

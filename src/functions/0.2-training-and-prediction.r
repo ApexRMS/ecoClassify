@@ -337,10 +337,7 @@ reclassifyRaster <- function(raster, threshold) {
 #' datasheets. Optionally applies spatial filtering to reduce spurious presence pixels
 #' based on neighborhood context.
 #'
-#' @param applyFiltering Logical; whether to apply spatial filtering to the presence raster.
 #' @param predictedPresence A SpatRaster object representing predicted binary presence values.
-#' @param filterResolution Size of the moving window used in filtering (numeric, e.g., 5 = 5x5).
-#' @param filterPercent Proportion threshold of non-presence cells required to flip presence (numeric).
 #' @param category Category label used in file naming (e.g., "predicting" or "training").
 #' @param timestep Integer representing the current model timestep.
 #' @param transferDir File path to the directory where rasters will be saved.
