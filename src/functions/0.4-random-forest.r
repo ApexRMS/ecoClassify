@@ -30,33 +30,64 @@
 #' for full raster extents.
 #' @noRd
 predictRanger <- function(raster, model) {
+  # Pre-allocate output raster
   predictionRaster <- raster[[1]]
   names(predictionRaster) <- "present"
+  rasterMatrix <- terra::values(raster, mat = TRUE, na.rm = FALSE)
 
-  rasterMatrix <- terra::values(raster, mat = TRUE)
+  # Find valid cases once
   valid_idx <- complete.cases(rasterMatrix)
-  rasterMatrix <- as.data.frame(rasterMatrix[valid_idx, ])
+  n_valid <- sum(valid_idx)
 
-  # Handle factor levels
-  for (var in model$cat_vars) {
-    if (!var %in% names(rasterMatrix)) next
-
-    # Safely coerce with unseen handling
-    f <- factor(as.character(rasterMatrix[[var]]), levels = model$factor_levels[[var]])
-    f <- addNA(f)
-    if (!"unseen" %in% levels(f)) {
-      levels(f) <- c(levels(f), "unseen")
-    }
-    f[is.na(f)] <- "unseen"
-    rasterMatrix[[var]] <- f
+  if (n_valid == 0) {
+    return(predictionRaster) # Return empty raster if no valid data
   }
 
-  predictedValues <- data.frame(predict(model$model, data = rasterMatrix))[, 2]
+  # Subset to valid cases only
+  validMatrix <- rasterMatrix[valid_idx, , drop = FALSE]
 
+  # Convert to data.frame only for valid data
+  validDF <- as.data.frame(validMatrix)
+
+  # Optimize factor handling - only process categorical variables that exist
+  cat_vars_present <- intersect(model$cat_vars, names(validDF))
+
+  if (length(cat_vars_present) > 0) {
+    # Vectorized factor processing
+    for (var in cat_vars_present) {
+      var_levels <- model$factor_levels[[var]]
+
+      # Fast factor creation with unseen level handling
+      char_vals <- as.character(validDF[[var]])
+
+      # Create factor with original levels + unseen
+      all_levels <- c(var_levels, "unseen")
+      f <- factor(char_vals, levels = all_levels)
+
+      # Set unseen values (NAs from factor creation) to "unseen"
+      f[is.na(f)] <- "unseen"
+
+      validDF[[var]] <- f
+    }
+  }
+
+  # Make prediction on valid data only
+  predictions <- predict(model$model, data = validDF)
+
+  # Handle different ranger prediction output formats
+  if (is.data.frame(predictions)) {
+    predictedValues <- predictions[, 2]
+  } else if (is.list(predictions) && "predictions" %in% names(predictions)) {
+    predictedValues <- predictions$predictions[, 2]
+  } else {
+    predictedValues <- predictions[, 2]
+  }
+
+  # Assign predictions back to raster efficiently
   predictionRaster[valid_idx] <- predictedValues
+
   return(predictionRaster)
 }
-
 #' Train a Random Forest Model with Hyperparameter Tuning ----
 #'
 #' @description
@@ -86,7 +117,10 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   )
 
   # Identify categorical and numeric variables
-  cat_vars <- names(allTrainData[, trainingVariables, drop = FALSE])[sapply(allTrainData[, trainingVariables, drop = FALSE], is.factor)]
+  cat_vars <- names(allTrainData[, trainingVariables, drop = FALSE])[sapply(
+    allTrainData[, trainingVariables, drop = FALSE],
+    is.factor
+  )]
   num_vars <- setdiff(trainingVariables, cat_vars)
 
   mainModel <- formula(sprintf(
