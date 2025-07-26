@@ -1,8 +1,6 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <update comment="Update ecoClassify to version 2.1">
 
-<?xml version="1.0" encoding="utf-8" ?>
-<update comment="Update PostProcessingFilter to use filter/fill neighbor values">
 
   <!-- Modify PostProcessingFilter datasheet -->
   <action code="Exec" condition="TableExists" criteria="PostProcessingFilter">
@@ -11,8 +9,8 @@
     <item>ALTER TABLE PostProcessingFilter DROP COLUMN filterPercent</item>
 
     <!-- Add new columns -->
-    <item>ALTER TABLE PostProcessingFilter ADD COLUMN filterValue DOUBLE</item>
-    <item>ALTER TABLE PostProcessingFilter ADD COLUMN fillValue DOUBLE</item>
+    <item>ALTER TABLE PostProcessingFilter ADD COLUMN filterValue INTEGER</item>
+    <item>ALTER TABLE PostProcessingFilter ADD COLUMN fillValue INTEGER</item>
   </action>
 
 </update>
