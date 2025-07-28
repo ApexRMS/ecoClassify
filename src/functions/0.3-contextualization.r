@@ -7,13 +7,12 @@
 #'
 #' @description
 #' `addRasterAdjacencyValues` augments a multi-layer raster by computing local spatial
-#' statistics (mean, standard deviation, range, entropy) over a square moving window,
+#' statistics (mean, standard deviation, range) over a square moving window,
 #' and by appending the first two PCA components derived from sampled pixel values.
 #'
 #' @param rasterIn A SpatRaster with N predictor layers to contextualize.
 #' @param adjacencyWindow Size of the square focal window (default = `contextualizationWindowSize`).
 #' @param pcaSample Maximum number of pixels to use when computing PCA (default = 100000).
-#' @param nBins Number of bins to use when calculating entropy (default = 16).
 #'
 #' @return A SpatRaster with the following layers concatenated:
 #' \itemize{
@@ -21,7 +20,6 @@
 #'   \item Local means (per layer)
 #'   \item Local standard deviations
 #*   \item Local ranges
-#'   \item Local entropy values
 #'   \item First two PCA components (`PC1`, `PC2`)
 #' }
 #'
