@@ -1,46 +1,6 @@
 ## ecoClassify - Filtering training or predicting steps
 ## ApexRMS, November 2024
 
-# access test library ------------------------------------------------------
-library(rsyncrosim)
-mySession <- session("C:/Program Files/SyncroSim")
-# libPath <- "library/image_classifier_testing.ssim"
-# libPath <- "C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/Tamarisk Predictions.ssim"
-# libPath <- "C:/Users/HannahAdams/Documents/Projects/A332 UofT - UPA Mapping/UPA-testing.ssim"
-# libPath <- "C:/Users/HannahAdams/Documents/Projects/A345 McMurray Metis/Lake-Classification.ssim"
-# libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/ecoClassify Testing.ssim"
-# libPath <- "C:/Users/HannahAdams/Documents/GitHub/HHLTWetlandMapping/HHLT-Swamp-Classification-With-Slope.ssim"
-# libPath <- "C:/Users/HannahAdams/Downloads/UPA Mapping All Classes.ssim"
-# libPath <- "C:/Users/HannahAdams/Documents/Projects/A343 HHLT/Wetland-classification-tests.ssim"
-libPath <- "C:/Users/HannahAdams/Downloads/EcoClassify Template Library.ssim"
-
-myLibrary <- ssimLibrary(name = libPath,
-                         session = mySession)
-
-# define project
-myProject <- rsyncrosim::project(myLibrary, project = 1)
-
-# define scenario
-scenario(myProject)
-myScenario <- scenario(myProject, scenario = 6)
-
-# view datasheets
-datasheet(myScenario)
-
-sourceScripts <- list.files(
-  path = file.path("dev/ecoClassify/functions"),
-  pattern = "\\.[rR]$",
-  full.names = TRUE
-)
-
-invisible(lapply(sourceScripts, source))
-
-# transferDir <- ""
-transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
-
-# --------------------------------------------------------------------------
-
-
 # Set up workspace -------------------------------------------------------------
 
 packageDir <- (Sys.getenv("ssim_package_directory"))
