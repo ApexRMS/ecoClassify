@@ -1,6 +1,46 @@
 ## ecoClassify - Filtering training or predicting steps
 ## ApexRMS, November 2024
 
+# access test library ------------------------------------------------------
+library(rsyncrosim)
+mySession <- session("C:/Program Files/SyncroSim")
+# libPath <- "library/image_classifier_testing.ssim"
+# libPath <- "C:/Users/HannahAdams/Documents/Projects/A333 UMU Tamarisk Pilot/Tamarisk Predictions.ssim"
+# libPath <- "C:/Users/HannahAdams/Documents/Projects/A332 UofT - UPA Mapping/UPA-testing.ssim"
+# libPath <- "C:/Users/HannahAdams/Documents/Projects/A345 McMurray Metis/Lake-Classification.ssim"
+# libPath <- "C:/Users/HannahAdams/Documents/Projects/Image classifier/ecoClassify Testing.ssim"
+# libPath <- "C:/Users/HannahAdams/Documents/GitHub/HHLTWetlandMapping/HHLT-Swamp-Classification-With-Slope.ssim"
+# libPath <- "C:/Users/HannahAdams/Downloads/UPA Mapping All Classes.ssim"
+# libPath <- "C:/Users/HannahAdams/Documents/Projects/A343 HHLT/Wetland-classification-tests.ssim"
+libPath <- "C:/Users/HannahAdams/Downloads/EcoClassify Template Library.ssim"
+
+myLibrary <- ssimLibrary(name = libPath,
+                         session = mySession)
+
+# define project
+myProject <- rsyncrosim::project(myLibrary, project = 1)
+
+# define scenario
+scenario(myProject)
+myScenario <- scenario(myProject, scenario = 6)
+
+# view datasheets
+datasheet(myScenario)
+
+sourceScripts <- list.files(
+  path = file.path("dev/ecoClassify/functions"),
+  pattern = "\\.[rR]$",
+  full.names = TRUE
+)
+
+invisible(lapply(sourceScripts, source))
+
+# transferDir <- ""
+transferDir <- "C:/Users/HannahAdams/OneDrive - Apex Resource Management Solutions Ltd/Desktop/watchtower-testing"
+
+# --------------------------------------------------------------------------
+
+
 # Set up workspace -------------------------------------------------------------
 
 packageDir <- (Sys.getenv("ssim_package_directory"))
@@ -318,7 +358,7 @@ if (!is_empty(trainTimestepList)) {
 }
 
 
-## Predicting ----------------------------------------------------
+## Apply Reclassification Rules ----------------------------------
 
 if (!is_empty(predTimestepList)) {
   for (t in predTimestepList) {
@@ -332,56 +372,56 @@ if (!is_empty(predTimestepList)) {
       unfilteredPredFilepath
     )
 
-    for (i in 1:dim(ruleReclassDataframe)[1]) {
-      if (!is.na(unfilteredPredFilepath)) {
-        # Load rule raster
-        ruleRaster <- rast(ruleReclassDataframe$ruleRasterFile[i])
+    if (nrow(ruleReclassDataframe) != 0) {
+      for (i in 1:dim(ruleReclassDataframe)[1]) {
+        if (!is.na(unfilteredPredFilepath)) {
+          # Load rule raster
+          ruleRaster <- rast(ruleReclassDataframe$ruleRasterFile[i])
+          # Categorical vs. Continuous
+          if (
+            ruleReclassDataframe$ruleMinValue[i] ==
+              ruleReclassDataframe$ruleMaxValue[i]
+          ) {
+            # Reclass table
+            reclassTable <- matrix(
+              c(
+                ruleReclassDataframe$ruleMinValue[i],
+                as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
+              ),
+              ncol = 2,
+              byrow = TRUE
+            )
 
-        # Categorical vs. Continuous
-        if (
-          ruleReclassDataframe$ruleMinValue[i] ==
-            ruleReclassDataframe$ruleMaxValue[i]
-        ) {
-          # Reclass table
-          reclassTable <- matrix(
-            c(
-              ruleReclassDataframe$ruleMinValue[i],
-              as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
-            ),
-            ncol = 2,
-            byrow = TRUE
-          )
-
-          # Reclassify categorical
-          reclassedUnfilteredPred[ruleRaster == reclassTable[, 1]] <-
-            reclassTable[, 2]
-        } else {
-          # Reclass table
-          reclassTable <- matrix(
-            c(
-              ruleReclassDataframe$ruleMinValue,
-              ruleReclassDataframe$ruleMaxValue,
-              as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
-            ),
-            ncol = 3,
-            byrow = T
-          )
-          # Reclassify continuous
-          ruleReclassRaster <- classify(ruleRaster, reclassTable, others = NA)
-          reclassedUnfilteredPred[] <- mask(
-            unfilteredPredRaster,
-            ruleReclassRaster,
-            maskvalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
-              i
-            ])),
-            updatevalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
-              i
-            ]))
-          )
+            # Reclassify categorical
+            reclassedUnfilteredPred[ruleRaster == reclassTable[, 1]] <-
+              reclassTable[, 2]
+          } else {
+            # Reclass table
+            reclassTable <- matrix(
+              c(
+                ruleReclassDataframe$ruleMinValue,
+                ruleReclassDataframe$ruleMaxValue,
+                as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
+              ),
+              ncol = 3,
+              byrow = T
+            )
+            # Reclassify continuous
+            ruleReclassRaster <- classify(ruleRaster, reclassTable, others = NA)
+            reclassedUnfilteredPred[] <- mask(
+              unfilteredPredRaster,
+              ruleReclassRaster,
+              maskvalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
+                i
+              ])),
+              updatevalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
+                i
+              ]))
+            )
+          }
         }
       }
     }
-
     # File path for timestep t
     reclassedPathPred <- file.path(paste0(
       transferDir,
@@ -404,7 +444,6 @@ if (!is_empty(predTimestepList)) {
     ] <- reclassedPathPred
   }
 }
-
 
 # Save datasheets --------------------------------------------------------------
 

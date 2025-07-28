@@ -257,3 +257,84 @@ plotVariableImportance <- function(importanceData, transferDir) {
     )
   ))
 }
+
+#' Filter predicted presence raster and write to file ----
+#'
+#' @description
+#' 'filterRasterDataframe' filters a predicted presence raster based on
+#' spatial neighborhood and writes the filtered raster to file.
+#' It returns a dataframe containing the path to the written file.
+#'
+#' @param applyFiltering logical. Whether filtering should be applied.
+#' @param predictedPresence a SpatRaster object representing predicted presence.
+#' @param filterValue numeric. Minimum number of neighboring presence cells required to retain a presence cell.
+#' @param fillValue numeric. Value to assign to removed presence pixels.
+#' @param category character. Label used to define output filename.
+#' @param timestep integer or character. Time step identifier used in the output filename.
+#' @param transferDir filepath. Directory for writing the filtered raster file.
+#'
+#' @return A dataframe with columns:
+#' \itemize{
+#'   \item \code{Timestep}: the timestep value.
+#'   \item \code{PredictedFiltered}: full filepath of the filtered raster file.
+#' }
+#'
+#' @details
+#' When \code{applyFiltering} is \code{FALSE}, the function skips raster filtering and
+#' returns a dataframe with \code{NA} in the \code{PredictedFiltered} column.
+#' Otherwise, the function filters the raster using a spatial neighborhood-based
+#' algorithm (via \code{filterPredictionRaster}), writes the result to a GeoTIFF file,
+#' and returns its location.
+#'
+#' The output filename follows the pattern:
+#' \code{filteredPredictedPresence-<category>-t<timestep>.tif}
+#'
+#' @noRd
+filterRasterDataframe <- function(
+  applyFiltering,
+  predictedPresence,
+  filterValue,
+  fillValue,
+  category,
+  timestep,
+  transferDir
+) {
+  if (!applyFiltering) {
+    return(data.frame(
+      Timestep = timestep,
+      PredictedFiltered = NA_character_
+    ))
+  }
+
+  # Filter out presence pixels surrounded by non-presence
+  filteredPredictedPresence <- filterPredictionRaster(
+    predictedPresence,
+    filterValue = filterValue,
+    fillValue = fillValue
+  )
+
+  # File path
+  filteredPath <- file.path(paste0(
+    transferDir,
+    "/filteredPredictedPresence-",
+    category,
+    "-t",
+    timestep,
+    ".tif"
+  ))
+
+  # Save raster
+  writeRaster(
+    filteredPredictedPresence,
+    filename = filteredPath,
+    overwrite = TRUE
+  )
+
+  # Build dataframe
+  rasterDataframe <- data.frame(
+    Timestep = timestep,
+    PredictedFiltered = filteredPath
+  )
+
+  return(rasterDataframe)
+}
