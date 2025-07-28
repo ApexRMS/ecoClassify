@@ -100,57 +100,6 @@ predTimestepList <- predictingRasterDataframe %>%
   unique()
 
 
-# Function ---------------------------------------------------------------------
-
-filterRasterDataframe <- function(
-  applyFiltering,
-  predictedPresence,
-  filterValue,
-  fillValue,
-  category,
-  timestep,
-  transferDir
-) {
-  if (!applyFiltering) {
-    return(data.frame(
-      Timestep = timestep,
-      PredictedFiltered = NA_character_
-    ))
-  }
-
-  # Filter out presence pixels surrounded by non-presence
-  filteredPredictedPresence <- filterPredictionRaster(
-    predictedPresence,
-    filterValue = filterValue,
-    fillValue = fillValue
-  )
-
-  # File path
-  filteredPath <- file.path(paste0(
-    transferDir,
-    "/filteredPredictedPresence-",
-    category,
-    "-t",
-    timestep,
-    ".tif"
-  ))
-
-  # Save raster
-  writeRaster(
-    filteredPredictedPresence,
-    filename = filteredPath,
-    overwrite = TRUE
-  )
-
-  # Build dataframe
-  rasterDataframe <- data.frame(
-    Timestep = timestep,
-    PredictedFiltered = filteredPath
-  )
-
-  return(rasterDataframe)
-}
-
 # Filter raster ----------------------------------------------------------------
 
 progressBar(type = "message", message = "Filtering")
@@ -318,7 +267,7 @@ if (!is_empty(trainTimestepList)) {
 }
 
 
-## Predicting ----------------------------------------------------
+## Apply Reclassification Rules ----------------------------------
 
 if (!is_empty(predTimestepList)) {
   for (t in predTimestepList) {
@@ -332,56 +281,56 @@ if (!is_empty(predTimestepList)) {
       unfilteredPredFilepath
     )
 
-    for (i in 1:dim(ruleReclassDataframe)[1]) {
-      if (!is.na(unfilteredPredFilepath)) {
-        # Load rule raster
-        ruleRaster <- rast(ruleReclassDataframe$ruleRasterFile[i])
+    if (nrow(ruleReclassDataframe) != 0) {
+      for (i in 1:dim(ruleReclassDataframe)[1]) {
+        if (!is.na(unfilteredPredFilepath)) {
+          # Load rule raster
+          ruleRaster <- rast(ruleReclassDataframe$ruleRasterFile[i])
+          # Categorical vs. Continuous
+          if (
+            ruleReclassDataframe$ruleMinValue[i] ==
+              ruleReclassDataframe$ruleMaxValue[i]
+          ) {
+            # Reclass table
+            reclassTable <- matrix(
+              c(
+                ruleReclassDataframe$ruleMinValue[i],
+                as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
+              ),
+              ncol = 2,
+              byrow = TRUE
+            )
 
-        # Categorical vs. Continuous
-        if (
-          ruleReclassDataframe$ruleMinValue[i] ==
-            ruleReclassDataframe$ruleMaxValue[i]
-        ) {
-          # Reclass table
-          reclassTable <- matrix(
-            c(
-              ruleReclassDataframe$ruleMinValue[i],
-              as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
-            ),
-            ncol = 2,
-            byrow = TRUE
-          )
-
-          # Reclassify categorical
-          reclassedUnfilteredPred[ruleRaster == reclassTable[, 1]] <-
-            reclassTable[, 2]
-        } else {
-          # Reclass table
-          reclassTable <- matrix(
-            c(
-              ruleReclassDataframe$ruleMinValue,
-              ruleReclassDataframe$ruleMaxValue,
-              as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
-            ),
-            ncol = 3,
-            byrow = T
-          )
-          # Reclassify continuous
-          ruleReclassRaster <- classify(ruleRaster, reclassTable, others = NA)
-          reclassedUnfilteredPred[] <- mask(
-            unfilteredPredRaster,
-            ruleReclassRaster,
-            maskvalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
-              i
-            ])),
-            updatevalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
-              i
-            ]))
-          )
+            # Reclassify categorical
+            reclassedUnfilteredPred[ruleRaster == reclassTable[, 1]] <-
+              reclassTable[, 2]
+          } else {
+            # Reclass table
+            reclassTable <- matrix(
+              c(
+                ruleReclassDataframe$ruleMinValue,
+                ruleReclassDataframe$ruleMaxValue,
+                as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
+              ),
+              ncol = 3,
+              byrow = T
+            )
+            # Reclassify continuous
+            ruleReclassRaster <- classify(ruleRaster, reclassTable, others = NA)
+            reclassedUnfilteredPred[] <- mask(
+              unfilteredPredRaster,
+              ruleReclassRaster,
+              maskvalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
+                i
+              ])),
+              updatevalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
+                i
+              ]))
+            )
+          }
         }
       }
     }
-
     # File path for timestep t
     reclassedPathPred <- file.path(paste0(
       transferDir,
@@ -404,7 +353,6 @@ if (!is_empty(predTimestepList)) {
     ] <- reclassedPathPred
   }
 }
-
 
 # Save datasheets --------------------------------------------------------------
 
