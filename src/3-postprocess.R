@@ -100,57 +100,6 @@ predTimestepList <- predictingRasterDataframe %>%
   unique()
 
 
-# Function ---------------------------------------------------------------------
-
-filterRasterDataframe <- function(
-  applyFiltering,
-  predictedPresence,
-  filterValue,
-  fillValue,
-  category,
-  timestep,
-  transferDir
-) {
-  if (!applyFiltering) {
-    return(data.frame(
-      Timestep = timestep,
-      PredictedFiltered = NA_character_
-    ))
-  }
-
-  # Filter out presence pixels surrounded by non-presence
-  filteredPredictedPresence <- filterPredictionRaster(
-    predictedPresence,
-    filterValue = filterValue,
-    fillValue = fillValue
-  )
-
-  # File path
-  filteredPath <- file.path(paste0(
-    transferDir,
-    "/filteredPredictedPresence-",
-    category,
-    "-t",
-    timestep,
-    ".tif"
-  ))
-
-  # Save raster
-  writeRaster(
-    filteredPredictedPresence,
-    filename = filteredPath,
-    overwrite = TRUE
-  )
-
-  # Build dataframe
-  rasterDataframe <- data.frame(
-    Timestep = timestep,
-    PredictedFiltered = filteredPath
-  )
-
-  return(rasterDataframe)
-}
-
 # Filter raster ----------------------------------------------------------------
 
 progressBar(type = "message", message = "Filtering")
