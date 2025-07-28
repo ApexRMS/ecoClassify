@@ -35,23 +35,23 @@ postProcessingDataframe <- datasheet(
   name = "ecoClassify_PostProcessingFilter"
 )
 
-filterResolution <- postProcessingDataframe$filterResolution
-filterPercent <- postProcessingDataframe$filterPercent
+filterValue <- postProcessingDataframe$filterValue
+fillValue <- postProcessingDataframe$fillValue
 applyFiltering <- postProcessingDataframe$applyFiltering
 
 # Apply default filtering values if not specified
 if (dim(postProcessingDataframe)[1] != 0) {
-  if (is.na(filterResolution) && applyFiltering == TRUE) {
-    filterResolution <- 5
+  if (is.na(filterValue) && applyFiltering == TRUE) {
+    filterValue <- 8
     updateRunLog(
-      "Filter resolution was not supplied; using default value of 5",
+      "Number of neighbours for filtering was not supplied; using default value of 8",
       type = "info"
     )
   }
-  if (is.na(filterPercent) && applyFiltering == TRUE) {
-    filterPercent <- 0.25
+  if (is.na(fillValue) && applyFiltering == TRUE) {
+    fillValue <- 8
     updateRunLog(
-      "Filter percent was not supplied; using default value of 0.25",
+      "Number of neighbours for filling was not supplied; using default value of 8",
       type = "info"
     )
   }
@@ -105,8 +105,8 @@ predTimestepList <- predictingRasterDataframe %>%
 filterRasterDataframe <- function(
   applyFiltering,
   predictedPresence,
-  filterResolution,
-  filterPercent,
+  filterValue,
+  fillValue,
   category,
   timestep,
   transferDir
@@ -119,12 +119,10 @@ filterRasterDataframe <- function(
   }
 
   # Filter out presence pixels surrounded by non-presence
-  filteredPredictedPresence <- focal(
+  filteredPredictedPresence <- filterPredictionRaster(
     predictedPresence,
-    w = matrix(1, 5, 5),
-    fun = filterFun,
-    resolution = filterResolution,
-    percent = filterPercent
+    filterValue = filterValue,
+    fillValue = fillValue
   )
 
   # File path
@@ -173,8 +171,8 @@ for (t in trainTimestepList) {
     filteredTraining <- filterRasterDataframe(
       applyFiltering,
       predictedPresence,
-      filterResolution,
-      filterPercent,
+      filterValue,
+      fillValue,
       "training",
       t,
       transferDir
@@ -203,8 +201,8 @@ for (t in predTimestepList) {
     filteredPredicting <- filterRasterDataframe(
       applyFiltering,
       predictedPresence,
-      filterResolution,
-      filterPercent,
+      filterValue,
+      fillValue,
       "predicting",
       t,
       transferDir

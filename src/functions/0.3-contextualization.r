@@ -7,13 +7,12 @@
 #'
 #' @description
 #' `addRasterAdjacencyValues` augments a multi-layer raster by computing local spatial
-#' statistics (mean, standard deviation, range, entropy) over a square moving window,
+#' statistics (mean, standard deviation, range) over a square moving window,
 #' and by appending the first two PCA components derived from sampled pixel values.
 #'
 #' @param rasterIn A SpatRaster with N predictor layers to contextualize.
 #' @param adjacencyWindow Size of the square focal window (default = `contextualizationWindowSize`).
 #' @param pcaSample Maximum number of pixels to use when computing PCA (default = 100000).
-#' @param nBins Number of bins to use when calculating entropy (default = 16).
 #'
 #' @return A SpatRaster with the following layers concatenated:
 #' \itemize{
@@ -21,7 +20,6 @@
 #'   \item Local means (per layer)
 #'   \item Local standard deviations
 #*   \item Local ranges
-#'   \item Local entropy values
 #'   \item First two PCA components (`PC1`, `PC2`)
 #' }
 #'
@@ -35,93 +33,47 @@
 addRasterAdjacencyValues <- function(
   rasterIn,
   adjacencyWindow = contextualizationWindowSize,
-  pcaSample = 100000,
-  nBins = 16
+  pcaSample = 100000
 ) {
-  terraOptions(threads = 7)
-  # helper to compute local range
-  rangeFun <- function(vals, na.rm = TRUE) {
-    if (na.rm) vals <- vals[!is.na(vals)]
-    if (length(vals) == 0) return(NA_real_)
-    max(vals) - min(vals)
-  }
-
-  # helper to compute local entropy
-  entropyFun <- function(vals, na.rm = TRUE) {
-    if (na.rm) vals <- vals[!is.na(vals)]
-    if (length(vals) == 0) return(NA_real_)
-    h <- hist(vals, breaks = nBins, plot = FALSE)
-    p <- h$counts / sum(h$counts)
-    p <- p[p > 0]
-    -sum(p * log2(p))
-  }
-
-  # build moving-window weight matrix
+  # 1) Build the window
   w <- matrix(1, adjacencyWindow, adjacencyWindow)
 
-  # compute PCA on a random sample of pixels
+  # 2) PCA
   vals <- values(rasterIn, mat = TRUE)
   keep <- complete.cases(vals)
   samp <- sample(which(keep), min(pcaSample, sum(keep)))
   pcaMod <- prcomp(vals[samp, ], scale. = TRUE)
-
-  pcs <- predict(
-    rasterIn,
-    model = pcaMod,
-    index = 1:2,
-    filename = "",
-    overwrite = TRUE
-  )
+  pcs <- predict(rasterIn, pcaMod, index = 1:2)
   names(pcs) <- c("PC1", "PC2")
 
-  # compute local mean
-  adjMean <- focal(
+  # 3) Four threaded focal calls
+  rasterNames <- names(rasterIn)
+  adjMean <- focal(rasterIn, w, fun = "mean", na.rm = TRUE)
+  names(adjMean) <- paste0(rasterNames, "_mean")
+
+  adjSd <- focal(rasterIn, w, fun = "sd", na.rm = TRUE)
+  names(adjSd) <- paste0(rasterNames, "_sd")
+
+  adjMin <- focal(rasterIn, w, fun = "min", na.rm = TRUE)
+  names(adjMin) <- paste0(rasterNames, "_min")
+
+  adjMax <- focal(rasterIn, w, fun = "max", na.rm = TRUE)
+  names(adjMax) <- paste0(rasterNames, "_max")
+
+  # 4) Range = max – min
+  adjRange <- adjMax - adjMin
+  names(adjRange) <- paste0(rasterNames, "_range")
+
+  # 5) Stack & return
+  return(c(
     rasterIn,
-    w = w,
-    fun = "mean",
-    na.rm = TRUE,
-    filename = "",
-    overwrite = TRUE
-  )
-  names(adjMean) <- paste0(names(rasterIn), "_mean")
-
-  # compute local sd
-  adjSd <- focal(
-    rasterIn,
-    w = w,
-    fun = "sd",
-    na.rm = TRUE,
-    filename = "",
-    overwrite = TRUE
-  )
-  names(adjSd) <- paste0(names(rasterIn), "_sd")
-
-  # compute local range
-  adjRange <- focal(
-    rasterIn,
-    w = w,
-    fun = rangeFun,
-    na.rm = TRUE,
-    filename = "",
-    overwrite = TRUE
-  )
-  names(adjRange) <- paste0(names(rasterIn), "_range")
-
-  # compute local entropy
-  adjEntropy <- focal(
-    rasterIn,
-    w = w,
-    fun = entropyFun,
-    na.rm = TRUE,
-    filename = "",
-    overwrite = TRUE
-  )
-  names(adjEntropy) <- paste0(names(rasterIn), "_entropy")
-
-  # stack everything: original → mean → sd → range → entropy → PCs
-  rasterOut <- c(rasterIn, adjMean, adjSd, adjRange, adjEntropy, pcs)
-
-  return(rasterOut)
+    adjMean,
+    adjSd,
+    adjMin,
+    adjMax,
+    adjRange,
+    pcs
+  ))
 }
 
 #' Contextualize Raster List ----

@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<update comment="Update ecoClassify to version 2.1">
+
+
+  <!-- Modify PostProcessingFilter datasheet -->
+  <action code="Exec" condition="TableExists" criteria="PostProcessingFilter">
+    <!-- Remove old columns -->
+    <item>ALTER TABLE PostProcessingFilter DROP COLUMN filterResolution</item>
+    <item>ALTER TABLE PostProcessingFilter DROP COLUMN filterPercent</item>
+
+    <!-- Add new columns -->
+    <item>ALTER TABLE PostProcessingFilter ADD COLUMN filterValue INTEGER</item>
+    <item>ALTER TABLE PostProcessingFilter ADD COLUMN fillValue INTEGER</item>
+  </action>
+
+</update>
+
