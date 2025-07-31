@@ -50,6 +50,9 @@ splitTrainTest <- function(
 
   # Get a reference raster (single layer from the first stack)
   r0 <- trainingRasterList[[1]][[1]]
+  for (r in trainingRasterList) {
+    r0 <- mask(r0, !is.na(r[[1]]), maskvalues = FALSE) # restrict to cells valid across all rasters
+  }
 
   # Mask of valid (non-NA) cells
   valid_mask <- !is.na(r0)
@@ -103,17 +106,16 @@ splitTrainTest <- function(
     )
   }
 
-  # Stratified sampling by presence
-  trainPts <- ptsSf %>%
-    group_by(presence) %>%
-    slice_sample(prop = proportionTraining) %>%
-    ungroup()
+  # Slice globally
+  nTrain <- round(nrow(ptsSf) * proportionTraining)
+  trainPts <- slice_sample(ptsSf, n = nTrain)
 
-  testPts <- anti_join(
-    ptsSf,
-    st_drop_geometry(trainPts),
-    by = colnames(trainPts)[!colnames(trainPts) %in% c("geometry")]
+  train_idx <- sample(
+    seq_len(nrow(ptsSf)),
+    size = round(nrow(ptsSf) * proportionTraining)
   )
+  trainPts <- ptsSf[train_idx, ]
+  testPts <- ptsSf[-train_idx, ]
 
   # Extract predictors at each time step
   extract_at_pts <- function(rStack, pts) {
