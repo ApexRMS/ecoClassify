@@ -59,7 +59,9 @@ splitTrainTest <- function(
   # Get reference raster and establish valid mask
   r0 <- trainingRasterList[[1]][[1]]
   for (r in trainingRasterList) {
-    r0 <- mask(r0, !is.na(r[[1]]), maskvalues = FALSE)
+    for (i in 1:nlyr(r)) {
+      r0 <- mask(r0, r[[i]])
+    }
   }
 
   validMask <- !is.na(r0)
