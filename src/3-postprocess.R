@@ -321,8 +321,8 @@ if (!is_empty(predTimestepList)) {
               # Reclass table
               reclassTable <- matrix(
                 c(
-                  ruleReclassDataframe$ruleMinValue,
-                  ruleReclassDataframe$ruleMaxValue,
+                  ruleReclassDataframe$ruleMinValue[i],
+                  ruleReclassDataframe$ruleMaxValue[i],
                   as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
                 ),
                 ncol = 3,
