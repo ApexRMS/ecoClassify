@@ -1,13 +1,5 @@
 #!/bin/bash
 set -e
 
-
-python testing/integration/reinstallPackage.py \
-  --meta "testing/integration/metadata.xml" \
-  --folder ./src \
-  --reinstall \
-  --packagemanager "/c/Program Files/SyncroSim/SyncroSim.PackageManager.exe"
-
-
-  
-python testing/integration/testTemplateLibrary.py testing/integration/metadata.xml --console "/c/Program Files/SyncroSim/SyncroSim.Console.exe" --tempdir scratch/
+echo "Running end-to-end integration test..."
+"C:/Program Files/R/R-4.5.1/bin/Rscript.exe" test-final.R
