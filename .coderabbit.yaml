@@ -1,0 +1,68 @@
+# Option 1 ----------------------------------------------------------
+# Centralized coding standards reference for a single repository
+
+# -------------------------------------------------------------------
+# 1. Tell CodeRabbit where to find your coding standards
+# -------------------------------------------------------------------
+code_guidelines:
+  # Example: a file in the docs folder
+  - docs/coding-standards.md
+  # Example: a file in the .github folder (GitHub Copilot-compatible)
+  - .github/copilot-instructions.md
+
+# -------------------------------------------------------------------
+# 2. Optional: Review settings
+# -------------------------------------------------------------------
+reviews:
+  # Choose the type of review: "pull_request", "push", or both
+  on: pull_request
+
+  # How strict to be when applying rules from your guidelines
+  strictness: high  # options: low, medium, high
+
+  # Limit review to certain file types or paths
+  include:
+    - "**/*.js"
+    - "**/*.ts"
+    - "**/*.py"
+    - "**/*.md"
+
+  # Exclude paths from review
+  exclude:
+    - "node_modules/**"
+    - "dist/**"
+    - "build/**"
+
+# -------------------------------------------------------------------
+# 3. Optional: AI model / verbosity settings
+# -------------------------------------------------------------------
+ai:
+  # Choose the verbosity of CodeRabbit's comments
+  verbosity: detailed  # options: brief, detailed
+
+  # Set AI review style to align with your team’s tone
+  tone: constructive  # options: friendly, constructive, strict
+
+# Option 2 ---------------------------------------------------------
+# Centralized coding standards reference for multiple repositories
+
+code_guidelines:
+  # All repos will have the same filename/path for standards
+  - .github/copilot-instructions.md
+
+reviews:
+  on: pull_request
+  strictness: high
+  include:
+    - "**/*.js"
+    - "**/*.ts"
+    - "**/*.py"
+    - "**/*.md"
+  exclude:
+    - "node_modules/**"
+    - "dist/**"
+    - "build/**"
+
+ai:
+  verbosity: detailed
+  tone: constructive
