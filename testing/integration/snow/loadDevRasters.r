@@ -7,16 +7,3 @@ trainingRasterDataframe <- data.frame(
     resp = rasters[4:6],
     stringsAsFactors = FALSE
 )
-
-
-rasters <- list.files(
-    "D:/Github/B002-RootTraces/data/train",
-    pattern = ".tif$",
-    full.names = TRUE
-)
-trainingRasterDataframe <- data.frame(
-    Timesteps = 1,
-    preds = rasters[c(1)],
-    resp = rasters[c(2)],
-    stringsAsFactors = FALSE
-)
