@@ -2,7 +2,7 @@
 # 1. Tell CodeRabbit where to find your coding standards
 # -------------------------------------------------------------------
 code_guidelines:
-  - copilot-instructions.md
+  - src/copilot-instructions.md
 
 # -------------------------------------------------------------------
 # 2. Review settings
