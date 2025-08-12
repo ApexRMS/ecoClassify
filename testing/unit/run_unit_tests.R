@@ -16,16 +16,16 @@ source("testing/unit/helper-setup.R")
 # This avoids loading heavy dependencies while testing core logic
 
 # From 0.0-setup.r - setCores function
-setCores <- function(mulitprocessingSheet) {
+setCores <- function(multiprocessingSheet) {
   availableCores <- parallel::detectCores()
-  if (mulitprocessingSheet$EnableMultiprocessing) {
-    requestedCores <- mulitprocessingSheet$MaximumJobs
+  if (multiprocessingSheet$EnableMultiprocessing) {
+    requestedCores <- multiprocessingSheet$MaximumJobs
     if (requestedCores > availableCores) {
       warning(paste0(
         "Requested number of jobs exceeds available cores. Continuing run with ",
         availableCores, " jobs."
       ))
-      nCores <- availableCores - 1
+      nCores <- max(1L, availableCores - 1L)
     } else {
       nCores <- requestedCores
     }
