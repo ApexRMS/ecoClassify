@@ -410,7 +410,7 @@ validateAndAlignRasters <- function(trainingRasterList, groundTruthRasterList) {
   reference_props <- getRasterProperties(trainingRasterList[[1]])
 
   # Check all training rasters against the reference
-  for (i in 2:length(trainingRasterList)) {
+  for (i in seq_along(trainingRasterList)) {
     current_props <- getRasterProperties(trainingRasterList[[i]])
     comparison <- compareRasterProperties(reference_props, current_props)
 
