@@ -39,6 +39,9 @@ setCores <- function(multiprocessingSheet) {
 normalizeBand <- function(band) {
   min_val <- min(values(band), na.rm = TRUE)
   max_val <- max(values(band), na.rm = TRUE)
+  if (max_val == min_val) {
+    return(band * 0)
+  }
   (band - min_val) / (max_val - min_val)
 }
 
