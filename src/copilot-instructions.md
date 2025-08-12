@@ -17,10 +17,10 @@ Follow these rules for **style**, **structure**, and **best practices**.
 - Use **relative paths** instead of absolute paths.
 - Group helper functions in a `helper-functions` file or module.
 - Organize project folders as:
-src/ # Source code
-tests/ # Unit and integration tests
-docs/ # Documentation
-scripts/ # Utility scripts
+    - src/ Source code
+    - tests/ # Unit and integration tests
+    - docs/ # Documentation
+    - scripts/ # Utility scripts
 
 - Commit only essential files; ignore build artifacts and large datasets.
 
@@ -28,7 +28,7 @@ scripts/ # Utility scripts
 
 ## 3. Naming Conventions
 - **R**: Use `camelCase` for variables and functions (e.g., `processData`).
-- **Python**: Use `snake_case` for variables and functions (e.g., `process_data`).
+- **Python**: Use `snake_case` for variables and functions (e.g., `process_data`) unless code is already written using camelCase.
 - Name variables as **nouns** and functions as **verbs**.
 - File names: lowercase with hyphens (e.g., `data-cleaning.py`).
 - Maintain consistent naming across the project.
@@ -36,10 +36,10 @@ scripts/ # Utility scripts
 ---
 
 ## 4. Code Formatting
-- **Line length**: 80–100 characters max.
+- **Line length**: 80 characters max.
 - **Indentation**: 4 spaces for Python, 2 spaces for R.
 - Break long function arguments onto multiple lines and align them.
-- Separate logical sections of code with clear comments:
+- Separate logical sections of code.
 - Avoid trailing whitespace.
 
 ---
@@ -52,34 +52,23 @@ scripts/ # Utility scripts
 ---
 
 ## 6. Testing
-R: 
-- Use testthat.
-
-Python:
-- Use pytest or unittest.
-
+- **R**: use testthat.
+- **Python**: use pytest or unittest.
 - Write unit tests for every new function.
 - Run tests before committing changes.
 
 ---
 
-## 7. Git & Collaboration
-- Create a new branch for each feature or bug fix.
-- Write clear commit messages in imperative mood (e.g., "Add error handling").
-- Submit PRs early and request peer review before merging.
-
----
-
 ## 8. Language-Specific Notes
 R:
-Assign variables with <- except in function arguments.
-Avoid rgdal and raster — use terra instead.
-Use %>% where it improves readability.
+- Assign variables with <- except in function arguments.
+- Avoid rgdal and raster — use terra instead.
+- Use pipes %>%.
 
 Python
-Follow PEP 8, with the exception of using camelCase
-Use import module as alias (e.g., import pandas as pd), not from module import function.
-Prefer f-strings for formatting.
+- Follow PEP 8, with the exception of using camelCase
+- Use import module as alias (e.g., import pandas as pd), not from module import function.
+- Prefer f-strings for formatting.
 
 ---
 
