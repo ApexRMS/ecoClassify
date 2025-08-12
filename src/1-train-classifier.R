@@ -77,9 +77,16 @@ nCores <- setCores(mulitprocessingSheet)
 # Extract list of training and ground truth rasters ----------------------------
 
 trainingRasterList <- extractRasters(trainingRasterDataframe, column = 2)
-
 groundTruthRasterList <- extractRasters(trainingRasterDataframe, column = 3)
 
+# Validate and align rasters ---------------------------------------------------
+progressBar(type = "message", message = "Validating and aligning rasters")
+
+# Check that all training rasters have consistent spatial properties. Reasmple groundTruth as needed
+groundTruthRasterList <- validateAndAlignRasters(
+  trainingRasterList,
+  groundTruthRasterList
+)
 
 # Pre-processing ---------------------------------------------------------------
 
