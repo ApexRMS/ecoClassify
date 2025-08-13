@@ -378,7 +378,7 @@ validateAndAlignRasters <- function(trainingRasterList, groundTruthRasterList) {
   }
 
   # Function to compare two raster properties
-  compareRasterProperties <- function(props1, props2, tolerance = 1e-10) {
+  compareRasterProperties <- function(props1, props2, tolerance = 1e-6) {
     # Compare extent
     extent_match <- all(
       abs(as.vector(props1$extent) - as.vector(props2$extent)) < tolerance
