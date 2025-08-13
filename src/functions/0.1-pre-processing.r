@@ -366,6 +366,14 @@ validateAndAlignRasters <- function(trainingRasterList, groundTruthRasterList) {
     stop("Training and ground truth raster lists must have the same length")
   }
 
+  # Type checks to fail fast with helpful errors
+  if (!all(vapply(trainingRasterList, inherits, logical(1), "SpatRaster"))) {
+    stop("All elements of 'trainingRasterList' must be SpatRaster objects")
+  }
+  if (!all(vapply(groundTruthRasterList, inherits, logical(1), "SpatRaster"))) {
+    stop("All elements of 'groundTruthRasterList' must be SpatRaster objects")
+  }
+
   # Function to extract raster properties
   getRasterProperties <- function(raster) {
     list(
