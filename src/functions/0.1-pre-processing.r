@@ -371,7 +371,7 @@ validateAndAlignRasters <- function(trainingRasterList, groundTruthRasterList) {
     list(
       extent = terra::ext(raster),
       resolution = terra::res(raster),
-      crs = terra::crs(raster),
+      crs = terra::crs(raster, proj = TRUE),
       nrows = terra::nrow(raster),
       ncols = terra::ncol(raster)
     )
