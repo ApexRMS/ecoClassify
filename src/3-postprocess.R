@@ -197,52 +197,58 @@ if (!is_empty(trainTimestepList)) {
           # Load rule raster
           ruleRaster <- rast(ruleReclassDataframe$ruleRasterFile[i])
 
-          # Categorical vs. Continuous
-          if (
-            ruleReclassDataframe$ruleMinValue[i] ==
-              ruleReclassDataframe$ruleMaxValue[i]
-          ) {
-            # Reclass table
-            reclassTable <- matrix(
-              c(
-                ruleReclassDataframe$ruleMinValue[i],
-                as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
-              ),
-              ncol = 2,
-              byrow = TRUE
+          if (ext(ruleRaster) != ext(unfilteredTrainRaster)) {
+            updateRunLog(
+              "Rule raster extent does not match unfiltered training raster extent. Skipping reclassification.",
+              type = "warning"
             )
-
-            # Reclassify categorical
-            reclassedUnfilteredTrain[ruleRaster == reclassTable[, 1]] <-
-              reclassTable[, 2]
           } else {
-            # Reclass table
-            reclassTable <- matrix(
-              c(
-                ruleReclassDataframe$ruleMinValue[i],
-                ruleReclassDataframe$ruleMaxValue[i],
-                as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
-              ),
-              ncol = 3,
-              byrow = T
-            )
-            # Reclassify continuous
-            ruleReclassRaster <- classify(ruleRaster, reclassTable, others = NA)
-            reclassedUnfilteredTrain[] <- mask(
-              unfilteredTrainRaster,
-              ruleReclassRaster,
-              maskvalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
-                i
-              ])),
-              updatevalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
-                i
-              ]))
-            )
+            # Categorical vs. Continuous
+            if (
+              ruleReclassDataframe$ruleMinValue[i] ==
+                ruleReclassDataframe$ruleMaxValue[i]
+            ) {
+              # Reclass table
+              reclassTable <- matrix(
+                c(
+                  ruleReclassDataframe$ruleMinValue[i],
+                  as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
+                ),
+                ncol = 2,
+                byrow = TRUE
+              )
+
+              # Reclassify categorical
+              reclassedUnfilteredTrain[ruleRaster == reclassTable[, 1]] <-
+                reclassTable[, 2]
+            } else {
+              # Reclass table
+              reclassTable <- matrix(
+                c(
+                  ruleReclassDataframe$ruleMinValue[i],
+                  ruleReclassDataframe$ruleMaxValue[i],
+                  as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
+                ),
+                ncol = 3,
+                byrow = T
+              )
+              # Reclassify continuous
+              ruleReclassRaster <- classify(ruleRaster, reclassTable, others = NA)
+              reclassedUnfilteredTrain[] <- mask(
+                unfilteredTrainRaster,
+                ruleReclassRaster,
+                maskvalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
+                  i
+                ])),
+                updatevalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
+                  i
+                ]))
+              )
+            }
           }
         }
       }
     }
-
     # File path for timestep t
     reclassedPathTrain <- file.path(paste0(
       transferDir,
@@ -286,48 +292,56 @@ if (!is_empty(predTimestepList)) {
         if (!is.na(unfilteredPredFilepath)) {
           # Load rule raster
           ruleRaster <- rast(ruleReclassDataframe$ruleRasterFile[i])
-          # Categorical vs. Continuous
-          if (
-            ruleReclassDataframe$ruleMinValue[i] ==
-              ruleReclassDataframe$ruleMaxValue[i]
-          ) {
-            # Reclass table
-            reclassTable <- matrix(
-              c(
-                ruleReclassDataframe$ruleMinValue[i],
-                as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
-              ),
-              ncol = 2,
-              byrow = TRUE
-            )
 
-            # Reclassify categorical
-            reclassedUnfilteredPred[ruleRaster == reclassTable[, 1]] <-
-              reclassTable[, 2]
+          if (ext(ruleRaster) != ext(unfilteredPredRaster)) {
+            updateRunLog(
+              "Rule raster extent does not match unfiltered predicting raster extent. Skipping reclassification.",
+              type = "warning"
+            )
           } else {
-            # Reclass table
-            reclassTable <- matrix(
-              c(
-                ruleReclassDataframe$ruleMinValue,
-                ruleReclassDataframe$ruleMaxValue,
-                as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
-              ),
-              ncol = 3,
-              byrow = T
-            )
-            # Reclassify continuous
-            ruleReclassRaster <- classify(ruleRaster, reclassTable, others = NA)
-            reclassedUnfilteredPred[] <- mask(
-              unfilteredPredRaster,
-              ruleReclassRaster,
-              maskvalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
-                i
-              ])),
-              updatevalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
-                i
-              ]))
-            )
-          }
+            # Categorical vs. Continuous
+            if (
+              ruleReclassDataframe$ruleMinValue[i] ==
+                ruleReclassDataframe$ruleMaxValue[i]
+            ) {
+              # Reclass table
+              reclassTable <- matrix(
+                c(
+                  ruleReclassDataframe$ruleMinValue[i],
+                  as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
+                ),
+                ncol = 2,
+                byrow = TRUE
+              )
+
+              # Reclassify categorical
+              reclassedUnfilteredPred[ruleRaster == reclassTable[, 1]] <-
+                reclassTable[, 2]
+            } else {
+              # Reclass table
+              reclassTable <- matrix(
+                c(
+                  ruleReclassDataframe$ruleMinValue[i],
+                  ruleReclassDataframe$ruleMaxValue[i],
+                  as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
+                ),
+                ncol = 3,
+                byrow = T
+              )
+              # Reclassify continuous
+              ruleReclassRaster <- classify(ruleRaster, reclassTable, others = NA)
+              reclassedUnfilteredPred[] <- mask(
+                unfilteredPredRaster,
+                ruleReclassRaster,
+                maskvalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
+                  i
+                ])),
+                updatevalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
+                  i
+                ]))
+              )
+            }
+          }    
         }
       }
     }
