@@ -344,3 +344,236 @@ checkNA <- function(rasterList, verbose = TRUE) {
 
   return(issues)
 }
+
+
+validateAndAlignRasters <- function(trainingRasterList, groundTruthRasterList) {
+  #' Validate training rasters consistency and align ground truth rasters
+  #'
+  #' @param trainingRasterList List of training rasters
+  #' @param groundTruthRasterList List of ground truth rasters
+  #' @return List with aligned ground truth rasters
+  #' @description This function:
+  #'   1. Validates that all training rasters have matching spatial properties
+  #'   2. Resamples ground truth rasters to match training rasters if needed
+
+  if (length(trainingRasterList) == 0 || length(groundTruthRasterList) == 0) {
+    stop(
+      "Both training and ground truth raster lists must contain at least one raster"
+    )
+  }
+
+  if (length(trainingRasterList) != length(groundTruthRasterList)) {
+    stop("Training and ground truth raster lists must have the same length")
+  }
+
+  # Type checks to fail fast with helpful errors
+  if (!all(vapply(trainingRasterList, inherits, logical(1), "SpatRaster"))) {
+    stop("All elements of 'trainingRasterList' must be SpatRaster objects")
+  }
+  if (!all(vapply(groundTruthRasterList, inherits, logical(1), "SpatRaster"))) {
+    stop("All elements of 'groundTruthRasterList' must be SpatRaster objects")
+  }
+
+  # Function to extract raster properties
+  getRasterProperties <- function(raster) {
+    list(
+      extent = terra::ext(raster),
+      resolution = terra::res(raster),
+      crs = terra::crs(raster, proj = TRUE),
+      nrows = terra::nrow(raster),
+      ncols = terra::ncol(raster)
+    )
+  }
+
+  # Function to compare two raster properties
+  compareRasterProperties <- function(props1, props2, tolerance = 1e-6) {
+    # Compare extent
+    extent_match <- all(
+      abs(as.vector(props1$extent) - as.vector(props2$extent)) < tolerance
+    )
+
+    # Compare resolution
+    res_match <- all(abs(props1$resolution - props2$resolution) < tolerance)
+
+    # Compare CRS (convert to character for comparison)
+    crs_match <- identical(as.character(props1$crs), as.character(props2$crs))
+
+    # Compare dimensions
+    dim_match <- (props1$nrows == props2$nrows) &&
+      (props1$ncols == props2$ncols)
+
+    return(list(
+      extent = extent_match,
+      resolution = res_match,
+      crs = crs_match,
+      dimensions = dim_match,
+      overall = extent_match && res_match && crs_match && dim_match
+    ))
+  }
+
+  # Step 1: Validate training rasters consistency
+  cat("Validating training raster consistency...\n")
+
+  # Get properties of the first training raster as reference
+  reference_props <- getRasterProperties(trainingRasterList[[1]])
+
+  # Check all training rasters against the reference
+  for (i in seq_along(trainingRasterList)) {
+    current_props <- getRasterProperties(trainingRasterList[[i]])
+    comparison <- compareRasterProperties(reference_props, current_props)
+
+    if (!comparison$overall) {
+      error_msg <- paste0(
+        "Training raster ",
+        i,
+        " does not match reference raster properties:\n"
+      )
+
+      if (!comparison$extent) {
+        error_msg <- paste0(
+          error_msg,
+          "  - Extent mismatch: ",
+          "Reference: ",
+          paste(as.vector(reference_props$extent), collapse = ", "),
+          " vs Current: ",
+          paste(as.vector(current_props$extent), collapse = ", "),
+          "\n"
+        )
+      }
+
+      if (!comparison$resolution) {
+        error_msg <- paste0(
+          error_msg,
+          "  - Resolution mismatch: ",
+          "Reference: ",
+          paste(reference_props$resolution, collapse = ", "),
+          " vs Current: ",
+          paste(current_props$resolution, collapse = ", "),
+          "\n"
+        )
+      }
+
+      if (!comparison$crs) {
+        error_msg <- paste0(
+          error_msg,
+          "  - CRS mismatch: ",
+          "Reference: ",
+          as.character(reference_props$crs),
+          " vs Current: ",
+          as.character(current_props$crs),
+          "\n"
+        )
+      }
+
+      if (!comparison$dimensions) {
+        error_msg <- paste0(
+          error_msg,
+          "  - Dimension mismatch: ",
+          "Reference: ",
+          reference_props$nrows,
+          "x",
+          reference_props$ncols,
+          " vs Current: ",
+          current_props$nrows,
+          "x",
+          current_props$ncols,
+          "\n"
+        )
+      }
+
+      stop(error_msg)
+    }
+  }
+
+  cat("✓ All training rasters have consistent spatial properties\n")
+
+  # Step 2: Align ground truth rasters with training rasters
+  cat("Checking and aligning ground truth rasters...\n")
+
+  aligned_groundTruthRasterList <- vector("list", length(groundTruthRasterList))
+  resampled_count <- 0
+
+  for (i in seq_along(groundTruthRasterList)) {
+    training_props <- getRasterProperties(trainingRasterList[[i]])
+    groundtruth_props <- getRasterProperties(groundTruthRasterList[[i]])
+
+    comparison <- compareRasterProperties(training_props, groundtruth_props)
+
+    if (comparison$overall) {
+      # Ground truth already matches training raster
+      aligned_groundTruthRasterList[[i]] <- groundTruthRasterList[[i]]
+      cat("  Raster", i, ": Already aligned\n")
+    } else {
+      # Need to resample ground truth to match training raster
+      cat("  Raster", i, ": Resampling ground truth raster...\n")
+
+      # Log the differences
+      if (!comparison$extent || !comparison$dimensions) {
+        cat("    - Spatial extent/dimensions differ\n")
+      }
+      if (!comparison$resolution) {
+        cat("    - Resolution differs\n")
+      }
+      if (!comparison$crs) {
+        cat("    - CRS differs\n")
+      }
+
+      # Resample using nearest neighbor for categorical data (typical for ground truth)
+      aligned_groundTruthRasterList[[i]] <- tryCatch(
+        {
+          if (!comparison$crs) {
+            terra::project(
+              groundTruthRasterList[[i]],
+              trainingRasterList[[i]],
+              method = "near"
+            )
+          } else {
+            terra::resample(
+              groundTruthRasterList[[i]],
+              trainingRasterList[[i]],
+             method = "near"
+            )
+          }
+        },
+        error = function(e) {
+          op <- if (!comparison$crs) "project" else "resample"
+          stop(sprintf("Failed to %s ground truth raster %d: %s", op, i, conditionMessage(e)))
+        }
+      )
+
+      resampled_count <- resampled_count + 1
+    }
+  }
+
+  if (resampled_count > 0) {
+    cat(
+      "✓ Resampled",
+      resampled_count,
+      "ground truth raster(s) to match training rasters\n"
+    )
+  } else {
+    cat("✓ All ground truth rasters already aligned with training rasters\n")
+  }
+
+  # Final validation
+  cat("Performing final validation...\n")
+  for (i in seq_along(aligned_groundTruthRasterList)) {
+    training_props <- getRasterProperties(trainingRasterList[[i]])
+    aligned_props <- getRasterProperties(aligned_groundTruthRasterList[[i]])
+
+    comparison <- compareRasterProperties(training_props, aligned_props)
+
+    if (!comparison$overall) {
+      msg <- sprintf("Final validation failed for raster pair %d:\n", i)
+      if (!comparison$extent)      msg <- paste0(msg, "  - Extent mismatch\n")
+      if (!comparison$resolution)  msg <- paste0(msg, "  - Resolution mismatch\n")
+      if (!comparison$crs)         msg <- paste0(msg, "  - CRS mismatch\n")
+      if (!comparison$dimensions)  msg <- paste0(msg, "  - Dimension mismatch\n")
+      stop(msg)
+    }
+  }
+
+  cat("✓ All rasters successfully validated and aligned\n")
+
+  return(aligned_groundTruthRasterList)
+}
