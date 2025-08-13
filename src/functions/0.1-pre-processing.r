@@ -556,7 +556,12 @@ validateAndAlignRasters <- function(trainingRasterList, groundTruthRasterList) {
     comparison <- compareRasterProperties(training_props, aligned_props)
 
     if (!comparison$overall) {
-      stop(paste("Final validation failed for raster pair", i))
+      msg <- sprintf("Final validation failed for raster pair %d:\n", i)
+      if (!comparison$extent)      msg <- paste0(msg, "  - Extent mismatch\n")
+      if (!comparison$resolution)  msg <- paste0(msg, "  - Resolution mismatch\n")
+      if (!comparison$crs)         msg <- paste0(msg, "  - CRS mismatch\n")
+      if (!comparison$dimensions)  msg <- paste0(msg, "  - Dimension mismatch\n")
+      stop(msg)
     }
   }
 
