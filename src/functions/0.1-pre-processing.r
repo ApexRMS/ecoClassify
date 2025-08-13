@@ -511,20 +511,27 @@ validateAndAlignRasters <- function(trainingRasterList, groundTruthRasterList) {
       }
 
       # Resample using nearest neighbor for categorical data (typical for ground truth)
-      aligned_groundTruthRasterList[[i]] <-
-        if (!comparison$crs) {
-          terra::project(
-            groundTruthRasterList[[i]],
-            trainingRasterList[[i]],
-            method = "near"
-          )
-        } else {
-          terra::resample(
-            groundTruthRasterList[[i]],
-            trainingRasterList[[i]],
-            method = "near"
-          )
+      aligned_groundTruthRasterList[[i]] <- tryCatch(
+        {
+          if (!comparison$crs) {
+            terra::project(
+              groundTruthRasterList[[i]],
+              trainingRasterList[[i]],
+              method = "near"
+            )
+          } else {
+            terra::resample(
+              groundTruthRasterList[[i]],
+              trainingRasterList[[i]],
+             method = "near"
+            )
+          }
+        },
+        error = function(e) {
+          op <- if (!comparison$crs) "project" else "resample"
+          stop(sprintf("Failed to %s ground truth raster %d: %s", op, i, conditionMessage(e)))
         }
+      )
 
       resampled_count <- resampled_count + 1
     }
