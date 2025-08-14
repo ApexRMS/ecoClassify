@@ -396,15 +396,14 @@ getOptimalThreshold <- function(
   # define thresholds
   thresholds <- seq(0.01, 0.99, by = 0.01)
 
-  # define testing observations (subtract 1 for factor level)
-  testingObservations <- as.numeric(testingData$presence) - 1
-
-  ## predicting data
   if (modelType == "Random Forest") {
+    testingObservations <- as.numeric(testingData$presence) - 1
     testingPredictions <- predict(model$model, testingData)$predictions[, "presence"]
   } else if (modelType == "MaxEnt") {
+    testingObservations <- as.numeric(testingData$presence)
     testingPredictions <- predict(model$model, testingData, type = "logistic")
   } else if (modelType == "CNN") {
+    testingObservations <- as.numeric(testingData$presence)
     testingPredictions <- predictCNN(model, testingData, isRaster = FALSE)
   } else {
     stop("Model type not recognized")
