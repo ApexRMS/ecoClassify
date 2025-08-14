@@ -397,11 +397,11 @@ getOptimalThreshold <- function(
   thresholds <- seq(0.01, 0.99, by = 0.01)
 
   # define testing observations (subtract 1 for factor level)
-  testingObservations <- as.numeric(testingData$presence)
+  testingObservations <- as.numeric(testingData$presence) - 1
 
   ## predicting data
   if (modelType == "Random Forest") {
-    testingPredictions <- predict(model$model, testingData)$predictions[, 2]
+    testingPredictions <- predict(model$model, testingData)$predictions[, "presence"]
   } else if (modelType == "MaxEnt") {
     testingPredictions <- predict(model$model, testingData, type = "logistic")
   } else if (modelType == "CNN") {

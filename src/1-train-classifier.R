@@ -142,6 +142,10 @@ splitData <- splitTrainTest(
 allTrainData <- splitData[[1]]
 allTestData <- splitData[[2]]
 
+if (modelType == "Random Forest") {
+  allTrainData$presence <- factor(allTrainData$presence, levels = c(0, 1), labels = c("absence", "presence"))
+  allTestData$presence <- factor(allTestData$presence, levels = c(0, 1), labels = c("absence", "presence"))
+}
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format --------
 
