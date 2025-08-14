@@ -23,7 +23,7 @@
 #' }
 #'
 #' @details
-#' The spatial extent is divided into equal-sized blocks using `sf::st_make_grid`, then sampling
+#' The spatial extent is divided into equal-sized blocks using using a grid-based block design, then sampling
 #' is performed to ensure spatial stratification and class balance. A warning is issued if >50%
 #' of points fall outside valid blocks due to NA masking. The function then extracts predictor values
 #' at sampled points for all timesteps, combines results across stacks, and returns cleaned datasets
@@ -225,28 +225,27 @@ splitTrainTest <- function(
 
   # Convert to spatial points - vectorized for speed
   sampledCoords <- xyFromCell(r0, sampledCells)
-  sampledSf <- st_as_sf(
-    data.frame(sampledCoords),
-    coords = c("x", "y"),
-    crs = crs(r0)
-  )
+
+  pts <- data.frame(x = sampledCoords[, 1],
+    y = sampledCoords[, 2],
+    cell = sampledCells,
+    stringsAsFactors = FALSE)
 
   # Fast block assignment
   sampledRowcol <- rowColFromCell(r0, sampledCells)
-  rowBins <- cut(sampledRowcol[, 1], breaks = blockDim, labels = FALSE)
-  colBins <- cut(sampledRowcol[, 2], breaks = blockDim, labels = FALSE)
+  rowBins  <- cut(sampledRowcol[, 1], breaks = blockDim, labels = FALSE)
+  colBins  <- cut(sampledRowcol[, 2], breaks = blockDim, labels = FALSE)
   blockIds <- (rowBins - 1) * blockDim + colBins
 
-  # Create final dataset
+  # Create final dataset (no sf)
   classValues <- c(
     rep(minorityClass, length(sampledMinorityIdx)),
     rep(majorityClass, length(sampledMajorityIdx))
   )
 
-  ptsSf <- sampledSf
-  ptsSf$block <- blockIds
-  ptsSf$presence <- classValues
-  ptsSf <- filter(ptsSf, !is.na(block))
+  pts$block    <- blockIds
+  pts$presence <- classValues
+  pts         <- pts[!is.na(pts$block), , drop = FALSE]
 
   updateRunLog(
     sprintf(
@@ -260,12 +259,12 @@ splitTrainTest <- function(
   # Train/test split
   if (spatialBalance) {
     # Spatial block-based split
-    uniqueBlocks <- unique(ptsSf$block)
-    nTrainBlocks <- round(length(uniqueBlocks) * proportionTraining)
-    trainBlocks <- sample(uniqueBlocks, nTrainBlocks)
+    uniqueBlocks   <- unique(pts$block)
+    nTrainBlocks   <- round(length(uniqueBlocks) * proportionTraining)
+    trainBlocks    <- sample(uniqueBlocks, nTrainBlocks)
 
-    trainPts <- filter(ptsSf, block %in% trainBlocks)
-    testPts <- filter(ptsSf, !block %in% trainBlocks)
+    trainPts <- pts[pts$block %in% trainBlocks, , drop = FALSE]
+    testPts  <- pts[!(pts$block %in% trainBlocks), , drop = FALSE]
 
     # Ensure both classes in train and test
     if (
@@ -294,25 +293,16 @@ splitTrainTest <- function(
   }
 
   # Fast predictor extraction
-  extractAtPts <- function(rStack, pts) {
-    terra::extract(rStack, vect(pts), df = TRUE)[, -1]
+  extractAtCells <- function(rStack, cells) {
+    v <- terra::values(rStack, mat = TRUE, na.rm = FALSE)
+    as.data.frame(v[cells, , drop = FALSE])
   }
 
-  trainList <- lapply(trainingRasterList, extractAtPts, pts = trainPts)
-  testList <- lapply(trainingRasterList, extractAtPts, pts = testPts)
+  trainList <- lapply(trainingRasterList, extractAtCells, cells = trainPts$cell)
+  testList  <- lapply(trainingRasterList, extractAtCells,  cells = testPts$cell)
 
-  trainDf <- do.call(
-    rbind,
-    lapply(trainList, function(df) {
-      cbind(df, presence = trainPts$presence)
-    })
-  )
-  testDf <- do.call(
-    rbind,
-    lapply(testList, function(df) {
-      cbind(df, presence = testPts$presence)
-    })
-  )
+  trainDf <- do.call(rbind, lapply(trainList, \(df) cbind(df, presence = trainPts$presence)))
+  testDf  <- do.call(rbind, lapply(testList,  \(df) cbind(df, presence = testPts$presence)))
 
   # Clean up NA values
   trainDf <- trainDf[complete.cases(trainDf), ]
