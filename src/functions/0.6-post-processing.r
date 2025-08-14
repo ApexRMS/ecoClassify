@@ -43,7 +43,8 @@ calculateStatistics <- function(
 ) {
   # Predict probabilities
   if (inherits(model[[1]], "ranger")) {
-    probs <- predict(model[[1]], testData)$predictions[, 2]
+    probs <- predict(model[[1]], testData)$predictions[, "presence"]
+    testData$presence <- as.numeric(testData$presence) - 1
   } else if (inherits(model[[1]], "torchCNN")) {
     probs <- predictCNN(model, testData, isRaster = FALSE)
   } else {

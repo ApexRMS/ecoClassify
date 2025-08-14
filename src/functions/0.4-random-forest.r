@@ -88,6 +88,7 @@ predictRanger <- function(raster, model) {
 
   return(predictionRaster)
 }
+
 #' Train a Random Forest Model with Hyperparameter Tuning ----
 #'
 #' @description
