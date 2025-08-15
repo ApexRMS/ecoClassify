@@ -29,64 +29,89 @@
 #' This function is typically called within `getPredictionRasters()` to generate prediction maps
 #' for full raster extents.
 #' @noRd
-predictRanger <- function(raster, model) {
-  # Pre-allocate output raster
-  predictionRaster <- raster[[1]]
-  names(predictionRaster) <- "present"
-  rasterMatrix <- terra::values(raster, mat = TRUE, na.rm = FALSE)
+predictRanger <- function(raster, model,
+                          target_cells_per_block = 1e6,
+                          out_filename = NULL,
+                          wopt = list(datatype = "FLT4S",
+                                      gdal = c("COMPRESS=LZW","PREDICTOR=2")),
+                          num_threads = NULL) {
 
-  # Find valid cases once
-  valid_idx <- complete.cases(rasterMatrix)
-  n_valid <- sum(valid_idx)
-
-  if (n_valid == 0) {
-    return(predictionRaster) # Return empty raster if no valid data
+  # Keep only predictors the model actually uses (and error if some are missing)
+  preds_needed  <- c(model$num_vars, model$cat_vars)
+  missing_preds <- setdiff(preds_needed, names(raster))
+  if (length(missing_preds)) {
+    stop(sprintf("Missing predictors in raster: %s", paste(missing_preds, collapse = ", ")))
   }
+  r <- raster[[preds_needed]]
 
-  # Subset to valid cases only
-  validMatrix <- rasterMatrix[valid_idx, , drop = FALSE]
+  # Prepare output
+  out <- r[[1]]; names(out) <- "presence"
+  if (is.null(out_filename)) out_filename <- tempfile(fileext = ".tif")
+  terra::writeStart(out, filename = out_filename, wopt = wopt, overwrite = TRUE)
 
-  # Convert to data.frame only for valid data
-  validDF <- as.data.frame(validMatrix)
+  # ---- build row blocks (terra-friendly) ----
+  nrows <- terra::nrow(r)
+  ncols <- terra::ncol(r)
+  rows_per_block <- max(1L, floor(target_cells_per_block / ncols))
+  rows_per_block <- min(rows_per_block, nrows)
 
-  # Optimize factor handling - only process categorical variables that exist
-  cat_vars_present <- intersect(model$cat_vars, names(validDF))
+  starts <- seq.int(1L, nrows, by = rows_per_block)
+  lens   <- pmin(rows_per_block, nrows - starts + 1L)
 
-  if (length(cat_vars_present) > 0) {
-    # Vectorized factor processing
-    for (var in cat_vars_present) {
-      var_levels <- model$factor_levels[[var]]
-
-      # Fast factor creation with unseen level handling
-      char_vals <- as.character(validDF[[var]])
-
-      # Create factor with original levels + unseen
-      all_levels <- c(var_levels, "unseen")
-      f <- factor(char_vals, levels = all_levels)
-
-      # Set unseen values (NAs from factor creation) to "unseen"
-      f[is.na(f)] <- "unseen"
-
-      validDF[[var]] <- f
+  # helper: factorize a chunk using training levels + "unseen"
+  factorize_chunk <- function(df) {
+    if (length(model$cat_vars)) {
+      cat_vars_present <- intersect(model$cat_vars, names(df))
+      if (length(cat_vars_present)) {
+        for (v in cat_vars_present) {
+          lv  <- c(model$factor_levels[[v]], "unseen")
+          fct <- factor(as.character(df[[v]]), levels = lv)
+          fct[is.na(fct)] <- "unseen"
+          df[[v]] <- fct
+        }
+      }
     }
+    # ensure column order matches the training order
+    df[, preds_needed, drop = FALSE]
   }
 
-  # Make prediction on valid data only
-  predictions <- predict(model$model, data = validDF)
+  # ---- stream blocks ----
+  for (i in seq_along(starts)) {
+    row_i <- starts[i]; nrows_i <- lens[i]
 
-  # Handle different ranger prediction output formats
-  if (is.data.frame(predictions)) {
-    predictedValues <- predictions[, 2]
-  } else if (is.list(predictions) && "predictions" %in% names(predictions)) {
-    predictedValues <- predictions$predictions[, 2]
-  } else {
-    predictedValues <- predictions[, 2]
+    # read just this block (cells x layers)
+    vals <- terra::readValues(r, row = row_i, nrows = nrows_i, mat = TRUE)
+    pred <- rep(NA_real_, nrow(vals))
+
+    valid <- stats::complete.cases(vals)
+    if (any(valid)) {
+      df <- as.data.frame(vals[valid, , drop = FALSE])
+      df <- factorize_chunk(df)
+
+      # ranger predict
+      p <- if (is.null(num_threads)) {
+        predict(model$model, data = df)
+      } else {
+        predict(model$model, data = df, num.threads = num_threads)
+      }
+
+      # pull "presence" probability
+      if (is.list(p) && "predictions" %in% names(p)) p <- p$predictions
+      pred_block <- if (is.data.frame(p) || is.matrix(p)) {
+        if ("presence" %in% colnames(p)) as.numeric(p[, "presence"]) else as.numeric(p[, 2])
+      } else {
+        as.numeric(p)
+      }
+
+      pred[valid] <- pred_block
+    }
+
+    terra::writeValues(out, pred, row_i)  # start row
   }
 
-  # Assign predictions back to raster efficiently
-  predictionRaster[valid_idx] <- predictedValues
-
-  return(predictionRaster)
+  terra::writeStop(out)
+  names(out) <- "presence"
+  out
 }
 
 #' Train a Random Forest Model with Hyperparameter Tuning ----

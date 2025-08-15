@@ -41,10 +41,12 @@ splitTrainTest <- function(
   if (minMinorityProportion >= maxMinorityProportion) stop("`minMinorityProportion` must be < `maxMinorityProportion`.")
   if (length(trainingRasterList) != length(groundTruthRasterList)) stop("trainingRasterList and groundTruthRasterList must have same length.")
 
-  # helper: fast extraction by cell indexes
+  # helper: fast extraction by cell indexes (version-agnostic: drop ID if returned)
   extractAtCells <- function(rStack, cells) {
     xy <- terra::xyFromCell(rStack, cells)
-    terra::extract(rStack, xy, ID = FALSE)
+    df <- terra::extract(rStack, xy)  # terra 1.8-29: no ID arg
+    if ("ID" %in% names(df)) df <- df[, setdiff(names(df), "ID"), drop = FALSE]
+    df
   }
 
   trainDfs <- vector("list", length(trainingRasterList))
@@ -61,7 +63,7 @@ splitTrainTest <- function(
     validMask <- terra::app(
       r_all,
       fun = function(x) as.integer(all(!is.na(x))),
-      cores = 1  # leave threading to global terraOptions if set
+      cores = 1  # rely on terraOptions() if set globally
     )
     validCells <- which(terra::values(validMask) == 1L)
 
@@ -69,13 +71,11 @@ splitTrainTest <- function(
       stop(sprintf("Timestep %d has <2 valid cells after masking.", t))
     }
 
-    # 2) Class info from THIS timestep
-    # values for ALL valid cells (for class counts & stratified sampling)
-    gt_vals <- as.vector(
-      terra::extract(r_gt, terra::xyFromCell(r_gt, validCells), ID = FALSE)[, 1]
-    )
+    # 2) Class info from THIS timestep (extract only needed cells)
+    gt_vals_df <- terra::extract(r_gt, terra::xyFromCell(r_gt, validCells))
+    if ("ID" %in% names(gt_vals_df)) gt_vals_df <- gt_vals_df[, setdiff(names(gt_vals_df), "ID"), drop = FALSE]
+    gt_vals <- as.vector(gt_vals_df[[1]])
     gt_vals <- gt_vals[!is.na(gt_vals)]
-
     if (!length(gt_vals)) stop(sprintf("No valid ground truth after masking at timestep %d.", t))
 
     classCounts <- table(gt_vals)
@@ -85,8 +85,10 @@ splitTrainTest <- function(
     minorityClass <- as.numeric(names(classCounts)[which.min(classCounts)])
     majorityClass <- as.numeric(names(classCounts)[which.max(classCounts)])
 
-    minorityIdx_all <- which(gt_vals_all[validCells] == minorityClass)  # indexes within validCells
-    majorityIdx_all <- which(gt_vals_all[validCells] == majorityClass)
+    # indexes within validCells
+    gt_vals_full <- as.vector(terra::extract(r_gt, terra::xyFromCell(r_gt, validCells))[, setdiff(names(gt_vals_df), "ID"), drop = FALSE][[1]])
+    minorityIdx_all <- which(gt_vals_full == minorityClass)
+    majorityIdx_all <- which(gt_vals_full == majorityClass)
 
     currentMinorityProp <- length(minorityIdx_all) / length(validCells)
 
@@ -99,20 +101,20 @@ splitTrainTest <- function(
     targetMinorityProp <- pmin(pmax(currentMinorityProp * 2.5, minMinorityProportion), maxMinorityProportion)
     targetMinorityN    <- round(nObs * targetMinorityProp)
 
-    # Edge weights (optional) from GT boundaries
+    # Edge weights (optional) from GT boundaries (extract only needed cells)
     minProbs <- majProbs <- NULL
     if (edgeEnrichment && length(minorityIdx_all) && length(majorityIdx_all)) {
       edges  <- terra::boundaries(r_gt, type = "outer")
-      e_vals <- as.vector(
-        terra::extract(edges, terra::xyFromCell(edges, validCells), ID = FALSE)[, 1]
-      )
+      e_df   <- terra::extract(edges, terra::xyFromCell(edges, validCells))
+      if ("ID" %in% names(e_df)) e_df <- e_df[, setdiff(names(e_df), "ID"), drop = FALSE]
+      e_vals <- as.vector(e_df[[1]])
       w_all  <- ifelse(!is.na(e_vals) & e_vals == 1, 2.5, 1.0)
       if (length(minorityIdx_all)) {
-        w_min   <- w_all[minorityIdx_all]
+        w_min    <- w_all[minorityIdx_all]
         minProbs <- w_min / sum(w_min)
       }
       if (length(majorityIdx_all)) {
-        w_maj   <- w_all[majorityIdx_all]
+        w_maj    <- w_all[majorityIdx_all]
         majProbs <- w_maj / sum(w_maj)
       }
     }
@@ -147,9 +149,11 @@ splitTrainTest <- function(
     }
 
     sampledCells <- validCells[sampledIdx_within_valid]
-    sampledGT <- as.vector(
-      terra::extract(r_gt, terra::xyFromCell(r_gt, sampledCells), ID = FALSE)[, 1]
-    )
+
+    # Labels for the sampled cells only
+    sampledGT_df <- terra::extract(r_gt, terra::xyFromCell(r_gt, sampledCells))
+    if ("ID" %in% names(sampledGT_df)) sampledGT_df <- sampledGT_df[, setdiff(names(sampledGT_df), "ID"), drop = FALSE]
+    sampledGT <- as.vector(sampledGT_df[[1]])
 
     # 5) Assign spatial blocks (by row/col bins)
     rc <- terra::rowColFromCell(r_pred, sampledCells)
