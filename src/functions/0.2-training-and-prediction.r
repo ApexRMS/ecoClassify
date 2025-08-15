@@ -43,8 +43,8 @@ splitTrainTest <- function(
 
   # helper: fast extraction by cell indexes
   extractAtCells <- function(rStack, cells) {
-    mat <- terra::values(rStack, mat = TRUE, na.rm = FALSE)
-    as.data.frame(mat[cells, , drop = FALSE])
+    xy <- terra::xyFromCell(rStack, cells)
+    terra::extract(rStack, xy, ID = FALSE)
   }
 
   trainDfs <- vector("list", length(trainingRasterList))
@@ -70,9 +70,11 @@ splitTrainTest <- function(
     }
 
     # 2) Class info from THIS timestep
-    gt_vals_all <- as.vector(terra::values(r_gt))
-    gt_vals     <- gt_vals_all[validCells]
-    gt_vals     <- gt_vals[!is.na(gt_vals)]
+    # values for ALL valid cells (for class counts & stratified sampling)
+    gt_vals <- as.vector(
+      terra::extract(r_gt, terra::xyFromCell(r_gt, validCells), ID = FALSE)[, 1]
+    )
+    gt_vals <- gt_vals[!is.na(gt_vals)]
 
     if (!length(gt_vals)) stop(sprintf("No valid ground truth after masking at timestep %d.", t))
 
@@ -100,10 +102,11 @@ splitTrainTest <- function(
     # Edge weights (optional) from GT boundaries
     minProbs <- majProbs <- NULL
     if (edgeEnrichment && length(minorityIdx_all) && length(majorityIdx_all)) {
-      edges   <- terra::boundaries(r_gt, type = "outer")
-      e_vals  <- as.vector(terra::values(edges))[validCells]
-      # weight 2.5 on boundary pixels, 1 elsewhere
-      w_all   <- ifelse(!is.na(e_vals) & e_vals == 1, 2.5, 1.0)
+      edges  <- terra::boundaries(r_gt, type = "outer")
+      e_vals <- as.vector(
+        terra::extract(edges, terra::xyFromCell(edges, validCells), ID = FALSE)[, 1]
+      )
+      w_all  <- ifelse(!is.na(e_vals) & e_vals == 1, 2.5, 1.0)
       if (length(minorityIdx_all)) {
         w_min   <- w_all[minorityIdx_all]
         minProbs <- w_min / sum(w_min)
@@ -144,7 +147,9 @@ splitTrainTest <- function(
     }
 
     sampledCells <- validCells[sampledIdx_within_valid]
-    sampledGT    <- gt_vals_all[sampledCells]
+    sampledGT <- as.vector(
+      terra::extract(r_gt, terra::xyFromCell(r_gt, sampledCells), ID = FALSE)[, 1]
+    )
 
     # 5) Assign spatial blocks (by row/col bins)
     rc <- terra::rowColFromCell(r_pred, sampledCells)
