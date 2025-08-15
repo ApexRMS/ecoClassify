@@ -30,41 +30,40 @@
 #' This function supports contextualization of image data prior to classifier training.
 #'
 #' @noRd
-addRasterAdjacencyValues <- function(
-  rasterIn,
-  adjacencyWindow = contextualizationWindowSize,
-  pcaSample = 100000
-) {
-  # 1) Build the window
+addRasterAdjacencyValues <- function(rasterIn, adjacencyWindow = contextualizationWindowSize,
+                                     pcaSample = 100000) {
   w <- matrix(1, adjacencyWindow, adjacencyWindow)
 
-  # 2) PCA
-  vals <- values(rasterIn, mat = TRUE)
-  keep <- complete.cases(vals)
-  samp <- sample(which(keep), min(pcaSample, sum(keep)))
-  pcaMod <- prcomp(vals[samp, ], scale. = TRUE)
-  pcs <- predict(rasterIn, pcaMod, index = 1:2)
-  names(pcs) <- c("PC1", "PC2")
+  # ---- PCA sampling WITHOUT values(..., mat=TRUE) ----
+  samp_df <- terra::spatSample(rasterIn,
+                               size  = min(pcaSample, 100000),
+                               method = "random",
+                               as.df  = TRUE,
+                               na.rm  = TRUE)         # small df only (sampled)
+  pcaMod <- stats::prcomp(samp_df, scale. = TRUE)
 
-  # 3) Four threaded focal calls
-  rasterNames <- names(rasterIn)
-  adjMean <- focal(rasterIn, w, fun = "mean", na.rm = TRUE)
-  names(adjMean) <- paste0(rasterNames, "_mean")
+  # Apply PCs in a streamed way (this was already good)
+  pcs <- terra::predict(rasterIn, pcaMod, index = 1:2,
+                        wopt = list(datatype = "FLT4S", gdal = c("COMPRESS=LZW","PREDICTOR=2")))
+  names(pcs) <- c("PC1","PC2")
 
-  adjSd <- focal(rasterIn, w, fun = "sd", na.rm = TRUE)
-  names(adjSd) <- paste0(rasterNames, "_sd")
+  # ---- FOCAL stats: stream & thread; avoid big in-RAM stacks ----
+  terraOptions(progress = 0)  # set threads globally elsewhere if desired
+  wopt <- list(datatype = "FLT4S", gdal = c("COMPRESS=LZW","PREDICTOR=2"))
 
-  adjMin <- focal(rasterIn, w, fun = "min", na.rm = TRUE)
-  names(adjMin) <- paste0(rasterNames, "_min")
+  adjMean <- terra::focal(rasterIn, w, fun = "mean", na.rm = TRUE, filename = tempfile(fileext=".tif"), wopt = wopt)
+  adjSd   <- terra::focal(rasterIn, w, fun = "sd",   na.rm = TRUE, filename = tempfile(fileext=".tif"), wopt = wopt)
 
-  adjMax <- focal(rasterIn, w, fun = "max", na.rm = TRUE)
-  names(adjMax) <- paste0(rasterNames, "_max")
-
-  # 4) Range = max – min
+  # Consider dropping min/max to save two passes; if you keep them, write to disk:
+  adjMin  <- terra::focal(rasterIn, w, fun = "min",  na.rm = TRUE, filename = tempfile(fileext=".tif"), wopt = wopt)
+  adjMax  <- terra::focal(rasterIn, w, fun = "max",  na.rm = TRUE, filename = tempfile(fileext=".tif"), wopt = wopt)
   adjRange <- adjMax - adjMin
-  names(adjRange) <- paste0(rasterNames, "_range")
+  names(adjMean)  <- paste0(names(rasterIn), "_mean")
+  names(adjSd)    <- paste0(names(rasterIn), "_sd")
+  names(adjMin)   <- paste0(names(rasterIn), "_min")
+  names(adjMax)   <- paste0(names(rasterIn), "_max")
+  names(adjRange) <- paste0(names(rasterIn), "_range")
 
-  # 5) Stack & return
   return(c(
     rasterIn,
     adjMean,

@@ -170,25 +170,33 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
 #' @return List of reclassified SpatRasters.
 #'
 #' @noRd
-reclassifyGroundTruth <- function(groundTruthRasterList) {
-  reclassifiedGroundTruthList <- c()
+# reclassifyGroundTruth <- function(groundTruthRasterList) {
+#   reclassifiedGroundTruthList <- c()
 
-  for (i in seq_along(groundTruthRasterList)) {
-    groundTruthRaster <- groundTruthRasterList[[i]]
-    groundTruthRaster[
-      groundTruthRaster == min(values(groundTruthRaster), na.rm = TRUE)
-    ] <- 0
-    groundTruthRaster[
-      groundTruthRaster == max(values(groundTruthRaster), na.rm = TRUE)
-    ] <- 1
+#   for (i in seq_along(groundTruthRasterList)) {
+#     groundTruthRaster <- groundTruthRasterList[[i]]
+#     groundTruthRaster[
+#       groundTruthRaster == min(values(groundTruthRaster), na.rm = TRUE)
+#     ] <- 0
+#     groundTruthRaster[
+#       groundTruthRaster == max(values(groundTruthRaster), na.rm = TRUE)
+#     ] <- 1
 
-    reclassifiedGroundTruthList <- c(
-      reclassifiedGroundTruthList,
-      groundTruthRaster
-    )
-  }
+#     reclassifiedGroundTruthList <- c(
+#       reclassifiedGroundTruthList,
+#       groundTruthRaster
+#     )
+#   }
 
-  return(reclassifiedGroundTruthList)
+#   return(reclassifiedGroundTruthList)
+# }
+reclassifyGroundTruth <- function(xs) {
+  lapply(xs, function(r) {
+    mm <- terra::global(r, fun = c("min","max"), na.rm = TRUE)
+    mn <- as.numeric(mm[1,1]); mx <- as.numeric(mm[1,2])
+    # Map to 0/1
+    terra::ifel(r == mn, 0, terra::ifel(r == mx, 1, r))
+  })
 }
 
 #' Load and Process Covariate Rasters ----
@@ -266,10 +274,17 @@ addCovariates <- function(rasterList, covariateRaster) {
 #' @return A normalized SpatRaster.
 #'
 #' @noRd
-normalizeBand <- function(band) {
-  min_val <- min(values(band), na.rm = TRUE)
-  max_val <- max(values(band), na.rm = TRUE)
-  (band - min_val) / (max_val - min_val)
+# normalizeBand <- function(band) {
+#   min_val <- min(values(band), na.rm = TRUE)
+#   max_val <- max(values(band), na.rm = TRUE)
+#   (band - min_val) / (max_val - min_val)
+# }
+normalize_band <- function(band, wopt = NULL) {
+  mm <- terra::global(band, fun = c("min","max"), na.rm = TRUE)
+  mn <- as.numeric(mm[1,1]); mx <- as.numeric(mm[1,2])
+  out <- (band - mn) / (mx - mn)
+  if (!is.null(wopt)) out <- terra::writeRaster(out, filename = tempfile(fileext=".tif"), wopt = wopt, overwrite = TRUE)
+  out
 }
 
 #' Normalize All Bands in Raster List ----
@@ -282,23 +297,28 @@ normalizeBand <- function(band) {
 #' @return List of normalized SpatRasters.
 #'
 #' @noRd
-normalizeRaster <- function(rasterList) {
-  # make an empty list for normalized rasters
-  normalizedRasterList <- c()
+# normalizeRaster <- function(rasterList) {
+#   # make an empty list for normalized rasters
+#   normalizedRasterList <- c()
 
-  for (raster in rasterList) {
-    # normalize bands for each raster in rasterList
-    normalizedRaster <- lapply(
-      1:nlyr(raster),
-      function(i) normalizeBand(raster[[i]])
-    ) %>%
-      rast()
+#   for (raster in rasterList) {
+#     # normalize bands for each raster in rasterList
+#     normalizedRaster <- lapply(
+#       1:nlyr(raster),
+#       function(i) normalizeBand(raster[[i]])
+#     ) %>%
+#       rast()
 
-    # append to normalizedRasterList
-    normalizedRasterList <- c(normalizedRasterList, normalizedRaster)
-  }
+#     # append to normalizedRasterList
+#     normalizedRasterList <- c(normalizedRasterList, normalizedRaster)
+#   }
 
-  return(normalizedRasterList)
+#   return(normalizedRasterList)
+# }
+normalizeRaster <- function(rasterList, wopt = NULL) {
+  lapply(rasterList, function(r) {
+    rast(lapply(1:terra::nlyr(r), function(i) normalize_band(r[[i]], wopt = wopt)))
+  })
 }
 
 #' Ensure Consistent NA Masking ----
