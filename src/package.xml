@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <package 
-    name="ecoClassify" displayName="ecoClassify" version="2.1.2"
+    name="ecoClassify" displayName="ecoClassify" version="2.2.0"
     description="Image classifier using semantic image segmentation" 
     url="https://apexrms.github.io/ecoClassify/" 
     minSyncroSimVersion="3.1.0">
