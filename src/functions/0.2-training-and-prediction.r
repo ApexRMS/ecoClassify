@@ -42,7 +42,10 @@ splitTrainTest <- function(
   minMinorityProportion = 0.15,
   maxMinorityProportion = 0.35,
   edgeEnrichment = FALSE,
-  spatialBalance = TRUE
+  spatialBalance = TRUE,
+  # tuning knobs for sampling:
+  chunk_factor = 5L,          # candidates per class per iteration ~ chunk_factor * nObs
+  quick_prop_sample = 50000L  # how many GT cells to sample to estimate class proportion
 ) {
   # ---- validation ----
   blockDim <- sqrt(nBlocks)
@@ -51,12 +54,103 @@ splitTrainTest <- function(
   if (minMinorityProportion >= maxMinorityProportion) stop("`minMinorityProportion` must be < `maxMinorityProportion`.")
   if (length(trainingRasterList) != length(groundTruthRasterList)) stop("trainingRasterList and groundTruthRasterList must have same length.")
 
-  # helper: fast extraction by cell indexes (version-agnostic: drop ID if returned)
+  # helper: fast extraction at cell ids (version-agnostic: drop ID if present)
   extractAtCells <- function(rStack, cells) {
     xy <- terra::xyFromCell(rStack, cells)
-    df <- terra::extract(rStack, xy)  # terra 1.8-29: no ID arg
+    df <- terra::extract(rStack, xy)              # data.frame with optional ID
     if ("ID" %in% names(df)) df <- df[, setdiff(names(df), "ID"), drop = FALSE]
     df
+  }
+
+  # helper: estimate class labels (0/1) and minority from a quick GT sample (no full scan)
+  estimate_classes <- function(r_gt, sample_n = quick_prop_sample) {
+    s <- min(sample_n, max(1000L, floor(terra::ncell(r_gt) * 0.001)))
+    gt_samp <- try(terra::spatSample(r_gt, size = s, method = "random", as.df = TRUE, na.rm = TRUE), silent = TRUE)
+    if (inherits(gt_samp, "try-error") || nrow(gt_samp) == 0) {
+      stop("Could not sample ground-truth raster to estimate class proportions.")
+    }
+    v <- gt_samp[[1]]
+    uv <- sort(unique(v))
+    if (length(uv) == 1) stop("Ground truth has only one class in sampled cells.")
+    # map to 0/1 if needed
+    if (!all(uv %in% c(0,1))) {
+      # smallest -> 0, largest -> 1
+      v[v == min(uv)] <- 0
+      v[v == max(uv)] <- 1
+    }
+    prop1 <- mean(v == 1, na.rm = TRUE)
+    list(minorityClass = if (prop1 < 0.5) 1 else 0,
+         majorityClass = if (prop1 < 0.5) 0 else 1,
+         currentMinorityProp = min(prop1, 1 - prop1))
+  }
+
+  # helper: accept–reject sampling for ONE class; validates only candidates against predictors
+  sample_valid_for_class <- function(r_pred, r_gt, class_value, n_target, chunk_size) {
+    if (n_target <= 0) return(integer(0))
+    # class mask (lazy until used)
+    class_mask <- terra::ifel(r_gt == class_value, 1, NA)
+    got <- integer(0)
+    tried <- 0L
+
+    while (length(got) < n_target && tried < 1000L) {
+      tried <- tried + 1L
+      size_i <- min(chunk_size, n_target * 3L)
+      # sample candidate points on the class mask (no full scan)
+      pts <- try(terra::spatSample(class_mask, size = size_i, method = "random",
+                                   as.points = TRUE, na.rm = TRUE), silent = TRUE)
+      if (inherits(pts, "try-error") || is.null(pts) || terra::nrow(pts) == 0) break
+
+      xy <- terra::crds(pts)
+      cand_cells <- terra::cellFromXY(r_gt, xy)
+      cand_cells <- cand_cells[!is.na(cand_cells)]
+      if (!length(cand_cells)) next
+
+      # validate only these candidates across predictor stack
+      vals <- terra::extract(r_pred, xy)
+      if ("ID" %in% names(vals)) vals <- vals[, setdiff(names(vals), "ID"), drop = FALSE]
+      keep <- stats::complete.cases(vals)
+
+      acc <- unique(cand_cells[keep])
+      if (length(acc)) {
+        got <- unique(c(got, acc))
+      }
+      # stop if we reached the target
+      if (length(got) >= n_target) break
+    }
+    if (length(got) == 0) {
+      warning("No valid cells found for class ", class_value, " after sampling.")
+    }
+    got[seq_len(min(length(got), n_target))]
+  }
+
+  # helper: edge weights computed ONLY on the candidate pool (no full boundaries())
+  edge_weights_for_pool <- function(r_gt, pool_cells) {
+    if (!length(pool_cells)) return(numeric(0))
+    pairs <- terra::adjacent(r_gt, pool_cells, directions = 4, pairs = TRUE)
+    if (is.null(dim(pairs)) || nrow(pairs) == 0) return(rep(1.0, length(pool_cells)))
+
+    # unique cells to read GT for
+    uniq_cells <- unique(c(pool_cells, pairs[,2]))
+    xy_u <- terra::xyFromCell(r_gt, uniq_cells)
+    v_u <- terra::extract(r_gt, xy_u)
+    if ("ID" %in% names(v_u)) v_u <- v_u[, setdiff(names(v_u), "ID"), drop = FALSE]
+    v_u <- as.vector(v_u[[1]])
+    # map cell id -> value
+    idx_map <- match(c(pool_cells, pairs[,1], pairs[,2]), uniq_cells) # indices into v_u
+
+    # current (from) and neighbor (to) values for each pair
+    from_vals <- v_u[match(pairs[,1], uniq_cells)]
+    to_vals   <- v_u[match(pairs[,2], uniq_cells)]
+    diff_pair <- (from_vals != to_vals) & !is.na(from_vals) & !is.na(to_vals)
+
+    # any neighbor differs? compute per-from-cell
+    any_diff <- tapply(diff_pair, pairs[,1], any, na.rm = TRUE)
+    edge_flag <- rep(FALSE, length(pool_cells))
+    # align names back to pool_cells
+    m <- match(as.integer(names(any_diff)), pool_cells)
+    edge_flag[m[!is.na(m)]] <- any_diff[!is.na(m)]
+
+    ifelse(edge_flag, 2.5, 1.0)
   }
 
   trainDfs <- vector("list", length(trainingRasterList))
@@ -68,104 +162,76 @@ splitTrainTest <- function(
     r_pred <- trainingRasterList[[t]]
     r_gt   <- groundTruthRasterList[[t]]
 
-    # 1) Build valid mask for THIS timestep: all predictor layers + GT non-NA
-    r_all <- c(r_pred, r_gt)
-    validMask <- terra::app(
-      r_all,
-      fun = function(x) as.integer(all(!is.na(x))),
-      cores = 1  # rely on terraOptions() if set globally
-    )
-    validCells <- which(terra::values(validMask) == 1L)
-
-    if (length(validCells) < 2) {
-      stop(sprintf("Timestep %d has <2 valid cells after masking.", t))
-    }
-
-    # 2) Class info from THIS timestep (extract only needed cells)
-    gt_vals_df <- terra::extract(r_gt, terra::xyFromCell(r_gt, validCells))
-    if ("ID" %in% names(gt_vals_df)) gt_vals_df <- gt_vals_df[, setdiff(names(gt_vals_df), "ID"), drop = FALSE]
-    gt_vals <- as.vector(gt_vals_df[[1]])
-    gt_vals <- gt_vals[!is.na(gt_vals)]
-    if (!length(gt_vals)) stop(sprintf("No valid ground truth after masking at timestep %d.", t))
-
-    classCounts <- table(gt_vals)
-    if (length(classCounts) < 2) {
-      stop(sprintf("Timestep %d has only one class present in valid cells.", t))
-    }
-    minorityClass <- as.numeric(names(classCounts)[which.min(classCounts)])
-    majorityClass <- as.numeric(names(classCounts)[which.max(classCounts)])
-
-    # indexes within validCells
-    gt_vals_full <- as.vector(terra::extract(r_gt, terra::xyFromCell(r_gt, validCells))[, setdiff(names(gt_vals_df), "ID"), drop = FALSE][[1]])
-    minorityIdx_all <- which(gt_vals_full == minorityClass)
-    majorityIdx_all <- which(gt_vals_full == majorityClass)
-
-    currentMinorityProp <- length(minorityIdx_all) / length(validCells)
+    # (1) Estimate classes & current minority proportion from a quick GT sample
+    cls <- estimate_classes(r_gt, sample_n = quick_prop_sample)
+    minorityClass <- cls$minorityClass
+    majorityClass <- cls$majorityClass
+    currentMinorityProp <- cls$currentMinorityProp
 
     updateRunLog(sprintf(
-      "[t=%d] Natural class distribution: %.1f%% minority (%d), %.1f%% majority (%d)",
+      "[t=%d] (sampled) class distribution: %.1f%% minority (%d), %.1f%% majority (%d)",
       t, 100*currentMinorityProp, minorityClass, 100*(1-currentMinorityProp), majorityClass
     ), type = "info")
 
-    # 3) Target sampling proportions (bounded)
+    # (3) Target sampling proportions (bounded)
     targetMinorityProp <- pmin(pmax(currentMinorityProp * 2.5, minMinorityProportion), maxMinorityProportion)
     targetMinorityN    <- round(nObs * targetMinorityProp)
+    targetMajorityN    <- max(0, nObs - targetMinorityN)
 
-    # Edge weights (optional) from GT boundaries (extract only needed cells)
+    updateRunLog(sprintf(
+      "[t=%d] Target sampling: %d minority (%.1f%%), %d majority (%.1f%%)",
+      t, targetMinorityN, 100*targetMinorityProp, targetMajorityN, 100*(1 - targetMinorityProp)
+    ), type = "info")
+
+    # (1 & 9) Sample candidates per class, validating only those against predictors
+    chunk <- max(5000L, chunk_factor * nObs)
+    minor_pool <- sample_valid_for_class(r_pred, r_gt, minorityClass, n_target = targetMinorityN, chunk_size = chunk)
+    major_pool <- sample_valid_for_class(r_pred, r_gt, majorityClass, n_target = targetMajorityN, chunk_size = chunk)
+
+    # Safety: if any pool underfills, top up from the other class (optional)
+    if (length(minor_pool) < targetMinorityN) {
+      updateRunLog(sprintf("[t=%d] Warning: minority pool underfilled (%d/%d).", t, length(minor_pool), targetMinorityN), type = "warning")
+    }
+    if (length(major_pool) < targetMajorityN) {
+      updateRunLog(sprintf("[t=%d] Warning: majority pool underfilled (%d/%d).", t, length(major_pool), targetMajorityN), type = "warning")
+    }
+
+    # (2) Optional edge enrichment computed only on pooled candidates
     minProbs <- majProbs <- NULL
-    if (edgeEnrichment && length(minorityIdx_all) && length(majorityIdx_all)) {
-      edges  <- terra::boundaries(r_gt, type = "outer")
-      e_df   <- terra::extract(edges, terra::xyFromCell(edges, validCells))
-      if ("ID" %in% names(e_df)) e_df <- e_df[, setdiff(names(e_df), "ID"), drop = FALSE]
-      e_vals <- as.vector(e_df[[1]])
-      w_all  <- ifelse(!is.na(e_vals) & e_vals == 1, 2.5, 1.0)
-      if (length(minorityIdx_all)) {
-        w_min    <- w_all[minorityIdx_all]
+    if (edgeEnrichment) {
+      if (length(minor_pool)) {
+        w_min <- edge_weights_for_pool(r_gt, minor_pool)
+        # normalize; tolerate all-NA by falling back to uniform
+        if (all(!is.finite(w_min)) || sum(w_min, na.rm = TRUE) == 0) w_min <- rep(1, length(w_min))
         minProbs <- w_min / sum(w_min)
       }
-      if (length(majorityIdx_all)) {
-        w_maj    <- w_all[majorityIdx_all]
+      if (length(major_pool)) {
+        w_maj <- edge_weights_for_pool(r_gt, major_pool)
+        if (all(!is.finite(w_maj)) || sum(w_maj, na.rm = TRUE) == 0) w_maj <- rep(1, length(w_maj))
         majProbs <- w_maj / sum(w_maj)
       }
     }
 
-    # 4) Stratified sampling for THIS timestep
-    sampledMinorityIdx <- integer(0)
-    sampledMajorityIdx <- integer(0)
+    # Draw the final samples from the validated pools
+    sampledMinority <- if (length(minor_pool)) {
+      sample(minor_pool, size = min(targetMinorityN, length(minor_pool)), replace = FALSE, prob = minProbs)
+    } else integer(0)
 
-    if (targetMinorityN > 0 && length(minorityIdx_all) > 0) {
-      sampledMinorityIdx <- sample(
-        minorityIdx_all,
-        size = min(targetMinorityN, length(minorityIdx_all)),
-        replace = FALSE,
-        prob = minProbs
-      )
-    }
+    sampledMajority <- if (length(major_pool)) {
+      sample(major_pool, size = min(targetMajorityN, length(major_pool)), replace = FALSE, prob = majProbs)
+    } else integer(0)
 
-    # Fill remainder with majority to reach nObs (as much as possible)
-    targetMajorityN <- max(0, nObs - length(sampledMinorityIdx))
-    if (targetMajorityN > 0 && length(majorityIdx_all) > 0) {
-      sampledMajorityIdx <- sample(
-        majorityIdx_all,
-        size = min(targetMajorityN, length(majorityIdx_all)),
-        replace = FALSE,
-        prob = majProbs
-      )
-    }
-
-    sampledIdx_within_valid <- c(sampledMinorityIdx, sampledMajorityIdx)
-    if (length(sampledIdx_within_valid) < 2) {
+    sampledCells <- c(sampledMinority, sampledMajority)
+    if (length(sampledCells) < 2) {
       stop(sprintf("Timestep %d: insufficient sampled points (<2). Try lowering nObs or constraints.", t))
     }
 
-    sampledCells <- validCells[sampledIdx_within_valid]
-
-    # Labels for the sampled cells only
+    # Labels for the sampled cells
     sampledGT_df <- terra::extract(r_gt, terra::xyFromCell(r_gt, sampledCells))
     if ("ID" %in% names(sampledGT_df)) sampledGT_df <- sampledGT_df[, setdiff(names(sampledGT_df), "ID"), drop = FALSE]
     sampledGT <- as.vector(sampledGT_df[[1]])
 
-    # 5) Assign spatial blocks (by row/col bins)
+    # (5) Assign spatial blocks (no sf)
     rc <- terra::rowColFromCell(r_pred, sampledCells)
     rowBins <- cut(rc[,1], breaks = blockDim, labels = FALSE)
     colBins <- cut(rc[,2], breaks = blockDim, labels = FALSE)
@@ -184,11 +250,11 @@ splitTrainTest <- function(
       t, nrow(pts), 100*mean(pts$presence == minorityClass)
     ), type = "info")
 
-    # 6) Train/test split (spatial blocks or random) for THIS timestep
+    # Train/test split (spatial blocks or random)
     if (spatialBalance) {
       uniqueBlocks   <- unique(pts$block)
       nTrainBlocks   <- round(length(uniqueBlocks) * proportionTraining)
-      trainBlocks    <- sample(uniqueBlocks, nTrainBlocks)
+      trainBlocks    <- if (length(uniqueBlocks)) sample(uniqueBlocks, nTrainBlocks) else integer(0)
       trainPts <- pts[pts$block %in% trainBlocks, , drop = FALSE]
       testPts  <- pts[!(pts$block %in% trainBlocks), , drop = FALSE]
 
@@ -205,7 +271,7 @@ splitTrainTest <- function(
       testPts  <- pts[-tr_idx, , drop = FALSE]
     }
 
-    # 7) Extract predictors by CELL INDEX (fast) for THIS timestep
+    # Extract predictors only at sampled cells
     trainX <- extractAtCells(r_pred, trainPts$cell)
     testX  <- extractAtCells(r_pred, testPts$cell)
 
@@ -249,11 +315,11 @@ splitTrainTest <- function(
   if (nrow(trainDf) < 2) stop("Insufficient training data (<2 rows) overall.")
   if (length(unique(trainDf$presence)) < 2) stop("Training data must include both classes overall.")
 
-  return(list(
+  list(
     train = trainDf,
     test  = testDf,
     samplingInfo = samplingInfo
-  ))
+  )
 }
 
 #' Calculate Sensitivity and Specificity ----
