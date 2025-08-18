@@ -380,7 +380,7 @@ getOptimalThreshold <- function(
   model,
   testingData,
   modelType,
-  objective = c("youden","accuracy","specificity","sensitivity","precision","balanced"),
+  objective = c("Youden","Accuracy","Specificity","Sensitivity","Precision","Balanced"),
   # optional constraints (set to NULL to ignore)
   min_sensitivity = 0.5,
   min_specificity = 0.5,
@@ -437,12 +437,12 @@ getOptimalThreshold <- function(
   # objective scores (unchanged math; just selection differs)
   score <- switch(
     objective,
-    youden     = metrics[, "sens"] + metrics[, "spec"] - 1,
-    accuracy   = metrics[, "acc"],
-    specificity= metrics[, "spec"],
-    sensitivity= metrics[, "sens"],
-    precision  = metrics[, "prec"],
-    balanced   = metrics[, "bal"]
+    Youden     = metrics[, "sens"] + metrics[, "spec"] - 1,
+    Accuracy   = metrics[, "acc"],
+    Specificity= metrics[, "spec"],
+    Sensitivity= metrics[, "sens"],
+    Precision  = metrics[, "prec"],
+    Balanced   = metrics[, "bal"]
   )
 
   # apply constraints
