@@ -322,87 +322,141 @@ splitTrainTest <- function(
   )
 }
 
-#' Calculate Sensitivity and Specificity ----
+#' Compute metrics at a threshold
 #'
 #' @description
-#' Calculates sensitivity and specificity based on predicted probabilities and actual labels.
+#' Computes sensitivity, specificity, precision, accuracy, and balanced accuracy
+#' for binary labels given a probability threshold.
 #'
-#' @param probs Numeric vector of predicted probabilities.
-#' @param actual Numeric vector of actual class labels.
-#' @param threshold Numeric threshold to convert probabilities to binary predictions.
+#' @param probs Numeric vector of predicted probabilities (class 1).
+#' @param actual Numeric or integer vector of 0/1 ground-truth labels.
+#' @param threshold Numeric scalar in [0, 1]; predict 1 if \code{probs >= threshold}.
 #'
-#' @return A numeric vector with sensitivity and specificity.
+#' @return Named numeric vector: \code{sens}, \code{spec}, \code{prec}, \code{acc}, \code{bal}.
 #'
 #' @noRd
 getSensSpec <- function(probs, actual, threshold) {
-  predicted <- ifelse(probs >= threshold, 1, 0)
+  predicted <- ifelse(probs >= threshold, 1L, 0L)
 
-  evalData <- tibble(
-    truth = factor(actual, levels = c(0, 1)),
-    prediction = factor(predicted, levels = c(0, 1))
-  )
+  TP <- sum(predicted == 1L & actual == 1L)
+  TN <- sum(predicted == 0L & actual == 0L)
+  FP <- sum(predicted == 1L & actual == 0L)
+  FN <- sum(predicted == 0L & actual == 1L)
 
-  sens <- sensitivity(evalData, truth, prediction)$.estimate
-  spec <- specificity(evalData, truth, prediction)$.estimate
+  # safe divisions (return 0 when denominator is 0)
+  div0 <- function(a, b) if (b > 0) a / b else 0
 
-  return(c(sens, spec))
+  sens <- div0(TP, TP + FN)                 # recall / TPR
+  spec <- div0(TN, TN + FP)                 # TNR
+  prec <- div0(TP, TP + FP)                 # PPV
+  acc  <- (TP + TN) / (TP + TN + FP + FN)   # Accuracy
+  bal  <- (sens + spec) / 2                 # Balanced accuracy
+
+  c(sens = sens, spec = spec, prec = prec, acc = acc, bal = bal)
 }
 
-#' Determine Optimal Classification Threshold ----
+#' Determine optimal classification threshold
 #'
 #' @description
-#' Selects a classification threshold by maximizing the Youden index.
+#' Selects a threshold over \code{0.01..0.99} maximizing an objective
+#' (\code{"youden"}, \code{"accuracy"}, \code{"specificity"},
+#' \code{"sensitivity"}, \code{"precision"}, \code{"balanced"}),
+#' with optional minimum metric constraints.
 #'
-#' @param model The trained model object (CNN, RF, or MaxEnt).
-#' @param testingData The data to make predictions on.
-#' @param modelType Model type: "CNN", "Random Forest", or "MaxEnt".
+#' @param model Trained model object (CNN, RF, or MaxEnt).
+#' @param testingData Data frame with \code{presence} and predictors.
+#' @param modelType One of \code{"Random Forest"}, \code{"MaxEnt"}, \code{"CNN"}.
+#' @param objective Objective to maximize; default \code{"youden"}.
+#' @param min_sensitivity Optional minimum sensitivity in [0, 1].
+#' @param min_specificity Optional minimum specificity in [0, 1].
+#' @param min_precision Optional minimum precision in [0, 1].
+#' @param min_accuracy Optional minimum accuracy in [0, 1].
+#' @param min_balanced Optional minimum balanced accuracy in [0, 1].
 #'
-#' @return Optimal threshold value as a numeric.
+#' @return Numeric threshold in [0, 1].
 #'
 #' @noRd
 getOptimalThreshold <- function(
   model,
   testingData,
-  modelType
+  modelType,
+  objective = c("youden","accuracy","specificity","sensitivity","precision","balanced"),
+  # optional constraints (set to NULL to ignore)
+  min_sensitivity = 0.5,
+  min_specificity = 0.5,
+  min_precision   = 0.5,
+  min_accuracy    = 0.5,
+  min_balanced    = 0.5
 ) {
-  # define thresholds
+  objective <- match.arg(objective)
   thresholds <- seq(0.01, 0.99, by = 0.01)
 
+  # --- get labels and probabilities (kept close to your original) ---
   if (modelType == "Random Forest") {
-    testingObservations <- as.numeric(testingData$presence) - 1
-    testingPredictions <- predict(model$model, testingData)$predictions[, "presence"]
+    testingObservations <- as.numeric(testingData$presence) - 1L
+    p <- predict(model$model, testingData)$predictions
+    if (is.data.frame(p) || is.matrix(p)) {
+      if ("presence" %in% colnames(p)) testingPredictions <- p[, "presence"]
+      else if (ncol(p) >= 2)           testingPredictions <- p[, 2]
+      else                              testingPredictions <- as.numeric(p)
+    } else {
+      testingPredictions <- as.numeric(p)
+    }
   } else if (modelType == "MaxEnt") {
     testingObservations <- as.numeric(testingData$presence)
-    testingPredictions <- predict(model$model, testingData, type = "logistic")
+    testingPredictions  <- predict(model$model, testingData, type = "logistic")
   } else if (modelType == "CNN") {
     testingObservations <- as.numeric(testingData$presence)
-    testingPredictions <- predictCNN(model, testingData, isRaster = FALSE)
+    testingPredictions  <- predictCNN(model, testingData, isRaster = FALSE)
   } else {
     stop("Model type not recognized")
   }
 
-  # remove NAs in predictions or observations
-  valid_idx <- complete.cases(testingPredictions, testingObservations)
-  testingPredictions <- testingPredictions[valid_idx]
-  testingObservations <- testingObservations[valid_idx]
+  valid_idx <- stats::complete.cases(testingPredictions, testingObservations)
+  testingPredictions <- as.numeric(testingPredictions[valid_idx])
+  testingObservations <- as.numeric(testingObservations[valid_idx])
+  if (!length(testingPredictions)) stop("All testing predictions were dropped due to NA.")
 
-  if (length(testingPredictions) == 0) {
-    stop(
-      "All testing predictions were dropped due to NA — possibly from unseen factor levels."
-    )
-  }
-
-  # Calculate sensitivity and specificity for each threshold
+  # --- evaluate metric vectors across the same grid (minimal change) ---
   metrics <- t(sapply(
     thresholds,
     getSensSpec,
     probs = testingPredictions,
     actual = testingObservations
   ))
-  youdenIndex <- metrics[, 1] + metrics[, 2] - 1
-  optimalYouden <- thresholds[which.max(youdenIndex)]
+  # metrics has columns: "sens","spec","prec","acc","bal"
 
-  return(optimalYouden)
+  # constraints mask
+  keep <- rep(TRUE, length(thresholds))
+  if (!is.null(min_sensitivity)) keep <- keep & (metrics[, "sens"] >= min_sensitivity)
+  if (!is.null(min_specificity)) keep <- keep & (metrics[, "spec"] >= min_specificity)
+  if (!is.null(min_precision))   keep <- keep & (metrics[, "prec"] >= min_precision)
+  if (!is.null(min_accuracy))    keep <- keep & (metrics[, "acc"]  >= min_accuracy)
+  if (!is.null(min_balanced))    keep <- keep & (metrics[, "bal"]  >= min_balanced)
+
+  # objective scores (unchanged math; just selection differs)
+  score <- switch(
+    objective,
+    youden     = metrics[, "sens"] + metrics[, "spec"] - 1,
+    accuracy   = metrics[, "acc"],
+    specificity= metrics[, "spec"],
+    sensitivity= metrics[, "sens"],
+    precision  = metrics[, "prec"],
+    balanced   = metrics[, "bal"]
+  )
+
+  # apply constraints
+  score_constrained <- score
+  score_constrained[!keep] <- -Inf
+
+  if (all(!is.finite(score_constrained))) {
+    warning("No threshold satisfies the provided constraints; returning unconstrained optimum.")
+    best_idx <- which.max(score)  # fallback
+  } else {
+    best_idx <- which.max(score_constrained)
+  }
+
+  thresholds[best_idx]
 }
 
 #' Generate binary presence and probability rasters from model predictions ----

@@ -46,12 +46,13 @@
         <column name="normalizeRasters" dataType="Boolean" displayName="Normalize rasters"/>
         <column name="rasterDecimalPlaces" displayName="Raster decimal places (rounding)" dataType="Integer" isOptional="True"/>
         <column name="modelTuning" displayName="Enable automated tuning" dataType="Boolean"/>
+        <column name="tuningObjective" displayName="Model tuning objective" dataType="Integer" validationType="List" formula1="0:Accuracy|1:Specificity|2:Sensitivity|3:Precision|4:Balanced|5:Youden"/>
         <column name="setManualThreshold" displayName="Set probability threshold" dataType="Boolean"/>
         <column name="manualThreshold" displayName="Probability threshold" dataType="Double" isOptional="True"/>
         <column name="applyContextualization" dataType="Boolean" displayName="Apply contextualization"/>
         <column name="contextualizationWindowSize" dataType="Integer" displayName="Contextualization window size" isOptional="True"/>
         <column name="setSeed" dataType="Integer" displayName="Random seed" isOptional="True"/>
-        <record columns="normalizeRasters|modelTuning|setManualThreshold|applyContextualization" values="0|0|0|0"/>
+        <record columns="normalizeRasters|modelTuning|tuningObjective|setManualThreshold|applyContextualization" values="0|0|5|0|0"/>
     </dataSheet>
     
     <dataSheet name="PostProcessingFilter" displayName="Filtering" isSingleRow="True">

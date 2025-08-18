@@ -60,6 +60,7 @@ setManualThreshold <- inputVariables[[7]]
 manualThreshold <- inputVariables[[8]]
 normalizeRasters <- inputVariables[[9]]
 rasterDecimalPlaces <- inputVariables[[10]]
+tuningObjective <- inputVariables[[11]]
 
 # Load model and threshold
 if (modelType == "CNN") {

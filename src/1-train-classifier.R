@@ -66,6 +66,7 @@ setManualThreshold <- inputVariables[[7]]
 manualThreshold <- inputVariables[[8]]
 normalizeRasters <- inputVariables[[9]]
 rasterDecimalPlaces <- inputVariables[[10]]
+tuningObjective <- inputVariables[[11]]
 
 # Check if multiprocessing is selected
 mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
@@ -173,7 +174,7 @@ progressBar(type = "message", message = "Training model")
 if (modelType == "MaxEnt") {
   modelOut <- getMaxentModel(allTrainData, nCores, modelTuning)
   if (setManualThreshold == FALSE) {
-    threshold <- getOptimalThreshold(modelOut, allTestData, "MaxEnt")
+    threshold <- getOptimalThreshold(modelOut, allTestData, "MaxEnt", tuningObjective)
   } else {
     threshold <- manualThreshold
   }
@@ -183,7 +184,8 @@ if (modelType == "MaxEnt") {
     threshold <- getOptimalThreshold(
       modelOut,
       allTestData,
-      "Random Forest"
+      "Random Forest",
+      tuningObjective
     )
   } else {
     threshold <- manualThreshold
@@ -194,7 +196,8 @@ if (modelType == "MaxEnt") {
     threshold <- getOptimalThreshold(
       modelOut,
       allTestData,
-      "CNN"
+      "CNN",
+      tuningObjective
     )
   } else {
     threshold <- manualThreshold
