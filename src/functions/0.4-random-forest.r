@@ -110,89 +110,186 @@ predictRanger <- function(raster, model) {
 #' @import doParallel
 #' @export
 getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
-  trainingVariables <- grep(
-    "presence|kfold",
-    colnames(allTrainData),
-    invert = TRUE,
-    value = TRUE
-  )
+  # Expect tictoc loaded by caller; feel free to clear log before calling:
+  tictoc::tic.clearlog()
 
-  # Identify categorical and numeric variables
+  # ------------------- prep -------------------
+  tic("Identify predictor columns")
+  trainingVariables <- grep("presence|kfold", colnames(allTrainData), invert = TRUE, value = TRUE)
+  toc(log = TRUE, quiet = TRUE)
+
+  tic("Detect categorical / numeric vars")
   cat_vars <- names(allTrainData[, trainingVariables, drop = FALSE])[sapply(
-    allTrainData[, trainingVariables, drop = FALSE],
-    is.factor
-  )]
+    allTrainData[, trainingVariables, drop = FALSE], is.factor)]
   num_vars <- setdiff(trainingVariables, cat_vars)
+  toc(log = TRUE, quiet = TRUE)
 
-  mainModel <- formula(sprintf(
-    "%s ~ %s",
-    "presence",
-    paste(trainingVariables, collapse = " + ")
-  ))
+  tic("Coerce presence to factor")
+  if (!is.factor(allTrainData$presence)) {
+    allTrainData$presence <- factor(allTrainData$presence, levels = c(0, 1),
+                                    labels = c("absence", "presence"))
+  }
+  toc(log = TRUE, quiet = TRUE)
 
-  if (isTuningOn) {
-    tuneArgs <- list(
-      mtry = seq_len(min(6, length(trainingVariables))),
-      maxDepth = seq(0, 1, 0.2),
-      nTrees = c(1000, 2000, 3000, 4000, 5000)
-    )
-    tuneArgsGrid <- expand.grid(tuneArgs)
+  tic("Build model frame (no formula)")
+  df <- allTrainData[, c("presence", trainingVariables), drop = FALSE]
+  p  <- length(trainingVariables)
+  toc(log = TRUE, quiet = TRUE)
+
+  # ------------------- tuning grid -------------------
+  tic("Construct tuning grid")
+  mtry_center   <- max(1L, round(sqrt(p)))
+  mtry_grid     <- sort(unique(pmax(1L, round(c(mtry_center * c(0.5, 0.75, 1, 1.25, 1.5))))))
+  maxDepth_grid <- c(0L, 6L, 12L, 18L)   # 0 = unlimited
+  minNode_grid  <- c(1L, 5L, 10L, 20L)
+  trees_stage1  <- if (isTuningOn) 300L  else 1000L
+  trees_stage2  <- if (isTuningOn) 1500L else 2000L
+  bestK         <- 5L
+  toc(log = TRUE, quiet = TRUE)
+
+  # ------------------- optional subsample for tuning -------------------
+  tic("Create stratified subsample for tuning")
+  tune_nmax <- if (isTuningOn) min(nrow(df), 100000L) else nrow(df)
+  if (tune_nmax < nrow(df)) {
+    set.seed(1)
+    idx0 <- which(df$presence == "absence")
+    idx1 <- which(df$presence == "presence")
+    k0 <- round(tune_nmax * length(idx0) / nrow(df))
+    k1 <- tune_nmax - k0
+    tune_idx <- c(sample(idx0, min(k0, length(idx0))), sample(idx1, min(k1, length(idx1))))
+    df_tune <- df[tune_idx, , drop = FALSE]
   } else {
-    tuneArgs <- list(
-      mtry = round(sqrt(length(trainingVariables)), 0),
-      maxDepth = 0,
-      nTrees = 2000
+    df_tune <- df
+  }
+  toc(log = TRUE, quiet = TRUE)
+
+  # ------------------- build candidate set -------------------
+  tic("Expand tuning grid")
+  if (isTuningOn) {
+    tuneArgsGrid <- expand.grid(
+      mtry = mtry_grid,
+      maxDepth = maxDepth_grid,
+      minNode = minNode_grid,
+      KEEP.OUT.ATTRS = FALSE,
+      stringsAsFactors = FALSE
     )
-    tuneArgsGrid <- expand.grid(tuneArgs)
+  } else {
+    tuneArgsGrid <- data.frame(
+      mtry = mtry_center, maxDepth = 0L, minNode = 5L, stringsAsFactors = FALSE
+    )
+  }
+  toc(log = TRUE, quiet = TRUE)
+
+  # ------------------- stage 1: cheap screening -------------------
+  if (isTuningOn) {
+    tic("Register parallel backend")
+    doParallel::registerDoParallel(cores = nCores)
+    on.exit(doParallel::stopImplicitCluster(), add = TRUE)
+    toc(log = TRUE, quiet = TRUE)
+
+    tic("Stage-1 tuning (cheap trees; no importance; single thread per fit)")
+    results1 <- foreach::foreach(
+      i = seq_len(nrow(tuneArgsGrid)), .combine = rbind, .packages = "ranger"
+    ) %dopar% {
+      g <- tuneArgsGrid[i, ]
+      rf1 <- ranger::ranger(
+        dependent.variable.name = "presence",
+        data          = df_tune,
+        mtry          = g$mtry,
+        num.trees     = trees_stage1,
+        max.depth     = g$maxDepth,
+        min.node.size = g$minNode,
+        classification = TRUE,
+        probability   = FALSE,     # faster for OOB error
+        importance    = "none",
+        write.forest  = FALSE,
+        num.threads   = 1          # avoid nested parallelism
+      )
+      data.frame(
+        mtry = g$mtry, maxDepth = g$maxDepth, minNode = g$minNode,
+        oobError = rf1$prediction.error,
+        stringsAsFactors = FALSE
+      )
+    }
+    toc(log = TRUE, quiet = TRUE)
+
+    tic("Select top-K configs by OOB error")
+    ord  <- order(results1$oobError, decreasing = FALSE)
+    topK <- head(results1[ord, , drop = FALSE], bestK)
+    toc(log = TRUE, quiet = TRUE)
+  } else {
+    topK <- tuneArgsGrid
   }
 
-  registerDoParallel(cores = nCores)
-
-  results <- foreach(
-    i = seq_len(nrow(tuneArgsGrid)),
-    .combine = rbind,
-    .packages = "ranger"
-  ) %dopar%
-    {
-      rf1 <- ranger(
-        mainModel,
-        data = allTrainData,
-        mtry = tuneArgsGrid$mtry[i],
-        num.trees = tuneArgsGrid$nTrees[i],
-        max.depth = tuneArgsGrid$maxDepth[i],
-        probability = TRUE,
-        importance = "impurity"
+  # ------------------- stage 2: refit top-K on full data -------------------
+  if (nrow(topK) > 1) {
+    tic("Stage-2 tuning on full data (still no importance)")
+    results2 <- foreach::foreach(
+      i = seq_len(nrow(topK)), .combine = rbind, .packages = "ranger"
+    ) %dopar% {
+      g <- topK[i, ]
+      rf2 <- ranger::ranger(
+        dependent.variable.name = "presence",
+        data          = df,
+        mtry          = g$mtry,
+        num.trees     = trees_stage2,
+        max.depth     = g$maxDepth,
+        min.node.size = g$minNode,
+        classification = TRUE,
+        probability   = FALSE,
+        importance    = "none",
+        write.forest  = FALSE,
+        num.threads   = 1
       )
-
-      oobError <- rf1$prediction.error
-      modelResults <- tuneArgsGrid[i, ]
-      modelResults[, "oobError"] <- oobError
-      modelResults
+      data.frame(
+        mtry = g$mtry, maxDepth = g$maxDepth, minNode = g$minNode,
+        oobError = rf2$prediction.error,
+        stringsAsFactors = FALSE
+      )
     }
+    toc(log = TRUE, quiet = TRUE)
 
-  bestModel <- ranger(
-    mainModel,
-    data = allTrainData,
-    mtry = results[which.min(results$oobError), "mtry"],
-    num.trees = results[which.min(results$oobError), "nTrees"],
-    max.depth = results[which.min(results$oobError), "maxDepth"],
-    num.threads = 1,
-    probability = TRUE,
-    importance = "impurity"
+    tic("Pick best hyperparameters (min OOB error)")
+    best_idx <- which.min(results2$oobError)
+    best_hyp <- results2[best_idx, ]
+    toc(log = TRUE, quiet = TRUE)
+  } else {
+    best_hyp <- topK
+  }
+
+  # ------------------- final model (compute importance once) -------------------
+  tic("Train final model with probabilities & importance")
+  bestModel <- ranger::ranger(
+    dependent.variable.name = "presence",
+    data          = df,
+    mtry          = best_hyp$mtry,
+    num.trees     = max(2000L, trees_stage2),
+    max.depth     = best_hyp$maxDepth,
+    min.node.size = best_hyp$minNode,
+    classification = TRUE,
+    probability   = TRUE,          # needed downstream
+    importance    = "impurity",    # compute once here
+    write.forest  = TRUE,
+    num.threads   = nCores         # safe: no outer parallel work now
   )
+  toc(log = TRUE, quiet = TRUE)
 
+  # ------------------- metadata for downstream prediction -------------------
+  tic("Capture factor levels for categorical predictors")
   factor_levels <- lapply(
     allTrainData[, trainingVariables, drop = FALSE],
-    function(x) {
-      if (is.factor(x)) levels(x) else NULL
-    }
+    function(x) if (is.factor(x)) levels(x) else NULL
   )
+  toc(log = TRUE, quiet = TRUE)
 
-  return(list(
+  # Optionally print the timing log from inside the function:
+  print(tictoc::tic.log())
+
+  list(
     model = bestModel,
-    vimp = bestModel$variable.importance,
+    vimp  = bestModel$variable.importance,
     factor_levels = factor_levels,
     cat_vars = cat_vars,
     num_vars = num_vars
-  ))
+  )
 }
