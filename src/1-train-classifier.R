@@ -5,7 +5,6 @@
 
 # Set up workspace -------------------------------------------------------------
 
-tic("general setup")
 packageDir <- (Sys.getenv("ssim_package_directory"))
 
 sourceScripts <- list.files(
@@ -27,10 +26,8 @@ myScenario <- scenario()
 # Retrieve the transfer directory for storing output rasters
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
-toc(log = TRUE)
 
 # Load raster input datasheets -------------------------------------------------
-tic("loading and processing input datasheets")
 trainingRasterDataframe <- datasheet(
   myScenario,
   name = "ecoClassify_InputTrainingRasters"
@@ -134,9 +131,6 @@ trainingRasterList <- addCovariates(
 #       number of NA values across the training data
 checkNA(trainingRasterList)
 
-toc(log = TRUE)
-
-tic("training and testing data preparation")
 # Separate training and testing data
 splitData <- splitTrainTest(
   trainingRasterList,
@@ -150,7 +144,6 @@ if (modelType == "Random Forest") {
   allTrainData$presence <- factor(allTrainData$presence, levels = c(0, 1), labels = c("absence", "presence"))
   allTestData$presence <- factor(allTestData$presence, levels = c(0, 1), labels = c("absence", "presence"))
 }
-toc(log = TRUE)
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format --------
 
@@ -175,8 +168,6 @@ rgbOutputDataframe <- data.frame(Timestep = numeric(0), RGBImage = character(0))
 
 # Train model ------------------------------------------------------------------
 
-tic("training model")
-
 progressBar(type = "message", message = "Training model")
 
 if (modelType == "MaxEnt") {
@@ -187,32 +178,24 @@ if (modelType == "MaxEnt") {
     threshold <- manualThreshold
   }
 } else if (modelType == "Random Forest") {
-  tic("training random forest model")
   modelOut <- getRandomForestModel(allTrainData, nCores, modelTuning)
-  toc(log = TRUE)
   if (setManualThreshold == FALSE) {
-    tic("getting optimal threshold for random forest")
     threshold <- getOptimalThreshold(
       modelOut,
       allTestData,
       "Random Forest"
     )
-    toc(log = TRUE)
   } else {
     threshold <- manualThreshold
   }
 } else if (modelType == "CNN") {
-  tic("training CNN model")
   modelOut <- getCNNModel(allTrainData, nCores, modelTuning)
-  toc(log = TRUE)
   if (setManualThreshold == FALSE) {
-    tic("getting optimal threshold for CNN")
     threshold <- getOptimalThreshold(
       modelOut,
       allTestData,
       "CNN"
     )
-    toc(log = TRUE)
   } else {
     threshold <- manualThreshold
   }
@@ -222,9 +205,6 @@ if (modelType == "MaxEnt") {
 model <- modelOut[[1]]
 variableImportance <- modelOut[[2]]
 
-toc(log = TRUE)
-
-tic("variable importance plot")
 # Extract raster values for diagnostics
 rastLayerHistogram <- getRastLayerHistogram(
   trainingRasterList,
@@ -232,7 +212,6 @@ rastLayerHistogram <- getRastLayerHistogram(
   nBins = 20,
   nSample = 10000
 )
-toc(log = TRUE)
 
 if (modelType == "CNN") {
   # Save Torch weights separately
@@ -278,12 +257,10 @@ varImportanceOutputDataframe <- as.data.frame(variableImportance) %>%
   tibble::rownames_to_column("Variable") %>%
   rename(Importance = "variableImportance")
 
-
 # Predict presence for training rasters in each timestep group -----------------
 
 progressBar(type = "message", message = "Predict training rasters")
 
-tic("predicting training rasters")
 for (t in seq_along(trainingRasterList)) {
   # Get timestep for the current raster
   timestep <- timestepList[t]
@@ -338,11 +315,9 @@ for (t in seq_along(trainingRasterList)) {
     transferDir
   )
 }
-toc(log = TRUE)
 
 progressBar(type = "message", message = "Calculating summary statistics")
 
-tic("generating histogram")
 # Predict response based on range of values
 responseHistogram <- predictResponseHistogram(
   rastLayerHistogram,
@@ -362,11 +337,9 @@ layerHistogramPlotOutputDataframe <- data.frame(
     "/LayerHistogramResponse.png"
   ))
 )
-toc(log = TRUE)
 
 # Calculate mean values for model statistics --------------------
 
-tic("calculating model statistics")
 outputDataframes <- calculateStatistics(
   modelOut,
   allTestData,
@@ -395,7 +368,6 @@ modelChartDataframe <- data.frame(
     filter(Statistic == "specificity") %>%
     pull(Value)
 )
-toc(log = TRUE)
 
 # Make a confusion matrix output dataframe
 ggsave(
@@ -511,5 +483,3 @@ saveDatasheet(
   data = modelChartDataframe,
   name = "ecoClassify_ModelChartData"
 )
-
-print(tictoc::tic.log())

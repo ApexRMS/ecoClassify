@@ -110,34 +110,23 @@ predictRanger <- function(raster, model) {
 #' @import doParallel
 #' @export
 getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
-  # Expect tictoc loaded by caller; feel free to clear log before calling:
-  tictoc::tic.clearlog()
 
   # ------------------- prep -------------------
-  tic("Identify predictor columns")
   trainingVariables <- grep("presence|kfold", colnames(allTrainData), invert = TRUE, value = TRUE)
-  toc(log = TRUE, quiet = TRUE)
 
-  tic("Detect categorical / numeric vars")
   cat_vars <- names(allTrainData[, trainingVariables, drop = FALSE])[sapply(
     allTrainData[, trainingVariables, drop = FALSE], is.factor)]
   num_vars <- setdiff(trainingVariables, cat_vars)
-  toc(log = TRUE, quiet = TRUE)
 
-  tic("Coerce presence to factor")
   if (!is.factor(allTrainData$presence)) {
     allTrainData$presence <- factor(allTrainData$presence, levels = c(0, 1),
                                     labels = c("absence", "presence"))
   }
-  toc(log = TRUE, quiet = TRUE)
 
-  tic("Build model frame (no formula)")
   df <- allTrainData[, c("presence", trainingVariables), drop = FALSE]
   p  <- length(trainingVariables)
-  toc(log = TRUE, quiet = TRUE)
 
   # ------------------- tuning grid -------------------
-  tic("Construct tuning grid")
   mtry_center   <- max(1L, round(sqrt(p)))
   mtry_grid     <- sort(unique(pmax(1L, round(c(mtry_center * c(0.5, 0.75, 1, 1.25, 1.5))))))
   maxDepth_grid <- c(0L, 6L, 12L, 18L)   # 0 = unlimited
@@ -145,10 +134,8 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   trees_stage1  <- if (isTuningOn) 300L  else 1000L
   trees_stage2  <- if (isTuningOn) 1500L else 2000L
   bestK         <- 5L
-  toc(log = TRUE, quiet = TRUE)
 
   # ------------------- optional subsample for tuning -------------------
-  tic("Create stratified subsample for tuning")
   tune_nmax <- if (isTuningOn) min(nrow(df), 100000L) else nrow(df)
   if (tune_nmax < nrow(df)) {
     set.seed(1)
@@ -161,10 +148,8 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   } else {
     df_tune <- df
   }
-  toc(log = TRUE, quiet = TRUE)
 
   # ------------------- build candidate set -------------------
-  tic("Expand tuning grid")
   if (isTuningOn) {
     tuneArgsGrid <- expand.grid(
       mtry = mtry_grid,
@@ -178,16 +163,12 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
       mtry = mtry_center, maxDepth = 0L, minNode = 5L, stringsAsFactors = FALSE
     )
   }
-  toc(log = TRUE, quiet = TRUE)
 
   # ------------------- stage 1: cheap screening -------------------
   if (isTuningOn) {
-    tic("Register parallel backend")
     doParallel::registerDoParallel(cores = nCores)
     on.exit(doParallel::stopImplicitCluster(), add = TRUE)
-    toc(log = TRUE, quiet = TRUE)
 
-    tic("Stage-1 tuning (cheap trees; no importance; single thread per fit)")
     results1 <- foreach::foreach(
       i = seq_len(nrow(tuneArgsGrid)), .combine = rbind, .packages = "ranger"
     ) %dopar% {
@@ -211,19 +192,15 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
         stringsAsFactors = FALSE
       )
     }
-    toc(log = TRUE, quiet = TRUE)
 
-    tic("Select top-K configs by OOB error")
     ord  <- order(results1$oobError, decreasing = FALSE)
     topK <- head(results1[ord, , drop = FALSE], bestK)
-    toc(log = TRUE, quiet = TRUE)
   } else {
     topK <- tuneArgsGrid
   }
 
   # ------------------- stage 2: refit top-K on full data -------------------
   if (nrow(topK) > 1) {
-    tic("Stage-2 tuning on full data (still no importance)")
     results2 <- foreach::foreach(
       i = seq_len(nrow(topK)), .combine = rbind, .packages = "ranger"
     ) %dopar% {
@@ -247,18 +224,14 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
         stringsAsFactors = FALSE
       )
     }
-    toc(log = TRUE, quiet = TRUE)
 
-    tic("Pick best hyperparameters (min OOB error)")
     best_idx <- which.min(results2$oobError)
     best_hyp <- results2[best_idx, ]
-    toc(log = TRUE, quiet = TRUE)
   } else {
     best_hyp <- topK
   }
 
   # ------------------- final model (compute importance once) -------------------
-  tic("Train final model with probabilities & importance")
   bestModel <- ranger::ranger(
     dependent.variable.name = "presence",
     data          = df,
@@ -272,18 +245,12 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
     write.forest  = TRUE,
     num.threads   = nCores         # safe: no outer parallel work now
   )
-  toc(log = TRUE, quiet = TRUE)
 
   # ------------------- metadata for downstream prediction -------------------
-  tic("Capture factor levels for categorical predictors")
   factor_levels <- lapply(
     allTrainData[, trainingVariables, drop = FALSE],
     function(x) if (is.factor(x)) levels(x) else NULL
   )
-  toc(log = TRUE, quiet = TRUE)
-
-  # Optionally print the timing log from inside the function:
-  print(tictoc::tic.log())
 
   list(
     model = bestModel,
