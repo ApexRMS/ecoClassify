@@ -94,7 +94,7 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   contextualizationWindowSize <- advClassifierOptionsDataframe$contextualizationWindowSize
   modelType <- as.character(classifierOptionsDataframe$modelType)
   modelTuning <- advClassifierOptionsDataframe$modelTuning
-  tuningObjective <- advClassifierOptionsDataframe$tuningObjective
+  tuningObjective <- as.character(advClassifierOptionsDataframe$tuningObjective)
   setManualThreshold <- advClassifierOptionsDataframe$setManualThreshold
   manualThreshold <- advClassifierOptionsDataframe$manualThreshold
   normalizeRasters <- advClassifierOptionsDataframe$normalizeRasters
