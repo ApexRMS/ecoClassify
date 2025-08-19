@@ -27,9 +27,7 @@ myScenario <- scenario()
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
-
 # Load raster input datasheets -------------------------------------------------
-
 trainingRasterDataframe <- datasheet(
   myScenario,
   name = "ecoClassify_InputTrainingRasters"
@@ -68,6 +66,7 @@ setManualThreshold <- inputVariables[[7]]
 manualThreshold <- inputVariables[[8]]
 normalizeRasters <- inputVariables[[9]]
 rasterDecimalPlaces <- inputVariables[[10]]
+tuningObjective <- inputVariables[[11]]
 
 # Check if multiprocessing is selected
 mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
@@ -142,6 +141,10 @@ splitData <- splitTrainTest(
 allTrainData <- splitData[[1]]
 allTestData <- splitData[[2]]
 
+if (modelType == "Random Forest") {
+  allTrainData$presence <- factor(allTrainData$presence, levels = c(0, 1), labels = c("absence", "presence"))
+  allTestData$presence <- factor(allTestData$presence, levels = c(0, 1), labels = c("absence", "presence"))
+}
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format --------
 
@@ -171,7 +174,7 @@ progressBar(type = "message", message = "Training model")
 if (modelType == "MaxEnt") {
   modelOut <- getMaxentModel(allTrainData, nCores, modelTuning)
   if (setManualThreshold == FALSE) {
-    threshold <- getOptimalThreshold(modelOut, allTestData, "MaxEnt")
+    threshold <- getOptimalThreshold(modelOut, allTestData, "MaxEnt", tuningObjective)
   } else {
     threshold <- manualThreshold
   }
@@ -181,7 +184,8 @@ if (modelType == "MaxEnt") {
     threshold <- getOptimalThreshold(
       modelOut,
       allTestData,
-      "Random Forest"
+      "Random Forest",
+      tuningObjective
     )
   } else {
     threshold <- manualThreshold
@@ -192,7 +196,8 @@ if (modelType == "MaxEnt") {
     threshold <- getOptimalThreshold(
       modelOut,
       allTestData,
-      "CNN"
+      "CNN",
+      tuningObjective
     )
   } else {
     threshold <- manualThreshold
@@ -254,7 +259,6 @@ varImportanceOutputImage <- variableImportanceOutput[[2]]
 varImportanceOutputDataframe <- as.data.frame(variableImportance) %>%
   tibble::rownames_to_column("Variable") %>%
   rename(Importance = "variableImportance")
-
 
 # Predict presence for training rasters in each timestep group -----------------
 
