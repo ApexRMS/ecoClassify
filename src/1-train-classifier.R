@@ -121,6 +121,13 @@ trainingCovariateRaster <- processCovariates(
   modelType
 )
 
+## filtered out timesteps with issues
+flt <- skipBadTimesteps(
+  trainingRasterList,
+  groundTruthRasterList,
+  timesteps = Timesteps # if you have a vector of timestep labels; otherwise omit
+)
+
 # Add covariate data to training rasters
 trainingRasterList <- addCovariates(
   trainingRasterList,
@@ -134,16 +141,24 @@ checkNA(trainingRasterList)
 
 # Separate training and testing data
 splitData <- splitTrainTest(
-  trainingRasterList,
-  groundTruthRasterList,
+  flt$trainingRasterList,
+  flt$groundTruthRasterList,
   nObs
 )
 allTrainData <- splitData[[1]]
 allTestData <- splitData[[2]]
 
 if (modelType == "Random Forest") {
-  allTrainData$presence <- factor(allTrainData$presence, levels = c(0, 1), labels = c("absence", "presence"))
-  allTestData$presence <- factor(allTestData$presence, levels = c(0, 1), labels = c("absence", "presence"))
+  allTrainData$presence <- factor(
+    allTrainData$presence,
+    levels = c(0, 1),
+    labels = c("absence", "presence")
+  )
+  allTestData$presence <- factor(
+    allTestData$presence,
+    levels = c(0, 1),
+    labels = c("absence", "presence")
+  )
 }
 
 # Setup empty dataframes to accept output in SyncroSim datasheet format --------
@@ -174,7 +189,12 @@ progressBar(type = "message", message = "Training model")
 if (modelType == "MaxEnt") {
   modelOut <- getMaxentModel(allTrainData, nCores, modelTuning)
   if (setManualThreshold == FALSE) {
-    threshold <- getOptimalThreshold(modelOut, allTestData, "MaxEnt", tuningObjective)
+    threshold <- getOptimalThreshold(
+      modelOut,
+      allTestData,
+      "MaxEnt",
+      tuningObjective
+    )
   } else {
     threshold <- manualThreshold
   }
