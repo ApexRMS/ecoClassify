@@ -124,8 +124,7 @@ trainingCovariateRaster <- processCovariates(
 ## filtered out timesteps with issues
 flt <- skipBadTimesteps(
   trainingRasterList,
-  groundTruthRasterList,
-  timesteps = Timesteps # if you have a vector of timestep labels; otherwise omit
+  groundTruthRasterList
 )
 
 # Add covariate data to training rasters
