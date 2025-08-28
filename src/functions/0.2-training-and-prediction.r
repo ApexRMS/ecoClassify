@@ -84,6 +84,7 @@ skipBadTimesteps <- function(
   # Assemble outputs
   keptTraining <- trainingRasterList[keptIdx]
   keptGroundTruth <- groundTruthRasterList[keptIdx]
+  keptTimesteps <- if (!is.null(timesteps)) timesteps[keptIdx] else NULL
 
   droppedIdx <- which(!keptIdx)
   dropped <- if (length(droppedIdx)) {
@@ -131,7 +132,8 @@ skipBadTimesteps <- function(
   list(
     trainingRasterList = keptTraining,
     groundTruthRasterList = keptGroundTruth,
-    dropped = dropped
+    dropped = dropped,
+    keptTimesteps = keptTimesteps
   )
 }
 
@@ -611,11 +613,7 @@ splitTrainTest <- function(
     stop("Training data must include both classes overall.")
   }
 
-  list(
-    train = trainDf,
-    test = testDf,
-    samplingInfo = samplingInfo
-  )
+  list(train = trainDf, test = testDf, samplingInfo = samplingInfo)
 }
 
 #' Compute metrics at a threshold

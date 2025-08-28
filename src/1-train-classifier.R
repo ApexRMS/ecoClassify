@@ -133,12 +133,17 @@ groundTruthRasterList <- flt$groundTruthRasterList
 if (!is.null(flt$kept_timesteps)) {
   timestepList <- flt$kept_timesteps
 }
+## guard: if all timesteps were dropped, abort early with a clear message
+if (length(trainingRasterList) == 0) {
+  warning(
+    "All timesteps were dropped because of missing data or projection issues; no data available for training."
+  )
+  stop("Aborting: no valid timesteps remain after filtering.")
+}
+
 
 # Add covariate data to training rasters
-trainingRasterList <- addCovariates(
-  trainingRasterList,
-  trainingCovariateRaster
-)
+trainingRasterList <- addCovariates(trainingRasterList, trainingCovariateRaster)
 
 # Check for NA values in training rasters
 # NOTE: Masking is not applied, but a message is returned if there are an uneven
@@ -146,11 +151,7 @@ trainingRasterList <- addCovariates(
 checkNA(trainingRasterList)
 
 # Separate training and testing data
-splitData <- splitTrainTest(
-  trainingRasterList,
-  groundTruthRasterList,
-  nObs
-)
+splitData <- splitTrainTest(trainingRasterList, groundTruthRasterList, nObs)
 allTrainData <- splitData[[1]]
 allTestData <- splitData[[2]]
 
