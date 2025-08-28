@@ -124,8 +124,15 @@ trainingCovariateRaster <- processCovariates(
 ## filtered out timesteps with issues
 flt <- skipBadTimesteps(
   trainingRasterList,
-  groundTruthRasterList
+  groundTruthRasterList,
+  timesteps = timestepList
 )
+## using filtered datasets going forward
+trainingRasterList <- flt$trainingRasterList
+groundTruthRasterList <- flt$groundTruthRasterList
+if (!is.null(flt$kept_timesteps)) {
+  timestepList <- flt$kept_timesteps
+}
 
 # Add covariate data to training rasters
 trainingRasterList <- addCovariates(
@@ -140,8 +147,8 @@ checkNA(trainingRasterList)
 
 # Separate training and testing data
 splitData <- splitTrainTest(
-  flt$trainingRasterList,
-  flt$groundTruthRasterList,
+  trainingRasterList,
+  groundTruthRasterList,
   nObs
 )
 allTrainData <- splitData[[1]]
