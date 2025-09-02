@@ -1029,7 +1029,7 @@ saveFiles <- function(
   predictedPresence,
   groundTruth = NULL,
   probabilityRaster,
-  trainingRasterList,
+  trainingRaster,
   category,
   timestep,
   transferDir
@@ -1084,6 +1084,6 @@ saveFiles <- function(
       ".png"
     ))
   )
-  plotRGB(trainingRasterList[[t]], r = 3, g = 2, b = 1, stretch = "lin")
+  plotRGB(trainingRaster, r = 3, g = 2, b = 1, stretch = "lin")
   dev.off()
 }

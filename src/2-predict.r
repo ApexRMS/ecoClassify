@@ -177,7 +177,7 @@ for (t in seq_along(predictRasterList)) {
     classifiedPresence,
     groundTruth = NULL,
     classifiedProbability,
-    predictRasterList,
+    predictRasterList[[timestep]],
     category = "predicting",
     timestep,
     transferDir
