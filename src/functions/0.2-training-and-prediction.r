@@ -653,14 +653,14 @@ getSensSpec <- function(probs, actual, threshold) {
 #'
 #' @description
 #' Selects a threshold over \code{0.01..0.99} maximizing an objective
-#' (\code{"youden"}, \code{"accuracy"}, \code{"specificity"},
-#' \code{"sensitivity"}, \code{"precision"}, \code{"balanced"}),
+#' (\code{"Youden"}, \code{"Accuracy"}, \code{"Specificity"},
+#' \code{"Sensitivity"}, \code{"Precision"}, \code{"Balanced"}),
 #' with optional minimum metric constraints.
 #'
 #' @param model Trained model object (CNN, RF, or MaxEnt).
 #' @param testingData Data frame with \code{presence} and predictors.
 #' @param modelType One of \code{"Random Forest"}, \code{"MaxEnt"}, \code{"CNN"}.
-#' @param objective Objective to maximize; default \code{"youden"}.
+#' @param objective Objective to maximize; default \code{"Youden"}.
 #' @param min_sensitivity Optional minimum sensitivity in [0, 1].
 #' @param min_specificity Optional minimum specificity in [0, 1].
 #' @param min_precision Optional minimum precision in [0, 1].
