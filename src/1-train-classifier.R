@@ -339,7 +339,7 @@ for (t in seq_along(trainingRasterList)) {
     predictedPresence,
     groundTruth,
     probabilityRaster,
-    trainingRasterList[[timestep]],
+    trainingRasterList[[t]],
     category = "training",
     timestep,
     transferDir
