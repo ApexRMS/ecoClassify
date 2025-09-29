@@ -3,6 +3,36 @@
 ## ApexRMS, November 2024
 ## -------------------------------
 
+#' Assign Generic CRS to Raster ----
+#'
+#' @description
+#' Assigns a generic planar coordinate reference system to rasters
+#' that don't have a CRS defined.
+#'
+#' @param raster A SpatRaster object
+#' @return A SpatRaster with CRS assigned if it was missing
+#'
+#' @details
+#' This function checks if a raster has a defined CRS. If not, it assigns
+#' a generic planar coordinate system suitable for non-geographic data
+#' (like DSLR camera images) where coordinates are in arbitrary units.
+#' @noRd
+assignGenericCRS <- function(raster) {
+  # Check if raster has a CRS
+  if (is.na(terra::crs(raster)) || terra::crs(raster) == "") {
+    # Assign a generic planar CRS suitable for non-geographic data
+    # This is essentially a Cartesian coordinate system with no specific projection
+    terra::crs(raster) <- "+proj=cart +units=m"
+
+    updateRunLog(
+      "No CRS found for input raster; assigned generic planar coordinate system",
+      type = "info"
+    )
+  }
+
+  return(raster)
+}
+
 #' Extract rasters from filepaths in a dataframe ----
 #'
 #' @description
@@ -16,7 +46,7 @@
 #' @details
 #' The dataframe is first subset based on timestep. Rasters from the same
 #' timestep are combined into one raster using the terra package, and added
-#' to a list.
+#' to a list. If rasters don't have a CRS defined, a generic planar CRS is assigned.
 #' @noRd
 extractRasters <- function(dataframe, column) {
   # remove rows with NA values in the second column
@@ -38,6 +68,9 @@ extractRasters <- function(dataframe, column) {
 
     # read in all files as a single raster
     subsetRaster <- rast(allFiles)
+
+    # assign generic CRS if none exists
+    subsetRaster <- assignGenericCRS(subsetRaster)
 
     if (column == 3) {
       # remove duplicated layers
@@ -219,6 +252,10 @@ processCovariates <- function(trainingCovariateDataframe, modelType) {
     ) {
       for (row in seq(1, nrow(trainingCovariateDataframe), by = 1)) {
         covariateRaster <- rast(trainingCovariateDataframe[row, 1])
+
+        # assign generic CRS if none exists
+        covariateRaster <- assignGenericCRS(covariateRaster)
+
         dataType <- as.character(trainingCovariateDataframe[row, 2])
 
         if (dataType == "Categorical") {
