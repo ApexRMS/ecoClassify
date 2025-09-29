@@ -3,6 +3,17 @@
 ## ApexRMS, November 2024
 ## -------------------------------
 
+# Load MaxEnt-specific dependencies
+if (!requireNamespace("rJava", quietly = TRUE)) {
+  install.packages("rJava", repos = 'http://cran.us.r-project.org')
+}
+suppressPackageStartupMessages(library(rJava, character.only = TRUE))
+
+if (!requireNamespace("ENMeval", quietly = TRUE)) {
+  install.packages("ENMeval", repos = 'http://cran.us.r-project.org')
+}
+suppressPackageStartupMessages(library(ENMeval, character.only = TRUE))
+
 #' Train a Maxent Model with Hyperparameter Tuning ----
 #'
 #' @description
