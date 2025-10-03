@@ -405,63 +405,88 @@ loadTorchCNNfromRDS <- function(path, n_feat, hidden_chs = 16, device = "cpu") {
 #'
 #' @noRd
 loadCNNModel <- function(weights_path, metadata_path) {
-  # Define CNNWithEmbeddings inside the function scope
+  # Read metadata saved at training time (everything except the torch model)
+  metadata <- readRDS(metadata_path)
+
+  # Derive numeric lengths for each categorical variable
+  if (!is.null(metadata$cat_level_lengths)) {
+    cat_len <- unlist(metadata$cat_level_lengths)
+  } else if (!is.null(metadata$cat_levels)) {
+    # fallback: count levels if only names were saved
+    cat_len <- lengths(metadata$cat_levels)
+  } else {
+    cat_len <- integer(0)
+  }
+
+  # Ensure embedding dims are numeric vector, same order/length as cat_len
+  emb_dims <- if (!is.null(metadata$embedding_dims)) unlist(metadata$embedding_dims) else numeric(0)
+
+  # Align by cat_vars ordering if names are available
+  if (length(metadata$cat_vars)) {
+    # reorder cat_len and emb_dims to match cat_vars if they are named
+    if (!is.null(names(cat_len))) {
+      cat_len <- cat_len[metadata$cat_vars]
+    }
+    if (!is.null(names(emb_dims))) {
+      emb_dims <- emb_dims[metadata$cat_vars]
+    }
+  }
+
+  # Basic validation
+  if (length(cat_len) != length(emb_dims)) {
+    stop(sprintf("Metadata mismatch: %d categorical vars but %d embedding dims.",
+                 length(cat_len), length(emb_dims)))
+  }
+
+  # Define the same architecture used at training
   CNNWithEmbeddings <- nn_module(
     "CNNWithEmbeddings",
-    initialize = function(n_num, cat_levels, embedding_dims) {
-      self$has_cat <- length(cat_levels) > 0
+    initialize = function(n_num, cat_level_lengths, embedding_dims) {
+      self$has_cat <- length(cat_level_lengths) > 0
       if (self$has_cat) {
         self$embeddings <- nn_module_list(
           mapply(
-            function(l, d)
-              nn_embedding(num_embeddings = l + 2, embedding_dim = d),
-            cat_levels,
-            embedding_dims,
-            SIMPLIFY = FALSE
+            function(l, d) nn_embedding(num_embeddings = l + 2, embedding_dim = d),
+            cat_level_lengths, embedding_dims, SIMPLIFY = FALSE
           )
         )
-        embed_dim <- sum(unlist(embedding_dims))
+        embed_dim <- sum(embedding_dims)
       } else {
         embed_dim <- 0
         self$embeddings <- NULL
       }
-      self$fc1 <- nn_linear(embed_dim + n_num, 16)  # <-- Match here
-      self$fc2 <- nn_linear(16, 2)                  # <-- Match here
+      self$fc1 <- nn_linear(embed_dim + n_num, 16)
+      self$fc2 <- nn_linear(16, 2)
     },
     forward = function(x_num, x_cat) {
-      if (self$has_cat) {
-        embeds <- lapply(
-          seq_along(x_cat),
-          function(i) self$embeddings[[i]](x_cat[[i]])
-        )
+      if (self$has_cat && length(x_cat)) {
+        embeds <- lapply(seq_along(x_cat), function(i) self$embeddings[[i]](x_cat[[i]]))
         x_cat_emb <- torch_cat(embeds, dim = 2)
         x <- torch_cat(list(x_num, x_cat_emb), dim = 2)
       } else {
         x <- x_num
       }
       x <- nnf_relu(self$fc1(x))
-      x <- self$fc2(x)
+      self$fc2(x)
     }
   )
 
-  # Load metadata (cat_levels, feature_names, etc.)
-  metadata <- readRDS(metadata_path)
-
-  # Reconstruct model architecture
-  embedding_dims <- metadata$embedding_dims
+  # Build model skeleton with numeric inputs
   net <- CNNWithEmbeddings(
-    n_num = length(metadata$num_vars),
-    cat_levels = unlist(metadata$cat_levels),
-    embedding_dims = unlist(embedding_dims)
+    n_num             = length(metadata$num_vars),
+    cat_level_lengths = as.integer(cat_len),
+    embedding_dims    = as.integer(emb_dims)
   )
   class(net) <- c("torchCNN", class(net))
 
-  # Load weights
-  net$load_state_dict(torch_load(weights_path))
+  # Load weights (CPU by default)
+  sd <- torch_load(weights_path)
+  net$load_state_dict(sd)
 
-  # Return full modelOut object
+  # Return the same structure you used elsewhere: model + metadata
   c(list(model = net), metadata)
 }
+
 
 #' Predict CNN from Dataframe ----
 #'
