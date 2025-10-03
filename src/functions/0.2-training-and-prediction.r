@@ -1074,16 +1074,34 @@ saveFiles <- function(
   )
 
   # save RBG Image
-  png(
-    file = file.path(paste0(
-      transferDir,
-      "/RGBImage-",
-      category,
-      "-t",
-      timestep,
-      ".png"
-    ))
-  )
-  plotRGB(trainingRaster, r = 3, g = 2, b = 1, stretch = "lin")
-  dev.off()
+  # prefer B03,B02,B01 if present; otherwise fall back to first three layers
+  rgb_idx <- c(3, 2, 1)
+  if (terra::nlyr(trainingRaster) >= 3) {
+    rgb_rast <- trainingRaster[[rgb_idx]]
+  } else if (terra::nlyr(trainingRaster) == 2) {
+    rgb_rast <- c(trainingRaster[[2]], trainingRaster[[1]], trainingRaster[[1]])
+  } else if (terra::nlyr(trainingRaster) == 1) {
+    rgb_rast <- c(trainingRaster[[1]], trainingRaster[[1]], trainingRaster[[1]])
+  } else {
+    updateRunLog(sprintf("t=%s: training raster has 0 layers; skipping RGB PNG.", timestep), type = "warning")
+    return(invisible(NULL))
+  }
+
+  # convert factors to numeric for plotting (plotRGB needs numeric values)
+  if (any(terra::is.factor(rgb_rast))) {
+    rgb_rast <- terra::as.numeric(rgb_rast)
+  }
+
+  # sanity: ensure exactly 3 layers
+  stopifnot(terra::nlyr(rgb_rast) == 3)
+
+  # --- plot PNG safely ---
+  png_file <- file.path(paste0(transferDir, "/RGBImage-", category, "-t", timestep, ".png"))
+  try({
+    grDevices::png(filename = png_file)
+    # now r=1,g=2,b=3 always exists on this mini-stack
+    terra::plotRGB(rgb_rast, r = 1, g = 2, b = 3, stretch = "lin")
+    grDevices::dev.off()
+  }, silent = TRUE)
+
 }
