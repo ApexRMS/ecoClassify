@@ -142,24 +142,74 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   # Combine categorical and numeric tensors in custom dataset
   ds <- dataset(
     initialize = function(X_num, X_cat, y) {
+      self$n     <- nrow(X_num)
       self$X_num <- torch_tensor(X_num, dtype = torch_float())
-      self$X_cat <- if (length(X_cat)) {
-        lapply(X_cat, function(x) torch_tensor(x, dtype = torch_long()))
+
+      if (length(X_cat)) {
+        # store each categorical column as a 1-D [n] long tensor
+        self$X_cat <- lapply(seq_along(X_cat), function(i) {
+          v <- as.integer(X_cat[[i]])
+          # map NA to "unknown" bucket at end
+          nlev <- max(v, na.rm = TRUE)
+          v[is.na(v)] <- nlev + 1L
+          torch_tensor(unname(v), dtype = torch_long())$view(c(self$n))
+        })
       } else {
-        list()
+        self$X_cat <- list()
       }
+
       self$y <- torch_tensor(y + 1L, dtype = torch_long())
     },
     .getitem = function(i) {
-      cat_feats <- if (length(self$X_cat)) lapply(self$X_cat, function(x) x[i]) else list()
-      list(x_num = self$X_num[i, ], x_cat = cat_feats, y = self$y[i])
+      # one sample only
+      x_num <- self$X_num[i, ]$view(c(-1))  # [p]
+
+      x_cat <- if (length(self$X_cat)) {
+        lapply(self$X_cat, function(x) x[i])  # each is 0-D long (scalar)
+      } else {
+        list()
+      }
+
+      y <- self$y[i]  # 0-D long
+
+      list(x_num = x_num, x_cat = x_cat, y = y)
     },
-    .length = function() self$X_num$size()[1]
+    .length = function() self$n
   )(X_num, cat_indices, y_int)
 
   batch_size <- if (isTuningOn) 64 else 32
   epochs <- if (isTuningOn) 100 else 20
-  dl <- dataloader(ds, batch_size = batch_size, shuffle = TRUE)
+
+  collate_cnn <- function(batch) {
+    B <- length(batch)
+
+    # x_num: each element is [p]; stack to [p, B] then transpose -> [B, p]
+    x_num <- torch::torch_stack(lapply(batch, `[[`, "x_num"), dim = 2)$t()
+
+    # x_cat: for each cat var j, stack scalars and force shape [B]
+    if (length(batch[[1]]$x_cat)) {
+      K <- length(batch[[1]]$x_cat)
+      x_cat <- lapply(seq_len(K), function(j) {
+        torch::torch_stack(lapply(batch, function(s) s$x_cat[[j]]))$view(c(B))
+      })
+    } else {
+      x_cat <- list()
+    }
+
+    # y: stack scalars and force shape [B]
+    y <- torch::torch_stack(lapply(batch, `[[`, "y"))$view(c(B))
+
+    list(x_num = x_num, x_cat = x_cat, y = y)
+  }
+  
+  dl <- torch::dataloader(
+    ds,
+    batch_size = if (isTuningOn) 64L else 32L,
+    shuffle    = TRUE,
+    # drop_last  = TRUE,      # keep; avoids ragged batch
+    # num_workers = 0,        # keep; Windows-safe
+    collate_fn = collate_cnn
+  )
 
   net <- nn_module(
     "CNNWithEmbeddings",
@@ -296,7 +346,7 @@ predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
   } else {
     X_cat <- lapply(seq_along(cat_vars), function(i) {
       var <- cat_vars[i]
-      levels_train <- cat_levels[i]
+      levels_train <- cat_levels[[i]]
       x <- df[[var]]
       if (!is.factor(x)) x <- factor(x, levels = levels_train)
 
