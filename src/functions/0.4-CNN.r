@@ -201,7 +201,7 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
 
     list(x_num = x_num, x_cat = x_cat, y = y)
   }
-  
+
   dl <- torch::dataloader(
     ds,
     batch_size = if (isTuningOn) 64L else 32L,
