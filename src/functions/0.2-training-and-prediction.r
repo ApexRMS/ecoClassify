@@ -209,7 +209,7 @@ splitTrainTest <- function(
 
   # helper: estimate class labels (0/1) and minority from a quick GT sample (no full scan)
   estimate_classes <- function(r_gt, sample_n = quick_prop_sample) {
-    s <- min(sample_n, max(1000L, floor(terra::ncell(r_gt) * 0.001)))
+    s <- min(sample_n, max(5000L, floor(0.01 * terra::ncell(r_gt))))
     gt_samp <- try(
       terra::spatSample(
         r_gt,
@@ -1103,5 +1103,4 @@ saveFiles <- function(
     terra::plotRGB(rgb_rast, r = 1, g = 2, b = 3, stretch = "lin")
     grDevices::dev.off()
   }, silent = TRUE)
-
 }
