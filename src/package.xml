@@ -51,6 +51,7 @@
         <column name="manualThreshold" displayName="Probability threshold" dataType="Double" isOptional="True"/>
         <column name="applyContextualization" dataType="Boolean" displayName="Apply contextualization"/>
         <column name="contextualizationWindowSize" dataType="Integer" displayName="Contextualization window size" isOptional="True"/>
+        <column name="overrideBandnames" dataType="Boolean" displayName="Override band names" isOptional="True"/>
         <column name="setSeed" dataType="Integer" displayName="Random seed" isOptional="True"/>
         <record columns="normalizeRasters|modelTuning|tuningObjective|setManualThreshold|applyContextualization" values="0|0|5|0|0"/>
     </dataSheet>
