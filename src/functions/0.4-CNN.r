@@ -149,8 +149,9 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
         # store each categorical column as a 1-D [n] long tensor
         self$X_cat <- lapply(seq_along(X_cat), function(i) {
           v <- as.integer(X_cat[[i]])
-          # map NA to "unknown" bucket at end
-          nlev <- max(v, na.rm = TRUE)
+          # map NA to "unknown" bucket at end; tolerate all-NA by treating base levels as 0
+          nlev <- suppressWarnings(max(v, na.rm = TRUE))
+          if (!is.finite(nlev)) nlev <- 0L
           v[is.na(v)] <- nlev + 1L
           torch_tensor(unname(v), dtype = torch_long())$view(c(self$n))
         })
