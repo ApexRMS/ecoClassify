@@ -67,6 +67,7 @@ manualThreshold <- inputVariables[[8]]
 normalizeRasters <- inputVariables[[9]]
 rasterDecimalPlaces <- inputVariables[[10]]
 tuningObjective <- inputVariables[[11]]
+overrideBandnames <- inputVariables[[12]]
 
 # Check if multiprocessing is selected
 mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
@@ -77,6 +78,11 @@ nCores <- setCores(mulitprocessingSheet)
 
 trainingRasterList <- extractRasters(trainingRasterDataframe, column = 2)
 groundTruthRasterList <- extractRasters(trainingRasterDataframe, column = 3)
+
+# Override band names if selected
+if (overrideBandnames == TRUE) {
+  trainingRasterList <- overrideBandNames(trainingRasterList)
+}
 
 # Validate and align rasters ---------------------------------------------------
 progressBar(type = "message", message = "Validating and aligning rasters")

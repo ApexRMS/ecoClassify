@@ -180,6 +180,12 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
     }
   }
 
+  # Extract override band names option
+  overrideBandnames <- advClassifierOptionsDataframe$overrideBandnames
+  if (is.null(overrideBandnames) || is.na(overrideBandnames)) {
+    overrideBandnames <- FALSE
+  }
+
   return(list(
     timestepList,
     nObs,
@@ -191,7 +197,8 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
     manualThreshold,
     normalizeRasters,
     rasterDecimalPlaces,
-    tuningObjective
+    tuningObjective,
+    overrideBandnames
   ))
 }
 
@@ -615,4 +622,36 @@ validateAndAlignRasters <- function(trainingRasterList, groundTruthRasterList) {
   cat("✓ All rasters successfully validated and aligned\n")
 
   return(aligned_groundTruthRasterList)
+}
+
+#' Override Band Names with Standardized Names ----
+#'
+#' @description
+#' Renames all bands in raster stacks to band1, band2, band3, etc.
+#' This prevents errors when using multiple JPEGs or other images with
+#' filename-based band names.
+#'
+#' @param rasterList List of SpatRasters.
+#'
+#' @return List of SpatRasters with standardized band names.
+#'
+#' @noRd
+overrideBandNames <- function(rasterList) {
+  renamedRasterList <- c()
+
+  for (raster in rasterList) {
+    # Get number of bands
+    nBands <- terra::nlyr(raster)
+
+    # Generate standardized band names
+    newNames <- paste0("band", seq_len(nBands))
+
+    # Assign new names
+    names(raster) <- newNames
+
+    # Append to list
+    renamedRasterList <- c(renamedRasterList, raster)
+  }
+
+  return(renamedRasterList)
 }
