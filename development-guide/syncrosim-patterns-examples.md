@@ -177,6 +177,7 @@ validate_occurrence_data(occurrence_data)
 import rasterio
 import numpy as np
 from rasterio.warp import reproject, Resampling
+import os
 
 def standardize_rasters(raster_paths, template_path, output_dir):
     """Standardize multiple rasters to match template."""
