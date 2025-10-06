@@ -19,33 +19,30 @@
 #' to a list.
 #' @noRd
 extractRasters <- function(dataframe, column) {
-  # remove rows with NA values in the second column
-  dataframe <- dataframe %>% filter(!is.na(dataframe[, column]))
+  # drop rows with NA in the selected column
+  dataframe <- dataframe[!is.na(dataframe[[column]]), , drop = FALSE]
 
-  # define timesteps
-  timesteps <- unique(dataframe[, 1])
+  # timesteps (assumes column 1 holds them)
+  timesteps <- unique(dataframe[[1]])
 
-  # create an empty list
-  rasterList <- c()
+  # preallocate a proper list and keep names by timestep
+  rasterList <- vector("list", length(timesteps))
+  names(rasterList) <- as.character(timesteps)
 
-  # loop through timesteps, combining rasters
-  for (t in timesteps) {
-    # subset based on timestep
-    subsetData <- dataframe %>% filter(Timesteps == t)
+  # build one SpatRaster per timestep
+  for (i in seq_along(timesteps)) {
+    t <- timesteps[i]
+    subsetData <- dataframe[dataframe[[1]] == t, , drop = FALSE]
+    allFiles <- as.vector(subsetData[[column]])
 
-    # list all files
-    allFiles <- as.vector(subsetData[, column])
+    subsetRaster <- terra::rast(allFiles)
 
-    # read in all files as a single raster
-    subsetRaster <- rast(allFiles)
-
+    # for ground truth column (3): keep the single/first layer only
     if (column == 3) {
-      # remove duplicated layers
       subsetRaster <- subsetRaster[[1]]
     }
 
-    # add to main raster list
-    rasterList <- c(rasterList, subsetRaster)
+    rasterList[[i]] <- subsetRaster
   }
 
   return(rasterList)

@@ -209,7 +209,7 @@ splitTrainTest <- function(
 
   # helper: estimate class labels (0/1) and minority from a quick GT sample (no full scan)
   estimate_classes <- function(r_gt, sample_n = quick_prop_sample) {
-    s <- min(sample_n, max(1000L, floor(terra::ncell(r_gt) * 0.001)))
+    s <- min(sample_n, max(5000L, floor(0.01 * terra::ncell(r_gt))))
     gt_samp <- try(
       terra::spatSample(
         r_gt,
@@ -1008,7 +1008,7 @@ getRgbDataframe <- function(
 #' @param groundTruth Optional SpatRaster containing ground truth presence values
 #' (can be NULL if unavailable).
 #' @param probabilityRaster A SpatRaster containing continuous probability predictions.
-#' @param trainingRasterList A list of SpatRaster stacks used to generate the RGB image.
+#' @param trainingRaster A SpatRaster used to generate the RGB image.
 #' @param category A character string used to label file outputs (e.g., "training" or "predicting").
 #' @param timestep Integer indicating the current timestep for file naming.
 #' @param transferDir File path to the directory where outputs will be written.
@@ -1074,16 +1074,33 @@ saveFiles <- function(
   )
 
   # save RBG Image
-  png(
-    file = file.path(paste0(
-      transferDir,
-      "/RGBImage-",
-      category,
-      "-t",
-      timestep,
-      ".png"
-    ))
-  )
-  plotRGB(trainingRaster, r = 3, g = 2, b = 1, stretch = "lin")
-  dev.off()
+  # prefer B03,B02,B01 if present; otherwise fall back to first three layers
+  rgb_idx <- c(3, 2, 1)
+  if (terra::nlyr(trainingRaster) >= 3) {
+    rgb_rast <- trainingRaster[[rgb_idx]]
+  } else if (terra::nlyr(trainingRaster) == 2) {
+    rgb_rast <- c(trainingRaster[[2]], trainingRaster[[1]], trainingRaster[[1]])
+  } else if (terra::nlyr(trainingRaster) == 1) {
+    rgb_rast <- c(trainingRaster[[1]], trainingRaster[[1]], trainingRaster[[1]])
+  } else {
+    updateRunLog(sprintf("t=%s: training raster has 0 layers; skipping RGB PNG.", timestep), type = "warning")
+    return(invisible(NULL))
+  }
+
+  # convert factors to numeric for plotting (plotRGB needs numeric values)
+  if (any(terra::is.factor(rgb_rast))) {
+    rgb_rast <- terra::as.numeric(rgb_rast)
+  }
+
+  # sanity: ensure exactly 3 layers
+  stopifnot(terra::nlyr(rgb_rast) == 3)
+
+  # --- plot PNG safely ---
+  png_file <- file.path(paste0(transferDir, "/RGBImage-", category, "-t", timestep, ".png"))
+  grDevices::png(filename = png_file)
+  tryCatch({
+    terra::plotRGB(rgb_rast, r = 1, g = 2, b = 3, stretch = "lin")
+  }, error = function(e) {
+    updateRunLog(sprintf("t=%s: Failed to write RGB PNG: %s", timestep, conditionMessage(e)), type = "warning")
+  })
 }
