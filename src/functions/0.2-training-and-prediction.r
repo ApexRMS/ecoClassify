@@ -1008,7 +1008,7 @@ getRgbDataframe <- function(
 #' @param groundTruth Optional SpatRaster containing ground truth presence values
 #' (can be NULL if unavailable).
 #' @param probabilityRaster A SpatRaster containing continuous probability predictions.
-#' @param trainingRasterList A list of SpatRaster stacks used to generate the RGB image.
+#' @param trainingRaster A SpatRaster used to generate the RGB image.
 #' @param category A character string used to label file outputs (e.g., "training" or "predicting").
 #' @param timestep Integer indicating the current timestep for file naming.
 #' @param transferDir File path to the directory where outputs will be written.
@@ -1097,10 +1097,10 @@ saveFiles <- function(
 
   # --- plot PNG safely ---
   png_file <- file.path(paste0(transferDir, "/RGBImage-", category, "-t", timestep, ".png"))
-  try({
-    grDevices::png(filename = png_file)
-    # now r=1,g=2,b=3 always exists on this mini-stack
+  grDevices::png(filename = png_file)
+  tryCatch({
     terra::plotRGB(rgb_rast, r = 1, g = 2, b = 3, stretch = "lin")
-    grDevices::dev.off()
-  }, silent = TRUE)
+  }, error = function(e) {
+    updateRunLog(sprintf("t=%s: Failed to write RGB PNG: %s", timestep, conditionMessage(e)), type = "warning")
+  })
 }
