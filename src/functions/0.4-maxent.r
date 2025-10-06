@@ -109,14 +109,16 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
 
   max1 <- tryCatch(
     {
+      usableCores <- max(1, min(nCores, parallel::detectCores() - 1))
+      useParallel <- usableCores > 1
       ENMevaluate(
         occ = presenceTrainData,
         bg.coords = absenceTrainData,
         tune.args = tuneArgs,
         progbar = FALSE,
         partitions = "randomkfold",
-        parallel = TRUE,
-        numCores = nCores,
+        parallel = useParallel,
+        numCores = usableCores,
         quiet = TRUE,
         algorithm = 'maxent.jar'
       )
@@ -132,7 +134,6 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
         progbar = FALSE,
         partitions = "randomkfold",
         parallel = FALSE,
-        numCores = nCores,
         quiet = TRUE,
         algorithm = 'maxent.jar'
       )

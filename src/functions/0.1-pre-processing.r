@@ -22,10 +22,10 @@ assignGenericCRS <- function(raster) {
   if (is.na(terra::crs(raster)) || terra::crs(raster) == "") {
     # Assign a generic planar CRS suitable for non-geographic data
     # This is essentially a Cartesian coordinate system with no specific projection
-    terra::crs(raster) <- "+proj=cart +units=m"
+    terra::crs(raster) <- "local"
 
     updateRunLog(
-      "No CRS found for input raster; assigned generic planar coordinate system",
+      "No CRS found for input raster; assigned generic 2D coordinate system",
       type = "info"
     )
   }
@@ -334,10 +334,9 @@ normalizeRaster <- function(rasterList) {
 
   for (raster in rasterList) {
     # normalize bands for each raster in rasterList
-    normalizedRaster <- lapply(
-      1:nlyr(raster),
-      function(i) normalizeBand(raster[[i]])
-    ) %>%
+    normalizedRaster <- lapply(1:nlyr(raster), function(i) {
+      normalizeBand(raster[[i]])
+    }) %>%
       rast()
 
     # append to normalizedRasterList
@@ -577,13 +576,18 @@ validateAndAlignRasters <- function(trainingRasterList, groundTruthRasterList) {
             terra::resample(
               groundTruthRasterList[[i]],
               trainingRasterList[[i]],
-             method = "near"
+              method = "near"
             )
           }
         },
         error = function(e) {
           op <- if (!comparison$crs) "project" else "resample"
-          stop(sprintf("Failed to %s ground truth raster %d: %s", op, i, conditionMessage(e)))
+          stop(sprintf(
+            "Failed to %s ground truth raster %d: %s",
+            op,
+            i,
+            conditionMessage(e)
+          ))
         }
       )
 
@@ -611,10 +615,18 @@ validateAndAlignRasters <- function(trainingRasterList, groundTruthRasterList) {
 
     if (!comparison$overall) {
       msg <- sprintf("Final validation failed for raster pair %d:\n", i)
-      if (!comparison$extent)      msg <- paste0(msg, "  - Extent mismatch\n")
-      if (!comparison$resolution)  msg <- paste0(msg, "  - Resolution mismatch\n")
-      if (!comparison$crs)         msg <- paste0(msg, "  - CRS mismatch\n")
-      if (!comparison$dimensions)  msg <- paste0(msg, "  - Dimension mismatch\n")
+      if (!comparison$extent) {
+        msg <- paste0(msg, "  - Extent mismatch\n")
+      }
+      if (!comparison$resolution) {
+        msg <- paste0(msg, "  - Resolution mismatch\n")
+      }
+      if (!comparison$crs) {
+        msg <- paste0(msg, "  - CRS mismatch\n")
+      }
+      if (!comparison$dimensions) {
+        msg <- paste0(msg, "  - Dimension mismatch\n")
+      }
       stop(msg)
     }
   }
