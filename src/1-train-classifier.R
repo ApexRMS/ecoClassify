@@ -38,14 +38,14 @@ trainingCovariateDataframe <- datasheet(
   name = "ecoClassify_InputTrainingCovariates"
 )
 
-classifierOptions <- datasheet(
+advancedClassifierOptions <- datasheet(
   myScenario,
-  name = "ecoClassify_ClassifierOptions"
+  name = "ecoClassify_AdvancedClassifierOptions"
 )
 
 # Set the random seed if provided
-if (!is.null(classifierOptions$setSeed) && !is.na(classifierOptions$setSeed)) {
-  set.seed(classifierOptions$setSeed)
+if (!is.null(advancedClassifierOptions$setSeed) && !is.na(advancedClassifierOptions$setSeed)) {
+  set.seed(advancedClassifierOptions$setSeed)
 }
 
 
