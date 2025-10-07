@@ -132,6 +132,7 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   manualThreshold <- advClassifierOptionsDataframe$manualThreshold
   normalizeRasters <- advClassifierOptionsDataframe$normalizeRasters
   rasterDecimalPlaces <- advClassifierOptionsDataframe$rasterDecimalPlaces
+  setSeed <- advClassifierOptionsDataframe$setSeed
 
   # assign value of 3 to contextualizationWindowSize if not specified
   if (applyContextualization == TRUE) {
@@ -198,7 +199,8 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
     normalizeRasters,
     rasterDecimalPlaces,
     tuningObjective,
-    overrideBandnames
+    overrideBandnames,
+    setSeed
   ))
 }
 
