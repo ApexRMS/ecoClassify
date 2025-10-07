@@ -38,17 +38,6 @@ trainingCovariateDataframe <- datasheet(
   name = "ecoClassify_InputTrainingCovariates"
 )
 
-advancedClassifierOptions <- datasheet(
-  myScenario,
-  name = "ecoClassify_AdvancedClassifierOptions"
-)
-
-# Set the random seed if provided
-if (!is.null(advancedClassifierOptions$setSeed) && !is.na(advancedClassifierOptions$setSeed)) {
-  set.seed(advancedClassifierOptions$setSeed)
-}
-
-
 # Assign variables -------------------------------------------------------------
 
 inputVariables <- assignVariables(
@@ -68,6 +57,12 @@ normalizeRasters <- inputVariables[[9]]
 rasterDecimalPlaces <- inputVariables[[10]]
 tuningObjective <- inputVariables[[11]]
 overrideBandnames <- inputVariables[[12]]
+setSeed <- inputVariables[[13]]
+
+# Set the random seed if provided
+if (!is.null(setSeed) && !is.na(setSeed)) {
+  set.seed(setSeed)
+}
 
 # Check if multiprocessing is selected
 mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
