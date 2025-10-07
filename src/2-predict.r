@@ -61,6 +61,7 @@ manualThreshold <- inputVariables[[8]]
 normalizeRasters <- inputVariables[[9]]
 rasterDecimalPlaces <- inputVariables[[10]]
 tuningObjective <- inputVariables[[11]]
+overrideBandnames <- inputVariables[[12]]
 
 # Load model and threshold
 if (modelType == "CNN") {
@@ -81,6 +82,11 @@ if (setManualThreshold == FALSE) {
 # Extract list of testing rasters ----------------------------------------------
 
 predictRasterList <- extractRasters(predictingRasterDataframe, column = 2)
+
+# Override band names if selected
+if (overrideBandnames == TRUE) {
+  predictRasterList <- overrideBandNames(predictRasterList)
+}
 
 # Pre-processing ---------------------------------------------------------------
 

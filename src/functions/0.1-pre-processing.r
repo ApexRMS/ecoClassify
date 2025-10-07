@@ -3,6 +3,36 @@
 ## ApexRMS, November 2024
 ## -------------------------------
 
+#' Assign Generic CRS to Raster ----
+#'
+#' @description
+#' Assigns a generic planar coordinate reference system to rasters
+#' that don't have a CRS defined.
+#'
+#' @param raster A SpatRaster object
+#' @return A SpatRaster with CRS assigned if it was missing
+#'
+#' @details
+#' This function checks if a raster has a defined CRS. If not, it assigns
+#' a generic planar coordinate system suitable for non-geographic data
+#' (like DSLR camera images) where coordinates are in arbitrary units.
+#' @noRd
+assignGenericCRS <- function(raster) {
+  # Check if raster has a CRS
+  if (is.na(terra::crs(raster)) || terra::crs(raster) == "") {
+    # Assign a generic planar CRS suitable for non-geographic data
+    # This is essentially a Cartesian coordinate system with no specific projection
+    terra::crs(raster) <- "local"
+
+    updateRunLog(
+      "No CRS found for input raster; assigned generic 2D coordinate system",
+      type = "info"
+    )
+  }
+
+  return(raster)
+}
+
 #' Extract rasters from filepaths in a dataframe ----
 #'
 #' @description
@@ -16,7 +46,7 @@
 #' @details
 #' The dataframe is first subset based on timestep. Rasters from the same
 #' timestep are combined into one raster using the terra package, and added
-#' to a list.
+#' to a list. If rasters don't have a CRS defined, a generic planar CRS is assigned.
 #' @noRd
 extractRasters <- function(dataframe, column) {
   # drop rows with NA in the selected column
@@ -36,6 +66,9 @@ extractRasters <- function(dataframe, column) {
     allFiles <- as.vector(subsetData[[column]])
 
     subsetRaster <- terra::rast(allFiles)
+
+    # assign generic CRS if none exists
+    subsetRaster <- assignGenericCRS(subsetRaster)
 
     # for ground truth column (3): keep the single/first layer only
     if (column == 3) {
@@ -96,6 +129,7 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   manualThreshold <- advClassifierOptionsDataframe$manualThreshold
   normalizeRasters <- advClassifierOptionsDataframe$normalizeRasters
   rasterDecimalPlaces <- advClassifierOptionsDataframe$rasterDecimalPlaces
+  setSeed <- advClassifierOptionsDataframe$setSeed
 
   # assign value of 3 to contextualizationWindowSize if not specified
   if (applyContextualization == TRUE) {
@@ -144,6 +178,12 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
     }
   }
 
+  # Extract override band names option
+  overrideBandnames <- advClassifierOptionsDataframe$overrideBandnames
+  if (is.null(overrideBandnames) || is.na(overrideBandnames)) {
+    overrideBandnames <- FALSE
+  }
+
   return(list(
     timestepList,
     nObs,
@@ -155,7 +195,9 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
     manualThreshold,
     normalizeRasters,
     rasterDecimalPlaces,
-    tuningObjective
+    tuningObjective,
+    overrideBandnames,
+    setSeed
   ))
 }
 
@@ -216,6 +258,10 @@ processCovariates <- function(trainingCovariateDataframe, modelType) {
     ) {
       for (row in seq(1, nrow(trainingCovariateDataframe), by = 1)) {
         covariateRaster <- rast(trainingCovariateDataframe[row, 1])
+
+        # assign generic CRS if none exists
+        covariateRaster <- assignGenericCRS(covariateRaster)
+
         dataType <- as.character(trainingCovariateDataframe[row, 2])
 
         if (dataType == "Categorical") {
@@ -287,10 +333,9 @@ normalizeRaster <- function(rasterList) {
 
   for (raster in rasterList) {
     # normalize bands for each raster in rasterList
-    normalizedRaster <- lapply(
-      1:nlyr(raster),
-      function(i) normalizeBand(raster[[i]])
-    ) %>%
+    normalizedRaster <- lapply(1:nlyr(raster), function(i) {
+      normalizeBand(raster[[i]])
+    }) %>%
       rast()
 
     # append to normalizedRasterList
@@ -530,13 +575,18 @@ validateAndAlignRasters <- function(trainingRasterList, groundTruthRasterList) {
             terra::resample(
               groundTruthRasterList[[i]],
               trainingRasterList[[i]],
-             method = "near"
+              method = "near"
             )
           }
         },
         error = function(e) {
           op <- if (!comparison$crs) "project" else "resample"
-          stop(sprintf("Failed to %s ground truth raster %d: %s", op, i, conditionMessage(e)))
+          stop(sprintf(
+            "Failed to %s ground truth raster %d: %s",
+            op,
+            i,
+            conditionMessage(e)
+          ))
         }
       )
 
@@ -564,10 +614,18 @@ validateAndAlignRasters <- function(trainingRasterList, groundTruthRasterList) {
 
     if (!comparison$overall) {
       msg <- sprintf("Final validation failed for raster pair %d:\n", i)
-      if (!comparison$extent)      msg <- paste0(msg, "  - Extent mismatch\n")
-      if (!comparison$resolution)  msg <- paste0(msg, "  - Resolution mismatch\n")
-      if (!comparison$crs)         msg <- paste0(msg, "  - CRS mismatch\n")
-      if (!comparison$dimensions)  msg <- paste0(msg, "  - Dimension mismatch\n")
+      if (!comparison$extent) {
+        msg <- paste0(msg, "  - Extent mismatch\n")
+      }
+      if (!comparison$resolution) {
+        msg <- paste0(msg, "  - Resolution mismatch\n")
+      }
+      if (!comparison$crs) {
+        msg <- paste0(msg, "  - CRS mismatch\n")
+      }
+      if (!comparison$dimensions) {
+        msg <- paste0(msg, "  - Dimension mismatch\n")
+      }
       stop(msg)
     }
   }
@@ -575,4 +633,36 @@ validateAndAlignRasters <- function(trainingRasterList, groundTruthRasterList) {
   cat("✓ All rasters successfully validated and aligned\n")
 
   return(aligned_groundTruthRasterList)
+}
+
+#' Override Band Names with Standardized Names ----
+#'
+#' @description
+#' Renames all bands in raster stacks to band1, band2, band3, etc.
+#' This prevents errors when using multiple JPEGs or other images with
+#' filename-based band names.
+#'
+#' @param rasterList List of SpatRasters.
+#'
+#' @return List of SpatRasters with standardized band names.
+#'
+#' @noRd
+overrideBandNames <- function(rasterList) {
+  renamedRasterList <- c()
+
+  for (raster in rasterList) {
+    # Get number of bands
+    nBands <- terra::nlyr(raster)
+
+    # Generate standardized band names
+    newNames <- paste0("band", seq_len(nBands))
+
+    # Assign new names
+    names(raster) <- newNames
+
+    # Append to list
+    renamedRasterList <- c(renamedRasterList, raster)
+  }
+
+  return(renamedRasterList)
 }

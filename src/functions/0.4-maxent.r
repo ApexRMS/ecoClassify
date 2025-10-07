@@ -3,6 +3,56 @@
 ## ApexRMS, November 2024
 ## -------------------------------
 
+# Load MaxEnt-specific dependencies - skip MaxEnt if Java not available
+MAXENT_AVAILABLE <- FALSE
+
+# Try to load rJava
+rJavaLoaded <- tryCatch(
+  {
+    if (!requireNamespace("rJava", quietly = TRUE)) {
+      warning(
+        "rJava package not available. MaxEnt functionality will be skipped."
+      )
+      FALSE
+    } else {
+      suppressPackageStartupMessages(library("rJava", character.only = TRUE))
+      TRUE
+    }
+  },
+  error = function(e) {
+    warning(
+      "rJava failed to load (Java configuration issue). MaxEnt functionality will be skipped."
+    )
+    FALSE
+  }
+)
+
+# Try to load ENMeval only if rJava loaded successfully
+if (rJavaLoaded) {
+  enmevalLoaded <- tryCatch(
+    {
+      if (!requireNamespace("ENMeval", quietly = TRUE)) {
+        warning(
+          "ENMeval package not available. MaxEnt functionality will be skipped."
+        )
+        FALSE
+      } else {
+        suppressPackageStartupMessages(library(
+          "ENMeval",
+          character.only = TRUE
+        ))
+        TRUE
+      }
+    },
+    error = function(e) {
+      warning("ENMeval failed to load. MaxEnt functionality will be skipped.")
+      FALSE
+    }
+  )
+
+  MAXENT_AVAILABLE <- enmevalLoaded
+}
+
 #' Train a Maxent Model with Hyperparameter Tuning ----
 #'
 #' @description
@@ -22,8 +72,19 @@
 #'
 #' @import ENMeval
 getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
+  # Check if MaxEnt dependencies are available
+  if (!MAXENT_AVAILABLE) {
+    stop(
+      "MaxEnt functionality is not available. Please ensure Java is properly configured and both rJava and ENMeval packages are installed."
+    )
+  }
   # Identify predictor variables
-  predictorVars <- grep("presence|kfold", colnames(allTrainData), invert = TRUE, value = TRUE)
+  predictorVars <- grep(
+    "presence|kfold",
+    colnames(allTrainData),
+    invert = TRUE,
+    value = TRUE
+  )
 
   # Split into categorical and numeric
   predictorData <- allTrainData[, predictorVars, drop = FALSE]
@@ -40,43 +101,44 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
     tuneArgs <- list(fc = c("LQH"), rm = 1)
   }
 
-  absenceTrainData <- allTrainData[
-    allTrainData$presence == 0,
-    predictorVars
-  ]
-  presenceTrainData <- allTrainData[
-    allTrainData$presence == 1,
-    predictorVars
-  ]
+  absenceTrainData <- allTrainData[allTrainData$presence == 0, predictorVars]
+  presenceTrainData <- allTrainData[allTrainData$presence == 1, predictorVars]
 
   # limit java memory usage
   nCores <- min(2, parallel::detectCores() - 1)
 
-  max1 <- tryCatch({
-    ENMevaluate(
-      occ = presenceTrainData,
-      bg.coords = absenceTrainData,
-      tune.args = tuneArgs,
-      progbar = FALSE,
-      partitions = "randomkfold",
-      parallel = TRUE,
-      numCores = nCores,
-      quiet = TRUE,
-      algorithm = 'maxent.jar'
-  )}, error = function(e) {
-    warning("Parallel Maxent failed due to memory issue. Retrying in serial mode...")
-    ENMevaluate(
-      occ = presenceTrainData,
-      bg.coords = absenceTrainData,
-      tune.args = tuneArgs,
-      progbar = FALSE,
-      partitions = "randomkfold",
-      parallel = FALSE,
-      numCores = nCores,
-      quiet = TRUE,
-      algorithm = 'maxent.jar'
-    )
-  })
+  max1 <- tryCatch(
+    {
+      usableCores <- max(1, min(nCores, parallel::detectCores() - 1))
+      useParallel <- usableCores > 1
+      ENMevaluate(
+        occ = presenceTrainData,
+        bg.coords = absenceTrainData,
+        tune.args = tuneArgs,
+        progbar = FALSE,
+        partitions = "randomkfold",
+        parallel = useParallel,
+        numCores = usableCores,
+        quiet = TRUE,
+        algorithm = 'maxent.jar'
+      )
+    },
+    error = function(e) {
+      warning(
+        "Parallel Maxent failed due to memory issue. Retrying in serial mode..."
+      )
+      ENMevaluate(
+        occ = presenceTrainData,
+        bg.coords = absenceTrainData,
+        tune.args = tuneArgs,
+        progbar = FALSE,
+        partitions = "randomkfold",
+        parallel = FALSE,
+        quiet = TRUE,
+        algorithm = 'maxent.jar'
+      )
+    }
+  )
 
   bestMax <- which.max(max1@results$cbi.val.avg)
   varImp <- max1@variable.importance[bestMax] %>% data.frame()

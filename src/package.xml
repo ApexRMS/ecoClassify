@@ -43,6 +43,7 @@
     </dataSheet>
 
     <dataSheet name="AdvancedClassifierOptions" displayName="Advanced" isSingleRow="True">
+        <column name="overrideBandnames" dataType="Boolean" displayName="Override band names" isOptional="True"/>
         <column name="normalizeRasters" dataType="Boolean" displayName="Normalize rasters"/>
         <column name="rasterDecimalPlaces" displayName="Raster decimal places (rounding)" dataType="Integer" isOptional="True"/>
         <column name="modelTuning" displayName="Enable automated tuning" dataType="Boolean"/>
