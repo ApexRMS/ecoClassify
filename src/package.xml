@@ -75,6 +75,7 @@
         <column name="PredictedUnfiltered" dataType="String" displayName="Predicted" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="PredictedUnfilteredRestricted" dataType="String" displayName="Predicted Restricted" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="PredictedFiltered" dataType="String" displayName="Predicted Filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
+        <column name="PredictedFilteredRestricted" dataType="String" displayName="Predicted Filtered Restricted" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="GroundTruth" dataType="String" displayName="User Classification" isExternalFile="True" isRaster="True"/>
         <column name="Probability" dataType="String" displayName="Probability" isExternalFile="True" isRaster="True"/>
         <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True"/>
@@ -84,6 +85,7 @@
         <column name="ClassifiedUnfiltered" dataType="String" displayName="Classified" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="ClassifiedUnfilteredRestricted" dataType="String" displayName="Classified Restricted" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="ClassifiedFiltered" dataType="String" displayName="Classified Filtered" isExternalFile="True" isRaster="True" bandColumn="Band"/>
+        <column name="ClassifiedFilteredRestricted" dataType="String" displayName="Classified Filtered Restricted" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="ClassifiedProbability" dataType="String" displayName="Probability" isExternalFile="True" isRaster="True"/>
         <column name="Band" displayName="Band" dataType="Integer" allowDbNull="True" isOptional="True"/>
     </dataSheet>
@@ -182,6 +184,7 @@
     <transformer name="PredictedUnfilteredExport" dataSheet="RasterOutput" column="PredictedUnfiltered" isRasterExport="True"/>
     <transformer name="PredictedUnfilteredRestrictedExport" dataSheet="RasterOutput" column="PredictedUnfilteredRestricted" isRasterExport="True"/>
     <transformer name="PredictedFilteredExport" dataSheet="RasterOutput" column="PredictedFiltered" isRasterExport="True"/>
+    <transformer name="PredictedFilteredRestrictedExport" dataSheet="RasterOutput" column="PredictedFilteredRestricted" isRasterExport="True"/>
     <transformer name="ProbabilityExport" dataSheet="RasterOutput" column="Probability" isRasterExport="True"/>
     <transformer name="GroundTruthExport" dataSheet="RasterOutput" column="GroundTruth" isRasterExport="True"/>
     <transformer name="VariableImportanceOutputExport" dataSheet="VariableImportanceOutput" column="VariableImportance" isExport="True"/>
@@ -193,6 +196,7 @@
     <transformer name="ClassifiedUnfilteredExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedUnfiltered" isRasterExport="True"/>
     <transformer name="ClassifiedUnfilteredRestrictedExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedUnfilteredRestricted" isRasterExport="True"/>
     <transformer name="ClassifiedFilteredExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedFiltered" isRasterExport="True"/>
+    <transformer name="ClassifiedFilteredRestrictedExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedFilteredRestricted" isRasterExport="True"/>
     <transformer name="ClassifiedProbabilityExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedProbability" isRasterExport="True"/>
 
     <!--Scenario Layout-->
@@ -242,12 +246,14 @@
               	<item name="PredictedUnfilteredMap" displayName="Binary" dataSheet="RasterOutput" column="PredictedUnfiltered"/>
                 <item name="PredictedFilteredMap" displayName="Binary (Filtered)" dataSheet="RasterOutput" column="PredictedFiltered"/>
                 <item name="PredictedUnfilteredRestrictedMap" displayName="Binary (Restricted)" dataSheet="RasterOutput" column="PredictedUnfilteredRestricted"/>
+                <item name="PredictedFilteredRestrictedMap" displayName="Binary (Restricted and Filtered)" dataSheet="RasterOutput" column="PredictedFilteredRestricted"/>
         </group>
         <group name="ClassifiedPredictionMaps" displayName="Predictions">
              <item name="ClassifiedProbabilityMap" displayName="Probability" dataSheet="ClassifiedRasterOutput" column="ClassifiedProbability"/>
 		    <item name="ClassifiedUnfilteredMap" displayName="Binary" dataSheet="ClassifiedRasterOutput" column="ClassifiedUnfiltered"/>
             <item name="ClassifiedUnfilteredRestrictedMap" displayName="Binary (Restricted)" dataSheet="ClassifiedRasterOutput" column="ClassifiedUnfilteredRestricted"/>
             <item name="ClassifiedFilteredMap" displayName="Binary (Filtered)" dataSheet="ClassifiedRasterOutput" column="ClassifiedFiltered"/>
+            <item name="ClassifiedFilteredRestrictedMap" displayName="Binary (Restricted and Filtered)" dataSheet="ClassifiedRasterOutput" column="ClassifiedFilteredRestricted"/>
                </group>
     </layout>
 
@@ -274,6 +280,7 @@
                 <item name="PredictedUnfilteredExport" displayName="Unfiltered Prediction"/>
                 <item name="PredictedUnfilteredRestrictedExport" displayName="Unfiltered Restricted Prediction"/>
                 <item name="PredictedFilteredExport" displayName="Filtered Prediction"/>
+                <item name="PredictedFilteredRestrictedExport" displayName="Filtered Restricted Prediction"/>
                 <item name="ProbabilityExport" displayName="Probability"/>
                 <item name="GroundTruthExport" displayName="User Classification"/>
             </group>
@@ -281,6 +288,7 @@
                 <item name="ClassifiedUnfilteredExport" displayName="Unfiltered Prediction"/>
                 <item name="ClassifiedUnfilteredRestrictedExport" displayName="Unfiltered Restricted Prediction"/>
                 <item name="ClassifiedFilteredExport" displayName="Filtered Prediction"/>
+                <item name="ClassifiedFilteredRestrictedExport" displayName="Filtered Restricted Prediction"/>
                 <item name="ClassifiedProbabilityExport" displayName="Probability"/>
             </group>
         </group>
