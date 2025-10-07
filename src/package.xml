@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <package 
-    name="ecoClassify" displayName="ecoClassify" version="2.2.1"
+    name="ecoClassify" displayName="ecoClassify" version="2.3.0"
     description="Image classifier using semantic image segmentation" 
     url="https://apexrms.github.io/ecoClassify/" 
     minSyncroSimVersion="3.1.0">
@@ -237,18 +237,18 @@
     <!--Map Layout-->
 	<layout type="Map">
         <group name="PredictionMaps" displayName="Training Predictions">
-		    <item name="PredictedUnfilteredMap" displayName="Unfiltered" dataSheet="RasterOutput" column="PredictedUnfiltered"/>
-            <item name="PredictedUnfilteredRestrictedMap" displayName="Unfiltered Restricted" dataSheet="RasterOutput" column="PredictedUnfilteredRestricted"/>
-            <item name="PredictedFilteredMap" displayName="Filtered" dataSheet="RasterOutput" column="PredictedFiltered"/>
-            <item name="ProbabilityMap" displayName="Probability" dataSheet="RasterOutput" column="Probability"/>
             <item name="GroundTruthMap" displayName="User Classification" dataSheet="RasterOutput" column="GroundTruth"/>
+              <item name="ProbabilityMap" displayName="Probability" dataSheet="RasterOutput" column="Probability"/>
+              	<item name="PredictedUnfilteredMap" displayName="Binary" dataSheet="RasterOutput" column="PredictedUnfiltered"/>
+                <item name="PredictedFilteredMap" displayName="Binary (Filtered)" dataSheet="RasterOutput" column="PredictedFiltered"/>
+                <item name="PredictedUnfilteredRestrictedMap" displayName="Binary (Restricted)" dataSheet="RasterOutput" column="PredictedUnfilteredRestricted"/>
         </group>
         <group name="ClassifiedPredictionMaps" displayName="Predictions">
-		    <item name="ClassifiedUnfilteredMap" displayName="Unfiltered" dataSheet="ClassifiedRasterOutput" column="ClassifiedUnfiltered"/>
-            <item name="ClassifiedUnfilteredRestrictedMap" displayName="Unfiltered Restricted" dataSheet="ClassifiedRasterOutput" column="ClassifiedUnfilteredRestricted"/>
-            <item name="ClassifiedFilteredMap" displayName="Filtered" dataSheet="ClassifiedRasterOutput" column="ClassifiedFiltered"/>
-            <item name="ClassifiedProbabilityMap" displayName="Probability" dataSheet="ClassifiedRasterOutput" column="ClassifiedProbability"/>
-        </group>
+             <item name="ClassifiedProbabilityMap" displayName="Probability" dataSheet="ClassifiedRasterOutput" column="ClassifiedProbability"/>
+		    <item name="ClassifiedUnfilteredMap" displayName="Binary" dataSheet="ClassifiedRasterOutput" column="ClassifiedUnfiltered"/>
+            <item name="ClassifiedUnfilteredRestrictedMap" displayName="Binary (Restricted)" dataSheet="ClassifiedRasterOutput" column="ClassifiedUnfilteredRestricted"/>
+            <item name="ClassifiedFilteredMap" displayName="Binary (Filtered)" dataSheet="ClassifiedRasterOutput" column="ClassifiedFiltered"/>
+               </group>
     </layout>
 
     <!--Image Layout-->
