@@ -42,7 +42,7 @@
         <record columns="nObs|modelType" values="10000|0"/>
     </dataSheet>
 
-    <dataSheet name="AdvancedClassifierOptions" displayName="Advanced" isSingleRow="True">
+    <dataSheet name="AdvancedClassifierOptions" displayName="Advanced" isSingleRow="True" viewClassName="ecoclassifyUI.AdvancedForm" viewClassAssembly="ecoclassifyUI">
         <column name="overrideBandnames" dataType="Boolean" displayName="Override band names" isOptional="True"/>
         <column name="normalizeRasters" dataType="Boolean" displayName="Normalize rasters"/>
         <column name="rasterDecimalPlaces" displayName="Raster decimal places (rounding)" dataType="Integer" isOptional="True"/>
