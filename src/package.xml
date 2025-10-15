@@ -53,7 +53,7 @@
         <column name="applyContextualization" dataType="Boolean" displayName="Apply contextualization"/>
         <column name="contextualizationWindowSize" dataType="Integer" displayName="Contextualization window size" isOptional="True"/>
         <column name="setSeed" dataType="Integer" displayName="Random seed" isOptional="True"/>
-        <record columns="overrideBandnames|normalizeRasters|modelTuning|tuningObjective|setManualThreshold|applyContextualization" values="0|0|0|5|0|0"/>
+        <record columns="overrideBandnames|normalizeRasters|rasterDecimalPlaces|modelTuning|tuningObjective|setManualThreshold|manualThreshold|applyContextualization|contextualizationWindowSize|setSeed" values="0|0|2|0|5|0|0.5|0|3|0"/>
     </dataSheet>
     
     <dataSheet name="PostProcessingFilter" displayName="Filtering" isSingleRow="True">
