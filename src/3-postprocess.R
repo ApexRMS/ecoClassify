@@ -240,7 +240,7 @@ if (!is_empty(trainTimestepList)) {
 
         vmin <- ruleReclassDataframe$ruleMinValue[i]
         vmax <- ruleReclassDataframe$ruleMaxValue[i]
-        rval <- as.numeric(ruleReclassDataframe$ruleReclassValue[i])
+        rval <- as.numeric(ruleReclassDataframe$ruleReclassValue[i]) - 1
 
         if (isTRUE(vmin == vmax)) {
           # ---------- CATEGORICAL: apply where ruleRaster == vmin ----------
@@ -381,7 +381,7 @@ if (!is_empty(predTimestepList)) {
 
         vmin <- ruleReclassDataframe$ruleMinValue[i]
         vmax <- ruleReclassDataframe$ruleMaxValue[i]
-        rval <- as.numeric(ruleReclassDataframe$ruleReclassValue[i])
+        rval <- as.numeric(ruleReclassDataframe$ruleReclassValue[i]) - 1
 
         if (isTRUE(vmin == vmax)) {
           # ---------- CATEGORICAL: apply where ruleRaster == vmin ----------
