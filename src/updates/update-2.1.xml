@@ -3,14 +3,14 @@
 
 
   <!-- Modify PostProcessingFilter datasheet -->
-  <action code="Exec" condition="TableExists" criteria="PostProcessingFilter">
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_PostProcessingFilter">
     <!-- Remove old columns -->
-    <item>ALTER TABLE PostProcessingFilter DROP COLUMN filterResolution</item>
-    <item>ALTER TABLE PostProcessingFilter DROP COLUMN filterPercent</item>
+    <item>ALTER TABLE ecoClassify_PostProcessingFilter DROP COLUMN filterResolution</item>
+    <item>ALTER TABLE ecoClassify_PostProcessingFilter DROP COLUMN filterPercent</item>
 
     <!-- Add new columns -->
-    <item>ALTER TABLE PostProcessingFilter ADD COLUMN filterValue INTEGER</item>
-    <item>ALTER TABLE PostProcessingFilter ADD COLUMN fillValue INTEGER</item>
+    <item>ALTER TABLE ecoClassify_PostProcessingFilter ADD COLUMN filterValue INTEGER</item>
+    <item>ALTER TABLE ecoClassify_PostProcessingFilter ADD COLUMN fillValue INTEGER</item>
   </action>
 
 </update>

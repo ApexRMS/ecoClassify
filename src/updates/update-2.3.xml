@@ -1,11 +1,19 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<update comment="Update ecoClassify to version 2.2">
+<update comment="Update ecoClassify to version 2.3">
 
-   <action code="Exec" condition="TableExists" criteria="ecoClassify_AdvancedClassifierOptions">
-
+  <!-- Add new column AdvancedClassifierOptions to AdvancedClassifierOptions -->
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_AdvancedClassifierOptions">
     <item>ALTER TABLE ecoClassify_AdvancedClassifierOptions ADD COLUMN overrideBandnames BOOLEAN</item>
   </action>
 
+  <!-- Add new column ClassifiedFilteredRestricted to ClassifiedRasterOutput -->
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_ClassifiedRasterOutput">
+    <item>ALTER TABLE ecoClassify_ClassifiedRasterOutput ADD COLUMN ClassifiedFilteredRestricted TEXT</item>
+  </action>
+
+  <!-- Add new column PredictedFilteredRestricted to RasterOutput -->
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_RasterOutput">
+    <item>ALTER TABLE ecoClassify_RasterOutput ADD COLUMN PredictedFilteredRestricted TEXT</item>
+  </action>
 
 </update>
-
