@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<update comment="Update ecoClassify to version 2.2">
+
+  <!-- Add new column for model tuning objective -->
+  <action code="Exec" condition="TableExists" criteria="AdvancedClassifierOptions">
+    <item>ALTER TABLE AdvancedClassifierOptions ADD COLUMN tuningObjective INTEGER</item>
+  </action>
+
+</update>
