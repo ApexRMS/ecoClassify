@@ -25,7 +25,19 @@ myScenario <- scenario()
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
-
+# Set terra options to minimize memory use ----
+terra_tmp_dir <- file.path(transferDir, "terra_tmp")
+dir.create(terra_tmp_dir, showWarnings = FALSE, recursive = TRUE)
+terraOptions(
+  todisk = TRUE,
+  memfrac = 0.6,
+  tempdir = terra_tmp_dir
+)
+wopt_int <- list(
+  datatype = "INT2S",
+  NAflag = -32768,
+  gdal = c("COMPRESS=LZW", "TILED=YES", "BIGTIFF=YES")
+)
 # Load post-processing settings ------------------------------------------------
 
 ### Filtering -----------------------------------------------------
@@ -170,10 +182,10 @@ for (t in predTimestepList) {
 progressBar(type = "message", message = "Reclassifying")
 
 
-## Training ------------------------------------------------------
-
+# ---- Apply Reclassification Rules (training: unfiltered + filtered) ----
 if (!is_empty(trainTimestepList)) {
   for (t in trainTimestepList) {
+
     # Get file paths
     unfilteredTrainFilepath <- trainingOutputDataframe$PredictedUnfiltered[
       trainingOutputDataframe$Timestep == t
@@ -182,153 +194,144 @@ if (!is_empty(trainTimestepList)) {
       trainingOutputDataframe$Timestep == t
     ]
 
-    # Load unfiltered raster
-    unfilteredTrainRaster <- reclassedUnfilteredTrain <- rast(
-      unfilteredTrainFilepath
+    # Skip if no unfiltered path
+    if (is.na(unfilteredTrainFilepath)) next
+
+    # Load base rasters
+    unfiltered <- rast(unfilteredTrainFilepath)
+
+    # Disk-backed working copies
+    reclassedUnf <- writeRaster(
+      unfiltered, filename = tempfile(fileext = ".tif"),
+      overwrite = TRUE, wopt = wopt_int
     )
 
-    # Load filtered raster for combined output
-    if (!is.na(filteredTrainFilepath)) {
-      filteredTrainRaster <- reclassedFilteredTrain <- rast(
-        filteredTrainFilepath
+    hasFiltered <- !is.na(filteredTrainFilepath)
+    if (hasFiltered) {
+      filtered <- rast(filteredTrainFilepath)
+      reclassedFil <- writeRaster(
+        filtered, filename = tempfile(fileext = ".tif"),
+        overwrite = TRUE, wopt = wopt_int
       )
     } else {
-      filteredTrainRaster <- reclassedFilteredTrain <- NULL
+      filtered <- reclassedFil <- NULL
     }
 
+    # Rules
     if (nrow(ruleReclassDataframe) == 0) {
       updateRunLog(
         "No rule-based reclassification rules found. Skipping reclassification.",
         type = "warning"
       )
     } else {
-      for (i in 1:dim(ruleReclassDataframe)[1]) {
-        if (
-          !is.null(unfilteredTrainFilepath) && !is.na(unfilteredTrainFilepath)
-        ) {
-          # Load rule raster
-          ruleRaster <- rast(ruleReclassDataframe$ruleRasterFile[i])
+      for (i in seq_len(nrow(ruleReclassDataframe))) {
 
-          if (ext(ruleRaster) != ext(unfilteredTrainRaster)) {
-            updateRunLog(
-              "Rule raster extent does not match unfiltered training raster extent. Skipping reclassification.",
-              type = "warning"
-            )
-          } else {
-            # Categorical vs. Continuous
-            if (
-              ruleReclassDataframe$ruleMinValue[i] ==
-                ruleReclassDataframe$ruleMaxValue[i]
-            ) {
-              # Reclass table
-              reclassTable <- matrix(
-                c(
-                  ruleReclassDataframe$ruleMinValue[i],
-                  as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
-                ),
-                ncol = 2,
-                byrow = TRUE
-              )
+        # Load rule raster
+        ruleRaster <- rast(ruleReclassDataframe$ruleRasterFile[i])
 
-              # Reclassify categorical
-              reclassedUnfilteredTrain[ruleRaster == reclassTable[, 1]] <-
-                reclassTable[, 2]
-
-              # Apply same rule to filtered raster
-              if (!is.null(reclassedFilteredTrain)) {
-                reclassedFilteredTrain[ruleRaster == reclassTable[, 1]] <-
-                  reclassTable[, 2]
-              }
-            } else {
-              # Reclass table
-              reclassTable <- matrix(
-                c(
-                  ruleReclassDataframe$ruleMinValue[i],
-                  ruleReclassDataframe$ruleMaxValue[i],
-                  as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
-                ),
-                ncol = 3,
-                byrow = T
-              )
-              # Reclassify continuous
-              ruleReclassRaster <- classify(ruleRaster, reclassTable, others = NA)
-              reclassedUnfilteredTrain[] <- mask(
-                unfilteredTrainRaster,
-                ruleReclassRaster,
-                maskvalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
-                  i
-                ])),
-                updatevalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
-                  i
-                ]))
-              )
-
-              # Apply same rule to filtered raster
-              if (!is.null(reclassedFilteredTrain)) {
-                reclassedFilteredTrain[] <- mask(
-                  filteredTrainRaster,
-                  ruleReclassRaster,
-                  maskvalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
-                    i
-                  ])),
-                  updatevalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
-                    i
-                  ]))
-                )
-              }
-            }
-          }
+        # Ensure geometry match; skip (or resample here if desired)
+        if (!compareGeom(ruleRaster, reclassedUnf, stopOnError = FALSE)) {
+          updateRunLog(
+            "Rule raster extent does not match unfiltered training raster extent. Skipping reclassification.",
+            type = "warning"
+          )
+          next
         }
+
+        vmin <- ruleReclassDataframe$ruleMinValue[i]
+        vmax <- ruleReclassDataframe$ruleMaxValue[i]
+        rval <- as.numeric(ruleReclassDataframe$ruleReclassValue[i]) - 1
+
+        if (isTRUE(vmin == vmax)) {
+          # ---------- CATEGORICAL: apply where ruleRaster == vmin ----------
+          tmpUnf <- tempfile(fileext = ".tif")
+          reclassedUnf <- ifel(
+            ruleRaster == vmin,
+            rval,
+            reclassedUnf,
+            filename = tmpUnf, overwrite = TRUE
+          )
+
+          if (hasFiltered) {
+            tmpFil <- tempfile(fileext = ".tif")
+            reclassedFil <- ifel(
+              ruleRaster == vmin,
+              rval,
+              reclassedFil,
+              filename = tmpFil, overwrite = TRUE
+            )
+          }
+
+        } else {
+          # ---------- CONTINUOUS: classify range [vmin, vmax] ----------
+          rtab <- matrix(c(vmin, vmax, rval), ncol = 3, byrow = TRUE)
+          classedMask <- classify(
+            ruleRaster, rtab, others = NA,
+            filename = tempfile(fileext = ".tif"), overwrite = TRUE
+          )
+
+          # Update where mask is not NA
+          tmpUnf <- tempfile(fileext = ".tif")
+          reclassedUnf <- ifel(
+            !is.na(classedMask),
+            rval,
+            reclassedUnf,
+            filename = tmpUnf, overwrite = TRUE
+          )
+
+          if (hasFiltered) {
+            tmpFil <- tempfile(fileext = ".tif")
+            reclassedFil <- ifel(
+              !is.na(classedMask),
+              rval,
+              reclassedFil,
+              filename = tmpFil, overwrite = TRUE
+            )
+          }
+
+          rm(classedMask); gc()
+        }
+
+        gc()
       }
     }
-    # File path for timestep t
-    reclassedPathTrain <- file.path(paste0(
-      transferDir,
-      "/PredictedPresenceRestricted-",
-      "training",
-      "-t",
-      t,
-      ".tif"
-    ))
-    # Save raster for timestep t
-    writeRaster(
-      reclassedUnfilteredTrain,
-      filename = reclassedPathTrain,
-      overwrite = TRUE
-    )
 
-    # Add raster for timestep t to results
+    # ---- Final writes for timestep t ----
+    reclassedPathTrain <- file.path(
+      transferDir,
+      paste0("PredictedPresenceRestricted-","training","-t",t,".tif")
+    )
+    reclassedUnf <- writeRaster(
+      reclassedUnf, filename = reclassedPathTrain,
+      overwrite = TRUE, wopt = wopt_int
+    )
     trainingOutputDataframe$PredictedUnfilteredRestricted[
       trainingOutputDataframe$Timestep == t
     ] <- reclassedPathTrain
 
-    # Save filtered + restricted raster if filtering was applied
-    if (!is.null(reclassedFilteredTrain)) {
-      reclassedFilteredPathTrain <- file.path(paste0(
+    if (!is.null(reclassedFil)) {
+      reclassedFilteredPathTrain <- file.path(
         transferDir,
-        "/PredictedPresenceFilteredRestricted-",
-        "training",
-        "-t",
-        t,
-        ".tif"
-      ))
-      writeRaster(
-        reclassedFilteredTrain,
-        filename = reclassedFilteredPathTrain,
-        overwrite = TRUE
+        paste0("PredictedPresenceFilteredRestricted-","training","-t",t,".tif")
+      )
+      reclassedFil <- writeRaster(
+        reclassedFil, filename = reclassedFilteredPathTrain,
+        overwrite = TRUE, wopt = wopt_int
       )
       trainingOutputDataframe$PredictedFilteredRestricted[
         trainingOutputDataframe$Timestep == t
       ] <- reclassedFilteredPathTrain
     }
+
+    # Cleanup per-timestep
+    rm(unfiltered, filtered, reclassedUnf, reclassedFil); gc()
   }
 }
 
-
-## Apply Reclassification Rules ----------------------------------
-
+# ---- Apply Reclassification Rules (predicting: unfiltered + filtered) ----
 if (!is_empty(predTimestepList)) {
   for (t in predTimestepList) {
+
     # Get file paths
     unfilteredPredFilepath <- predictingOutputDataframe$ClassifiedUnfiltered[
       predictingOutputDataframe$Timestep == t
@@ -337,138 +340,132 @@ if (!is_empty(predTimestepList)) {
       predictingOutputDataframe$Timestep == t
     ]
 
-    # Load unfiltered raster
-    unfilteredPredRaster <- reclassedUnfilteredPred <- rast(
-      unfilteredPredFilepath
+    # Skip if no unfiltered path
+    if (is.na(unfilteredPredFilepath)) next
+
+    # Load rasters
+    unfiltered <- rast(unfilteredPredFilepath)
+
+    # Start disk-backed working copies
+    reclassedUnf <- writeRaster(
+      unfiltered, filename = tempfile(fileext = ".tif"),
+      overwrite = TRUE, wopt = wopt_int
     )
 
-    # Load filtered raster for combined output
-    if (!is.na(filteredPredFilepath)) {
-      filteredPredRaster <- reclassedFilteredPred <- rast(
-        filteredPredFilepath
+    hasFiltered <- !is.na(filteredPredFilepath)
+    if (hasFiltered) {
+      filtered <- rast(filteredPredFilepath)
+      reclassedFil <- writeRaster(
+        filtered, filename = tempfile(fileext = ".tif"),
+        overwrite = TRUE, wopt = wopt_int
       )
     } else {
-      filteredPredRaster <- reclassedFilteredPred <- NULL
+      filtered <- reclassedFil <- NULL
     }
 
+    # Apply rules (if any)
     if (nrow(ruleReclassDataframe) != 0) {
-      for (i in 1:dim(ruleReclassDataframe)[1]) {
-        if (!is.na(unfilteredPredFilepath)) {
-          # Load rule raster
-          ruleRaster <- rast(ruleReclassDataframe$ruleRasterFile[i])
+      for (i in seq_len(nrow(ruleReclassDataframe))) {
 
-          if (ext(ruleRaster) != ext(unfilteredPredRaster)) {
-            updateRunLog(
-              "Rule raster extent does not match unfiltered predicting raster extent. Skipping reclassification.",
-              type = "warning"
-            )
-          } else {
-            # Categorical vs. Continuous
-            if (
-              ruleReclassDataframe$ruleMinValue[i] ==
-                ruleReclassDataframe$ruleMaxValue[i]
-            ) {
-              # Reclass table
-              reclassTable <- matrix(
-                c(
-                  ruleReclassDataframe$ruleMinValue[i],
-                  as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
-                ),
-                ncol = 2,
-                byrow = TRUE
-              )
+        # Load rule raster
+        ruleRaster <- rast(ruleReclassDataframe$ruleRasterFile[i])
 
-              # Reclassify categorical
-              reclassedUnfilteredPred[ruleRaster == reclassTable[, 1]] <-
-                reclassTable[, 2]
-
-              # Apply same rule to filtered raster
-              if (!is.null(reclassedFilteredPred)) {
-                reclassedFilteredPred[ruleRaster == reclassTable[, 1]] <-
-                  reclassTable[, 2]
-              }
-            } else {
-              # Reclass table
-              reclassTable <- matrix(
-                c(
-                  ruleReclassDataframe$ruleMinValue[i],
-                  ruleReclassDataframe$ruleMaxValue[i],
-                  as.numeric(paste(ruleReclassDataframe$ruleReclassValue[i]))
-                ),
-                ncol = 3,
-                byrow = T
-              )
-              # Reclassify continuous
-              ruleReclassRaster <- classify(ruleRaster, reclassTable, others = NA)
-              reclassedUnfilteredPred[] <- mask(
-                unfilteredPredRaster,
-                ruleReclassRaster,
-                maskvalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
-                  i
-                ])),
-                updatevalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
-                  i
-                ]))
-              )
-
-              # Apply same rule to filtered raster
-              if (!is.null(reclassedFilteredPred)) {
-                reclassedFilteredPred[] <- mask(
-                  filteredPredRaster,
-                  ruleReclassRaster,
-                  maskvalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
-                    i
-                  ])),
-                  updatevalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
-                    i
-                  ]))
-                )
-              }
-            }
-          }
+        # Ensure same geometry; otherwise skip (or resample if you prefer)
+        if (!compareGeom(ruleRaster, reclassedUnf, stopOnError = FALSE)) {
+          updateRunLog(
+            "Rule raster extent does not match predicting raster extent. Skipping reclassification.",
+            type = "warning"
+          )
+          next
         }
+
+        vmin <- ruleReclassDataframe$ruleMinValue[i]
+        vmax <- ruleReclassDataframe$ruleMaxValue[i]
+        rval <- as.numeric(ruleReclassDataframe$ruleReclassValue[i]) - 1
+
+        if (isTRUE(vmin == vmax)) {
+          # ---------- CATEGORICAL: apply where ruleRaster == vmin ----------
+          tmpUnf <- tempfile(fileext = ".tif")
+          reclassedUnf <- ifel(
+            ruleRaster == vmin,
+            rval,                 # set to rval where condition true
+            reclassedUnf,         # otherwise keep
+            filename = tmpUnf, overwrite = TRUE
+          )
+
+          if (hasFiltered) {
+            tmpFil <- tempfile(fileext = ".tif")
+            reclassedFil <- ifel(
+              ruleRaster == vmin,
+              rval,
+              reclassedFil,
+              filename = tmpFil, overwrite = TRUE
+            )
+          }
+
+        } else {
+          # ---------- CONTINUOUS: classify range [vmin, vmax] ----------
+          rtab <- matrix(c(vmin, vmax, rval), ncol = 3, byrow = TRUE)
+          classedMask <- classify(
+            ruleRaster, rtab, others = NA,
+            filename = tempfile(fileext = ".tif"), overwrite = TRUE
+          )
+
+          # Update where mask is not NA (i.e., cells under the rule)
+          tmpUnf <- tempfile(fileext = ".tif")
+          reclassedUnf <- ifel(
+            !is.na(classedMask),
+            rval,
+            reclassedUnf,
+            filename = tmpUnf, overwrite = TRUE
+          )
+
+          if (hasFiltered) {
+            tmpFil <- tempfile(fileext = ".tif")
+            reclassedFil <- ifel(
+              !is.na(classedMask),
+              rval,
+              reclassedFil,
+              filename = tmpFil, overwrite = TRUE
+            )
+          }
+
+          rm(classedMask); gc()
+        }
+
+        gc()
       }
     }
-    # File path for timestep t
-    reclassedPathPred <- file.path(paste0(
-      transferDir,
-      "/PredictedPresenceRestricted-",
-      "predicting",
-      "-t",
-      t,
-      ".tif"
-    ))
-    # Save raster for timestep t
-    writeRaster(
-      reclassedUnfilteredPred,
-      filename = reclassedPathPred,
-      overwrite = TRUE
-    )
 
-    # Add raster for timestep t to results
+    # ---- Final writes for timestep t ----
+    reclassedPathPred <- file.path(
+      transferDir,
+      paste0("PredictedPresenceRestricted-","predicting","-t",t,".tif")
+    )
+    reclassedUnf <- writeRaster(
+      reclassedUnf, filename = reclassedPathPred,
+      overwrite = TRUE, wopt = wopt_int
+    )
     predictingOutputDataframe$ClassifiedUnfilteredRestricted[
       predictingOutputDataframe$Timestep == t
     ] <- reclassedPathPred
 
-    # Save filtered + restricted raster if filtering was applied
-    if (!is.null(reclassedFilteredPred)) {
-      reclassedFilteredPathPred <- file.path(paste0(
+    if (!is.null(reclassedFil)) {
+      reclassedFilteredPathPred <- file.path(
         transferDir,
-        "/PredictedPresenceFilteredRestricted-",
-        "predicting",
-        "-t",
-        t,
-        ".tif"
-      ))
-      writeRaster(
-        reclassedFilteredPred,
-        filename = reclassedFilteredPathPred,
-        overwrite = TRUE
+        paste0("PredictedPresenceFilteredRestricted-","predicting","-t",t,".tif")
+      )
+      reclassedFil <- writeRaster(
+        reclassedFil, filename = reclassedFilteredPathPred,
+        overwrite = TRUE, wopt = wopt_int
       )
       predictingOutputDataframe$ClassifiedFilteredRestricted[
         predictingOutputDataframe$Timestep == t
       ] <- reclassedFilteredPathPred
     }
+
+    # Cleanup per-timestep
+    rm(unfiltered, filtered, reclassedUnf, reclassedFil); gc()
   }
 }
 
