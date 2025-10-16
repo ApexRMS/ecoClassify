@@ -178,11 +178,23 @@ if (!is_empty(trainTimestepList)) {
     unfilteredTrainFilepath <- trainingOutputDataframe$PredictedUnfiltered[
       trainingOutputDataframe$Timestep == t
     ]
+    filteredTrainFilepath <- trainingOutputDataframe$PredictedFiltered[
+      trainingOutputDataframe$Timestep == t
+    ]
 
     # Load unfiltered raster
     unfilteredTrainRaster <- reclassedUnfilteredTrain <- rast(
       unfilteredTrainFilepath
     )
+
+    # Load filtered raster for combined output
+    if (!is.na(filteredTrainFilepath)) {
+      filteredTrainRaster <- reclassedFilteredTrain <- rast(
+        filteredTrainFilepath
+      )
+    } else {
+      filteredTrainRaster <- reclassedFilteredTrain <- NULL
+    }
 
     if (nrow(ruleReclassDataframe) == 0) {
       updateRunLog(
@@ -221,6 +233,12 @@ if (!is_empty(trainTimestepList)) {
               # Reclassify categorical
               reclassedUnfilteredTrain[ruleRaster == reclassTable[, 1]] <-
                 reclassTable[, 2]
+
+              # Apply same rule to filtered raster
+              if (!is.null(reclassedFilteredTrain)) {
+                reclassedFilteredTrain[ruleRaster == reclassTable[, 1]] <-
+                  reclassTable[, 2]
+              }
             } else {
               # Reclass table
               reclassTable <- matrix(
@@ -244,6 +262,20 @@ if (!is_empty(trainTimestepList)) {
                   i
                 ]))
               )
+
+              # Apply same rule to filtered raster
+              if (!is.null(reclassedFilteredTrain)) {
+                reclassedFilteredTrain[] <- mask(
+                  filteredTrainRaster,
+                  ruleReclassRaster,
+                  maskvalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
+                    i
+                  ])),
+                  updatevalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
+                    i
+                  ]))
+                )
+              }
             }
           }
         }
@@ -269,6 +301,26 @@ if (!is_empty(trainTimestepList)) {
     trainingOutputDataframe$PredictedUnfilteredRestricted[
       trainingOutputDataframe$Timestep == t
     ] <- reclassedPathTrain
+
+    # Save filtered + restricted raster if filtering was applied
+    if (!is.null(reclassedFilteredTrain)) {
+      reclassedFilteredPathTrain <- file.path(paste0(
+        transferDir,
+        "/PredictedPresenceFilteredRestricted-",
+        "training",
+        "-t",
+        t,
+        ".tif"
+      ))
+      writeRaster(
+        reclassedFilteredTrain,
+        filename = reclassedFilteredPathTrain,
+        overwrite = TRUE
+      )
+      trainingOutputDataframe$PredictedFilteredRestricted[
+        trainingOutputDataframe$Timestep == t
+      ] <- reclassedFilteredPathTrain
+    }
   }
 }
 
@@ -281,11 +333,23 @@ if (!is_empty(predTimestepList)) {
     unfilteredPredFilepath <- predictingOutputDataframe$ClassifiedUnfiltered[
       predictingOutputDataframe$Timestep == t
     ]
+    filteredPredFilepath <- predictingOutputDataframe$ClassifiedFiltered[
+      predictingOutputDataframe$Timestep == t
+    ]
 
     # Load unfiltered raster
     unfilteredPredRaster <- reclassedUnfilteredPred <- rast(
       unfilteredPredFilepath
     )
+
+    # Load filtered raster for combined output
+    if (!is.na(filteredPredFilepath)) {
+      filteredPredRaster <- reclassedFilteredPred <- rast(
+        filteredPredFilepath
+      )
+    } else {
+      filteredPredRaster <- reclassedFilteredPred <- NULL
+    }
 
     if (nrow(ruleReclassDataframe) != 0) {
       for (i in 1:dim(ruleReclassDataframe)[1]) {
@@ -317,6 +381,12 @@ if (!is_empty(predTimestepList)) {
               # Reclassify categorical
               reclassedUnfilteredPred[ruleRaster == reclassTable[, 1]] <-
                 reclassTable[, 2]
+
+              # Apply same rule to filtered raster
+              if (!is.null(reclassedFilteredPred)) {
+                reclassedFilteredPred[ruleRaster == reclassTable[, 1]] <-
+                  reclassTable[, 2]
+              }
             } else {
               # Reclass table
               reclassTable <- matrix(
@@ -340,8 +410,22 @@ if (!is_empty(predTimestepList)) {
                   i
                 ]))
               )
+
+              # Apply same rule to filtered raster
+              if (!is.null(reclassedFilteredPred)) {
+                reclassedFilteredPred[] <- mask(
+                  filteredPredRaster,
+                  ruleReclassRaster,
+                  maskvalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
+                    i
+                  ])),
+                  updatevalue = as.numeric(paste(ruleReclassDataframe$ruleReclassValue[
+                    i
+                  ]))
+                )
+              }
             }
-          }    
+          }
         }
       }
     }
@@ -365,6 +449,26 @@ if (!is_empty(predTimestepList)) {
     predictingOutputDataframe$ClassifiedUnfilteredRestricted[
       predictingOutputDataframe$Timestep == t
     ] <- reclassedPathPred
+
+    # Save filtered + restricted raster if filtering was applied
+    if (!is.null(reclassedFilteredPred)) {
+      reclassedFilteredPathPred <- file.path(paste0(
+        transferDir,
+        "/PredictedPresenceFilteredRestricted-",
+        "predicting",
+        "-t",
+        t,
+        ".tif"
+      ))
+      writeRaster(
+        reclassedFilteredPred,
+        filename = reclassedFilteredPathPred,
+        overwrite = TRUE
+      )
+      predictingOutputDataframe$ClassifiedFilteredRestricted[
+        predictingOutputDataframe$Timestep == t
+      ] <- reclassedFilteredPathPred
+    }
   }
 }
 
