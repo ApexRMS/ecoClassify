@@ -16,4 +16,19 @@
     <item>ALTER TABLE ecoClassify_RasterOutput ADD COLUMN PredictedFilteredRestricted TEXT</item>
   </action>
 
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_AdvancedClassifierOptions">
+    <item>UPDATE ecoClassify_AdvancedClassifierOptions
+           SET overrideBandnames=0,
+               normalizeRasters=0,
+               rasterDecimalPlaces=2,
+               modelTuning=0,
+               tuningObjective=5,
+               setManualThreshold=0,
+               manualThreshold=0.5,
+               applyContextualization=0,
+               contextualizationWindowSize=3,
+               setSeed=0
+           WHERE AdvancedClassifierOptionsId=1</item>
+  </action>
+
 </update>
