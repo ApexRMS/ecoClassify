@@ -182,6 +182,9 @@ for (t in predTimestepList) {
 progressBar(type = "message", message = "Reclassifying")
 
 if (nrow(ruleReclassDataframe) != 0) {
+  restrictedTmpDir <- file.path(transferDir, "restrictedTmpDir")
+  dir.create(restrictedTmpDir, showWarnings = FALSE, recursive = TRUE)
+
   # ---- Apply Reclassification Rules (training: unfiltered + filtered) ----
   if (!is_empty(trainTimestepList)) {
     for (t in trainTimestepList) {
@@ -287,12 +290,18 @@ if (nrow(ruleReclassDataframe) != 0) {
           fillValue,
           "training",
           t,
-          transferDir
+          restrictedTmpDir
         )
 
         reclassedFilteredPathTrain <- file.path(
           transferDir,
           paste0("PredictedPresenceFilteredRestricted-","training","-t",t,".tif")
+        )
+
+        writeRaster(
+          rast(filteredRestricted$PredictedFiltered),
+          filename = reclassedFilteredPathTrain,
+          overwrite = TRUE, wopt = wopt_int
         )
 
         trainingOutputDataframe$PredictedFilteredRestricted[
@@ -406,12 +415,18 @@ if (nrow(ruleReclassDataframe) != 0) {
           fillValue,
           "predicting",
           t,
-          transferDir
+          restrictedTmpDir
         )
 
         reclassedFilteredPathPred <- file.path(
           transferDir,
           paste0("PredictedPresenceFilteredRestricted-","predicting","-t",t,".tif")
+        )
+
+        writeRaster(
+          rast(filteredRestricted$PredictedFiltered),
+          filename = reclassedFilteredPathPred,
+          overwrite = TRUE, wopt = wopt_int
         )
 
         predictingOutputDataframe$ClassifiedFilteredRestricted[
