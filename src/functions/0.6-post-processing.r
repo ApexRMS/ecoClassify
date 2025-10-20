@@ -298,7 +298,8 @@ filterRasterDataframe <- function(
   fillValue,
   category,
   timestep,
-  transferDir
+  transferDir,
+  fileName
 ) {
   if (!applyFiltering) {
     return(data.frame(
@@ -317,7 +318,9 @@ filterRasterDataframe <- function(
   # File path
   filteredPath <- file.path(paste0(
     transferDir,
-    "/filteredPredictedPresence-",
+    "/",
+    fileName,
+    "-",
     category,
     "-t",
     timestep,

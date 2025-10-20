@@ -136,7 +136,8 @@ for (t in trainTimestepList) {
       fillValue,
       "training",
       t,
-      transferDir
+      transferDir,
+      fileName = "filteredPredictedPresence"
     )
 
     # Combine results
@@ -166,7 +167,8 @@ for (t in predTimestepList) {
       fillValue,
       "predicting",
       t,
-      transferDir
+      transferDir,
+      fileName = "filteredPredictedPresence"
     )
 
     # Combine results
@@ -290,7 +292,8 @@ if (nrow(ruleReclassDataframe) != 0) {
           fillValue,
           "training",
           t,
-          restrictedTmpDir
+          restrictedTmpDir,
+          fileName = "PredictedPresenceFilteredRestricted"
         )
 
         reclassedFilteredPathTrain <- file.path(
@@ -415,7 +418,8 @@ if (nrow(ruleReclassDataframe) != 0) {
           fillValue,
           "predicting",
           t,
-          restrictedTmpDir
+          restrictedTmpDir,
+          fileName = "PredictedPresenceFilteredRestricted"
         )
 
         reclassedFilteredPathPred <- file.path(
