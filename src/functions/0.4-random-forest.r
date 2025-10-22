@@ -36,7 +36,7 @@ predictRanger <- function(raster, model) {
   rasterMatrix <- terra::values(raster, mat = TRUE, na.rm = FALSE)
 
   # Find valid cases once
-  valid_idx <- complete.cases(rasterMatrix)
+  valid_idx <- rowSums(!is.na(rasterMatrix)) == ncol(rasterMatrix)
   n_valid <- sum(valid_idx)
 
   if (n_valid == 0) {
