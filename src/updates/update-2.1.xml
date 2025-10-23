@@ -13,5 +13,40 @@
     <item>ALTER TABLE ecoClassify_PostProcessingFilter ADD COLUMN fillValue INTEGER</item>
   </action>
 
+  <!-- Modify ClassifierOptions datasheet -->
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_ClassifierOptions">
+    <!-- Remove old columns -->
+    <item>ALTER TABLE ecoClassify_ClassifierOptions DROP COLUMN normalizeRasters</item>
+    <item>ALTER TABLE ecoClassify_ClassifierOptions DROP COLUMN rasterDecimalPlaces</item>
+    <item>ALTER TABLE ecoClassify_ClassifierOptions DROP COLUMN modelTuning</item>
+    <item>ALTER TABLE ecoClassify_ClassifierOptions DROP COLUMN setManualThreshold</item>
+    <item>ALTER TABLE ecoClassify_ClassifierOptions DROP COLUMN manualThreshold</item>
+    <item>ALTER TABLE ecoClassify_ClassifierOptions DROP COLUMN applyContextualization</item>
+    <item>ALTER TABLE ecoClassify_ClassifierOptions DROP COLUMN contextualizationWindowSize</item>
+    <item>ALTER TABLE ecoClassify_ClassifierOptions DROP COLUMN setSeed</item>
+  </action>
+
+  <!-- Create new datasheet for advanced classifier options -->
+  <action code="Exec" condition="TableNotExists" criteria="ecoClassify_AdvancedClassifierOptions">
+    <item>CREATE TABLE ecoClassify_AdvancedClassifierOptions(AdvancedClassifierOptionsId INTEGER PRIMARY KEY, normalizeRasters BOOLEAN, rasterDecimalPlaces INTEGER, modelTuning BOOLEAN, setManualThreshold BOOLEAN, manualThreshold DOUBLE, applyContextualization BOOLEAN, contextualizationWindowSize INTEGER, setSeed INTEGER)</item>
+    <item>UPDATE ecoClassify_AdvancedClassifierOptions
+            SET normalizeRasters=0,
+                modelTuning=0,
+                setManualThreshold=0,
+                applyContextualization=0
+            WHERE AdvancedClassifierOptionsId=1</item>
+  </action>
+
+  <!-- Create new datasheet for post processing rule options -->
+  <action code="Exec" condition="TableNotExists" criteria="ecoClassify_PostProcessingRule">
+    <item>CREATE TABLE ecoClassify_PostProcessingRule(PostProcessingRuleId INTEGER PRIMARY KEY, ruleClass INTEGER, ruleRasterFile TEXT, ruleMinValue DOUBLE, ruleMaxValue DOUBLE, ruleReclassValue INTEGER)</item>
+  </action>
+
+  <!-- Modify ClassifiedRasterOutput datasheet -->
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_ClassifiedRasterOutput">
+    <!-- Add new column -->
+    <item>ALTER TABLE ecoClassify_PostProcessingFilter ADD COLUMN ClassifiedUnfilteredRestricted TEXT</item>
+  </action>
+
 </update>
 
