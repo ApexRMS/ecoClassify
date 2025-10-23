@@ -214,7 +214,15 @@ if (nrow(ruleReclassDataframe) != 0) {
       for (i in seq_len(nrow(ruleReclassDataframe))) {
 
           # Load rule raster
-          ruleRaster <- rast(ruleReclassDataframe$ruleRasterFile[i])
+          rulePath <- ruleReclassDataframe$ruleRasterFile[i]
+          if (length(rulePath) == 0 || is.na(rulePath) || !file.exists(rulePath)) {
+            updateRunLog(
+              paste0("Rule raster missing for rule index ", i, "; skipping."),
+              type = "warning"
+            )
+            next
+          }
+          ruleRaster <- rast(rulePath)
 
           # Ensure geometry match; skip (or resample here if desired)
           if (!compareGeom(ruleRaster, reclassedUnf, stopOnError = FALSE)) {
@@ -228,6 +236,21 @@ if (nrow(ruleReclassDataframe) != 0) {
           vmin <- ruleReclassDataframe$ruleMinValue[i]
           vmax <- ruleReclassDataframe$ruleMaxValue[i]
           rval <- as.numeric(ruleReclassDataframe$ruleReclassValue[i]) - 1
+
+          if (any(is.na(c(vmin, vmax, rval)))) {
+            updateRunLog(
+              paste0("Rule values (min/max/reclass) contain NA for rule index ", i, "; skipping."),
+              type = "warning"
+            )
+            next
+          }
+          if (vmin > vmax) {
+            tmp <- vmin; vmin <- vmax; vmax <- tmp
+            updateRunLog(
+              paste0("Swapped vmin/vmax for rule index ", i, " to maintain [min,max]."),
+              type = "info"
+            )
+          }
 
           if (isTRUE(vmin == vmax)) {
             # ---------- CATEGORICAL: apply where ruleRaster == vmin ----------
@@ -332,7 +355,15 @@ if (nrow(ruleReclassDataframe) != 0) {
       for (i in seq_len(nrow(ruleReclassDataframe))) {
 
           # Load rule raster
-          ruleRaster <- rast(ruleReclassDataframe$ruleRasterFile[i])
+          rulePath <- ruleReclassDataframe$ruleRasterFile[i]
+          if (length(rulePath) == 0 || is.na(rulePath) || !file.exists(rulePath)) {
+            updateRunLog(
+              paste0("Rule raster missing for rule index ", i, "; skipping."),
+              type = "warning"
+            )
+            next
+          }
+          ruleRaster <- rast(rulePath)
 
           # Ensure same geometry; otherwise skip (or resample if you prefer)
           if (!compareGeom(ruleRaster, reclassedUnf, stopOnError = FALSE)) {
@@ -346,6 +377,21 @@ if (nrow(ruleReclassDataframe) != 0) {
           vmin <- ruleReclassDataframe$ruleMinValue[i]
           vmax <- ruleReclassDataframe$ruleMaxValue[i]
           rval <- as.numeric(ruleReclassDataframe$ruleReclassValue[i]) - 1
+
+          if (any(is.na(c(vmin, vmax, rval)))) {
+            updateRunLog(
+              paste0("Rule values (min/max/reclass) contain NA for rule index ", i, "; skipping."),
+              type = "warning"
+            )
+            next
+          }
+          if (vmin > vmax) {
+            tmp <- vmin; vmin <- vmax; vmax <- tmp
+            updateRunLog(
+              paste0("Swapped vmin/vmax for rule index ", i, " to maintain [min,max]."),
+              type = "info"
+            )
+          }
 
           if (isTRUE(vmin == vmax)) {
             # ---------- CATEGORICAL: apply where ruleRaster == vmin ----------
