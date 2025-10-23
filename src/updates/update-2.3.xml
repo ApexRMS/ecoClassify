@@ -5,7 +5,7 @@
   <action code="Exec" condition="TableExists" criteria="ecoClassify_AdvancedClassifierOptions">
     <item>ALTER TABLE ecoClassify_AdvancedClassifierOptions ADD COLUMN overrideBandnames BOOLEAN</item>
     <item>UPDATE ecoClassify_AdvancedClassifierOptions
-           SET overrideBandnames=True,
+           SET overrideBandnames=0,
                normalizeRasters=0,
                rasterDecimalPlaces=2,
                modelTuning=0,
