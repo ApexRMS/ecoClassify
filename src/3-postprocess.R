@@ -188,7 +188,7 @@ if (nrow(ruleReclassDataframe) != 0) {
   dir.create(restrictedTmpDir, showWarnings = FALSE, recursive = TRUE)
 
   # ---- Apply Reclassification Rules (training: unfiltered + filtered) ----
-  if (!is_empty(trainTimestepList)) {
+  if (length(trainTimestepList) > 0) {
     for (t in trainTimestepList) {
 
       # Get file paths
@@ -319,7 +319,7 @@ if (nrow(ruleReclassDataframe) != 0) {
   }
 
   # ---- Apply Reclassification Rules (predicting: unfiltered + filtered) ----
-  if (!is_empty(predTimestepList)) {
+  if (length(predTimestepList) > 0) {
     for (t in predTimestepList) {
 
       # Get file paths
