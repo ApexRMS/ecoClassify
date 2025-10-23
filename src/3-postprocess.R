@@ -267,7 +267,8 @@ if (nrow(ruleReclassDataframe) != 0) {
             rtab <- matrix(c(vmin, vmax, rval), ncol = 3, byrow = TRUE)
             classedMask <- classify(
               ruleRaster, rtab, others = NA,
-              filename = tempfile(fileext = ".tif"), overwrite = TRUE
+              filename = tempfile(fileext = ".tif"), overwrite = TRUE,
+              right = FALSE, include.lowest = TRUE
             )
 
             # Update where mask is not NA
@@ -413,7 +414,8 @@ if (nrow(ruleReclassDataframe) != 0) {
             rtab <- matrix(c(vmin, vmax, rval), ncol = 3, byrow = TRUE)
             classedMask <- classify(
               ruleRaster, rtab, others = NA,
-              filename = tempfile(fileext = ".tif"), overwrite = TRUE
+              filename = tempfile(fileext = ".tif"), overwrite = TRUE,
+              right = FALSE, include.lowest = TRUE
             )
 
             # Update where mask is not NA (i.e., cells under the rule)
