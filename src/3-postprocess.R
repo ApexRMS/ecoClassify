@@ -212,13 +212,7 @@ if (nrow(ruleReclassDataframe) != 0) {
       )
 
       # Rules
-      if (nrow(ruleReclassDataframe) == 0) {
-        updateRunLog(
-          "No rule-based reclassification rules found. Skipping reclassification.",
-          type = "warning"
-        )
-      } else {
-        for (i in seq_len(nrow(ruleReclassDataframe))) {
+      for (i in seq_len(nrow(ruleReclassDataframe))) {
 
           # Load rule raster
           ruleRaster <- rast(ruleReclassDataframe$ruleRasterFile[i])
@@ -268,7 +262,6 @@ if (nrow(ruleReclassDataframe) != 0) {
 
           gc()
         }
-      }
 
       # ---- Final writes for timestep t (restricted) ----
       reclassedPathTrain <- file.path(
@@ -343,8 +336,7 @@ if (nrow(ruleReclassDataframe) != 0) {
       )
 
       # Apply rules (if any)
-      if (nrow(ruleReclassDataframe) != 0) {
-        for (i in seq_len(nrow(ruleReclassDataframe))) {
+      for (i in seq_len(nrow(ruleReclassDataframe))) {
 
           # Load rule raster
           ruleRaster <- rast(ruleReclassDataframe$ruleRasterFile[i])
@@ -394,7 +386,6 @@ if (nrow(ruleReclassDataframe) != 0) {
 
           gc()
         }
-      }
 
       # ---- Final writes for timestep t ----
       reclassedPathPred <- file.path(
