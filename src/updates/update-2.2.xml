@@ -6,4 +6,14 @@
     <item>ALTER TABLE ecoClassify_AdvancedClassifierOptions ADD COLUMN tuningObjective INTEGER</item>
   </action>
 
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_AdvancedClassifierOptions">
+    <item>UPDATE ecoClassify_AdvancedClassifierOptions
+           SET normalizeRasters=0,
+               modelTuning=0,
+               tuningObjective=5,
+               setManualThreshold=0,
+               applyContextualization=0
+           WHERE AdvancedClassifierOptionsId=1</item>
+  </action>
+
 </update>
