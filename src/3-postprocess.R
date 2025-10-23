@@ -324,7 +324,7 @@ if (nrow(ruleReclassDataframe) != 0) {
 
         trainingOutputDataframe$PredictedFilteredRestricted[
           trainingOutputDataframe$Timestep == t
-        ] <- filteredRestricted$PredictedFiltered
+        ] <- reclassedFilteredPathTrain
       }
 
       # Cleanup per-timestep
@@ -461,7 +461,7 @@ if (nrow(ruleReclassDataframe) != 0) {
           transferDir,
           paste0("PredictedPresenceFilteredRestricted-","predicting","-t",t,".tif")
         )
-        
+
         writeRaster(
           rast(filteredRestricted$PredictedFiltered),
           filename = reclassedFilteredPathPred,
@@ -470,7 +470,7 @@ if (nrow(ruleReclassDataframe) != 0) {
 
         predictingOutputDataframe$ClassifiedFilteredRestricted[
           predictingOutputDataframe$Timestep == t
-        ] <- filteredRestricted$PredictedFiltered
+        ] <- reclassedFilteredPathPred
       }
 
       # Cleanup per-timestep
