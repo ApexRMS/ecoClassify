@@ -195,12 +195,11 @@ if (nrow(ruleReclassDataframe) != 0) {
       unfilteredTrainFilepath <- trainingOutputDataframe$PredictedUnfiltered[
         trainingOutputDataframe$Timestep == t
       ]
-      filteredTrainFilepath <- trainingOutputDataframe$PredictedFiltered[
-        trainingOutputDataframe$Timestep == t
-      ]
 
       # Skip if no unfiltered path
-      if (is.na(unfilteredTrainFilepath)) next
+      if (length(unfilteredTrainFilepath) == 0 ||
+            is.na(unfilteredTrainFilepath) ||
+            !file.exists(unfilteredTrainFilepath)) next
 
       # Load base rasters
       unfiltered <- rast(unfilteredTrainFilepath)
@@ -314,12 +313,11 @@ if (nrow(ruleReclassDataframe) != 0) {
       unfilteredPredFilepath <- predictingOutputDataframe$ClassifiedUnfiltered[
         predictingOutputDataframe$Timestep == t
       ]
-      filteredPredFilepath <- predictingOutputDataframe$ClassifiedFiltered[
-        predictingOutputDataframe$Timestep == t
-      ]
 
       # Skip if no unfiltered path
-      if (is.na(unfilteredPredFilepath)) next
+      if (length(unfilteredPredFilepath) == 0 ||
+            is.na(unfilteredPredFilepath) ||
+            !file.exists(unfilteredPredFilepath)) next
 
       # Load rasters
       unfiltered <- rast(unfilteredPredFilepath)
