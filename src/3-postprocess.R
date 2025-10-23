@@ -289,11 +289,6 @@ if (nrow(ruleReclassDataframe) != 0) {
           fileName = "PredictedPresenceFilteredRestricted"
         )
 
-        reclassedFilteredPathTrain <- file.path(
-          transferDir,
-          paste0("PredictedPresenceFilteredRestricted-","training","-t",t,".tif")
-        )
-
         writeRaster(
           rast(filteredRestricted$PredictedFiltered),
           filename = reclassedFilteredPathTrain,
@@ -411,11 +406,6 @@ if (nrow(ruleReclassDataframe) != 0) {
           t,
           restrictedTmpDir,
           fileName = "PredictedPresenceFilteredRestricted"
-        )
-
-        reclassedFilteredPathPred <- file.path(
-          transferDir,
-          paste0("PredictedPresenceFilteredRestricted-","predicting","-t",t,".tif")
         )
 
         writeRaster(
