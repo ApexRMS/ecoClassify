@@ -155,7 +155,7 @@ for (t in predTimestepList) {
     predictingOutputDataframe$Timestep == t
   ]
 
-  if (!is.null(classifiedPresenceFilepath)) {
+  if (!is.na(classifiedPresenceFilepath) && file.exists(classifiedPresenceFilepath)) {
     # Load raster
     predictedPresence <- rast(classifiedPresenceFilepath)
 
