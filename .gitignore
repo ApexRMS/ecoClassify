@@ -1,0 +1,4 @@
+# ignore dev files
+/dev/
+/packages/
+/scratch/

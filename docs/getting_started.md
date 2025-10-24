@@ -38,24 +38,21 @@ If you do not have **Miniconda** installed on your computer, a dialog box will o
 
 <p id="step2"> <h2>Step 2: Opening a configured <b>ecoClassify</b> library</h2> </p>
 
-Having installed the **ecoClassify** *package*, you are now ready to create your SyncroSim *library*. A *library* is a file (with extension *.ssim*) that contains all your model inputs and outputs. Note that the layout of each *library* is specific to the *package* for which it was initially created. You can opt to create an empty *library* or download the ecoClassify template library, called **Snow Classifier (Jumpingpound Mountain, Alberta)**. In this tutorial, we will be working with the **Snow Classifier (Jumpingpound Mountain, Alberta)** library, which we will download from **SyncroSim Cloud**.
+Having installed the **ecoClassify** *package*, you are now ready to create your SyncroSim *library*. A *library* is a file (with extension *.ssim*) that contains all your model inputs and outputs. Note that the layout of each *library* is specific to the *package* for which it was initially created. You can opt to create an empty *library* or download the ecoClassify template library in **SyncroSim Studio**. In this tutorial, we will be working with the ecoClassify template library.
 
-Navigate to <a href="https://cloud.syncrosim.com/" target="_blank">SyncroSim Cloud</a> and click on the **Explore** tab in the top right menu. This will take you to the list of **Public Libraries** available for anyone to download, open, and run in SyncroSim Studio. Scroll through the list of libraries, or begin typing **Snow Classifier (Jumpingpound Mountain, Alberta)** in the search bar to find the pre-configured ecoClassify library. Click on the library to open it on the cloud.
+Start SyncroSim Studio by searching for it using the Windows toolbar and under the file menu, select Open. Once SyncroSim Studio opens, navigate to **File > New** and select **From Online Template…**.  
 
-<img align="middle" style="padding: 3px" width="700" src="assets/images/cloud.png">
-
-<br>
-
-Download the library by clicking on the **Download library** button in the top right corner. This downloads a backup file of the library, which is denoted by the file extension *.ssimbak*, and contains the library file as well as accompanying data.
-
-<img align="middle" style="padding: 3px" width="800" src="assets/images/cloud-download.png">
+<img align="middle" style="padding: 3px" width="700" src="assets/images/open-template-library.png">
 
 <br>
 
-In **SyncroSim Studio**, open the example library by selecting **File > Open**. Navigate to where the *.ssimbak* file was saved (the default is your Downloads folder), select it, and click **Open**. In the new File Explorer window that opens, navigate to the folder where you would like to save the extracted library – here we save the library to our `C:\Temp\` folder. Click **Save**.
+Select the ecoClassify package. Browse for the `C:\Temp\` folder as the destination and click "**OK**.
 
-The ecoClassify example library was created with **SyncroSim Studio v3.0.9**. If you have a more recent release of SyncroSim Studio installed, you will automatically be prompted to update the library to configure it to your installed version of the software. Click **Apply**. 
+<img align="middle" style="padding: 3px" width="800" src="assets/images/select-ecoclassify-template.png">
 
+<br>
+
+The ecoClassify example library was created with **SyncroSim Studio v3.1.20**. If you have a more recent release of SyncroSim Studio installed, you will automatically be prompted to update the library to configure it to your installed version of the software. Click **Apply**. 
 
 <br>
 
