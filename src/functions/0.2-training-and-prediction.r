@@ -630,21 +630,25 @@ splitTrainTest <- function(
 #'
 #' @noRd
 getSensSpec <- function(probs, actual, threshold) {
-  predicted <- ifelse(probs >= threshold, 1L, 0L)
+  # keep only paired, non-NA entries
+  ok <- !is.na(probs) & !is.na(actual)
+  if (!any(ok)) return(c(sens=NA, spec=NA, prec=NA, acc=NA, bal=NA))
 
-  TP <- sum(predicted == 1L & actual == 1L)
-  TN <- sum(predicted == 0L & actual == 0L)
-  FP <- sum(predicted == 1L & actual == 0L)
-  FN <- sum(predicted == 0L & actual == 1L)
+  p <- as.integer(probs[ok] >= threshold)
+  a <- as.integer(actual[ok])  # assumes actual is 0/1 already
 
-  # safe divisions (return 0 when denominator is 0)
-  div0 <- function(a, b) if (b > 0) a / b else 0
+  TP <- sum(p == 1L & a == 1L)
+  TN <- sum(p == 0L & a == 0L)
+  FP <- sum(p == 1L & a == 0L)
+  FN <- sum(p == 0L & a == 1L)
 
-  sens <- div0(TP, TP + FN) # recall / TPR
-  spec <- div0(TN, TN + FP) # TNR
-  prec <- div0(TP, TP + FP) # PPV
-  acc <- (TP + TN) / (TP + TN + FP + FN) # Accuracy
-  bal <- (sens + spec) / 2 # Balanced accuracy
+  denom <- function(x) if (x > 0) x else NA_real_
+
+  sens <- TP / denom(TP + FN)          # recall / TPR
+  spec <- TN / denom(TN + FP)          # TNR
+  prec <- TP / denom(TP + FP)          # PPV
+  acc  <- (TP + TN) / (TP + TN + FP + FN)
+  bal  <- mean(c(sens, spec), na.rm = TRUE)  # tolerate one undefined rate
 
   c(sens = sens, spec = spec, prec = prec, acc = acc, bal = bal)
 }
