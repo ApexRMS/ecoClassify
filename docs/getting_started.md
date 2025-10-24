@@ -46,9 +46,9 @@ Start SyncroSim Studio by searching for it using the Windows toolbar and under t
 
 <br>
 
-Select the ecoClassify package. Browse for the `C:\Temp\` folder as the destination and click "**OK**.
+Select the ecoClassify (version 2.3.0) package. Notice that the only available template is the ecoClassify Example. Select `C:\Temp\` as the destination folder and click **OK**. The ecoClassify example will automatically open in the **SyncroSim Studio** explorer.
 
-<img align="middle" style="padding: 3px" width="800" src="assets/images/select-ecoclassify-template.png">
+<img align="middle" style="padding: 3px" width="700" src="assets/images/download-template-library.png">
 
 <br>
 
@@ -60,15 +60,15 @@ The ecoClassify example library was created with **SyncroSim Studio v3.1.20**. I
 
 The contents of your newly opened library are now displayed in the **Library Explorer**. The *library* stores information on three levels: the *library*, the *project*, and the *scenarios*. 
 
-Most model inputs in SyncroSim Studio are organized into *scenarios*, where each *scenario* consists of a suite of *properties*, one for each of the model’s required inputs. Because you downloaded and opened a complete **ecoClassify** library, your library already contains two demonstration *scenarios* with pre-configured model inputs and outputs. For the purpose of this tutorial' we'll focus on the **Snow Classifer [Random Forest]** *scenario*.
+Most model inputs in SyncroSim Studio are organized into *scenarios*, where each *scenario* consists of a suite of *properties*, one for each of the model’s required inputs. Because you downloaded and opened a complete **ecoClassify** library, your library already contains three demonstration *scenarios* with pre-configured model inputs and outputs. In this tutorial' we'll work through the **Snow Cover - Training**, **Snow Cover - Predicting**, and **Snow Cover - Post-Processing** *scenarios*, demonstrating each of the three steps in the ecoClassify pipeline.
 
-<img align="middle" style="padding: 3px" width="325" src="assets/images/scenario.png">
+<img align="middle" style="padding: 3px" width="325" src="assets/images/library-scenarios.png">
 
 <br>
 
 To view the details of the *scenario*:
 
-* Select the scenario named **Snow Classifer [Random Forest]** in the **Library Explorer**.
+* Select the scenario named **Snow Cover - Train** in the **Library Explorer**.
 * Right-click and choose **Open** from the context menu, and double-click on the scenario.
 
 This opens the *scenario properties* window.
@@ -79,12 +79,13 @@ This opens the *scenario properties* window.
 
 ### Pipeline
 
-Located underneath the **General** tab, the model **Pipeline** allows you to select which stages of the model to include and in what order they should be run. A full run of **ecoClassify** consists of two stages:
+Located underneath the **General** tab, the model **Pipeline** allows you to select which stages of the model to include and in what order they should be run. A full run of **ecoClassify** consists of three stages:
 
-* (1) **Train Classifier**: training and ground-truthed rasters are used to create the classifier
-* (2) **Forecast**: the classifier created is applied to rasters to classify
+* (1) **Train Classifier**: training and ground-truthed rasters are used to create the classifier model
+* (2) **Predict**: the classifier model is applied to rasters to classify
+* (3) **Post-Process**: the output classification rasters are filtered, filled in, or reclassified based on a mask raster
 
-Note that the *Forecast* stage is dependent on the results of the previous stage, *Train Classifier*. You cannot run a stage without having first run the previous required stages.
+Note that the *Predict* stage is dependent on the results of the previous stage, *Train Classifier*, *Post-Process* stage is dependent on the *Train Classifier* and the *Predict* stages. You cannot run a stage without having first run the previous required stages.
 
 <img align="middle" style="padding: 3px" width="525" src="assets/images/pipeline-models.png">
 
@@ -101,12 +102,16 @@ Next, click on the **Datafeeds** node. Here, all of the inputs to the model are 
 The first node under the **Image Classifier** tab is the **Input** node. Expand this node to reveal the following input datasheets:
 
 * **Classifier options**
-* **Post-processing options**
-* **Input rasters**
+* **Rasters**
+* **Advanced**
 
-The **Classifier options** datasheet is where you may specify a sample size, choose whether you would like to apply contextualization or not, and choose from a drop-down menu of model types. Model types currently available include Random Forest and MaxEnt.In this example scenario, we use a Random Forest model. 
+The **Classifier options** datasheet is where you may specify a sample size and and choose from a drop-down menu of model types. Model types currently available include Random Forest, Convolutional Neural Network (CNN), and MaxEnt. In this example training scenario we use a Random Forest model.
 
 <img align="middle" style="padding: 3px" width="550" src="assets/images/classifier-options.png">
+
+The **Rasters** tab contains two datasheets, **Training Rasters** and **Covariates**.
+
+ choose whether you would like to apply contextualization or not, . 
 
 <br>
 
