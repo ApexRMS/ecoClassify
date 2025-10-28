@@ -162,7 +162,7 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
     )
   }
 
-  if (setManualThreshold == TRUE) {
+  if (isTRUE(setManualThreshold)) {
     if (
       is.null(manualThreshold) ||
         length(manualThreshold) == 0 ||

@@ -196,39 +196,39 @@ progressBar(type = "message", message = "Training model")
 
 if (modelType == "MaxEnt") {
   modelOut <- getMaxentModel(allTrainData, nCores, modelTuning)
-  if (setManualThreshold == FALSE) {
+  if (isTRUE(setManualThreshold)) {
+    threshold <- manualThreshold
+  } else {
     threshold <- getOptimalThreshold(
       modelOut,
       allTestData,
       "MaxEnt",
       tuningObjective
     )
-  } else {
-    threshold <- manualThreshold
   }
 } else if (modelType == "Random Forest") {
   modelOut <- getRandomForestModel(allTrainData, nCores, modelTuning)
-  if (setManualThreshold == FALSE) {
+  if (isTRUE(setManualThreshold)) {
+    threshold <- manualThreshold
+  } else {
     threshold <- getOptimalThreshold(
       modelOut,
       allTestData,
       "Random Forest",
       tuningObjective
     )
-  } else {
-    threshold <- manualThreshold
   }
 } else if (modelType == "CNN") {
   modelOut <- getCNNModel(allTrainData, nCores, modelTuning)
-  if (setManualThreshold == FALSE) {
+  if (isTRUE(setManualThreshold)) {
+    threshold <- manualThreshold
+  } else {
     threshold <- getOptimalThreshold(
       modelOut,
       allTestData,
       "CNN",
       tuningObjective
     )
-  } else {
-    threshold <- manualThreshold
   }
 } else {
   stop("Model type not recognized")
