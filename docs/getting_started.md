@@ -68,8 +68,8 @@ Most model inputs in SyncroSim Studio are organized into *scenarios*, where each
 
 To view the details of the *scenario*:
 
-* Select the scenario named **Snow Cover - Train** in the **Library Explorer**.
-* Right-click and choose **Open** from the context menu, and double-click on the scenario.
+* Select the scenario named **Snow Cover - Training** in the **Library Explorer**.
+* Right-click and choose **Open** from the context menu, or double-click on the scenario.
 
 This opens the *scenario properties* window.
 
@@ -85,7 +85,7 @@ Located underneath the **General** tab, the model **Pipeline** allows you to sel
 * (2) **Predict**: the classifier model is applied to rasters to classify
 * (3) **Post-Process**: the output classification rasters are filtered, filled in, or reclassified based on a mask raster
 
-Note that the *Predict* stage is dependent on the results of the previous stage, *Train Classifier*, *Post-Process* stage is dependent on the *Train Classifier* and the *Predict* stages. You cannot run a stage without having first run the previous required stages.
+Note that the *Predict* stage is dependent on the results of the previous stage, *Train Classifier*, *Post-Process* stage is dependent on the *Train Classifier* and the *Predict* stages. You cannot run a stage without having first run the previous required stages, either in the same scenario or included as dependencies.
 
 <img align="middle" style="padding: 3px" width="525" src="assets/images/pipeline-models.png">
 
@@ -97,9 +97,10 @@ Next, click on the **Datafeeds** node. Here, all of the inputs to the model are 
 
 <br>
 
-### Input
+### Stage 1: Training
+#### Input
 
-The first node under the **Image Classifier** tab is the **Input** node. Expand this node to reveal the following input datasheets:
+The first node under the **ecoClassify** tab is the **Input** node. Expand this node to reveal the following input datasheets:
 
 * **Classifier options**
 * **Rasters**
@@ -111,7 +112,9 @@ The **Classifier options** datasheet is where you may specify a sample size and 
 
 The **Rasters** tab contains two datasheets, **Training Rasters** and **Covariates**.
 
- choose whether you would like to apply contextualization or not, . 
+The **Training Rasters** datasheet is where training and user classified spatial data are loaded into the library. Note that this datasheet also contains a **Timestep** column. In the **ecoClassify** package, timesteps are used to link training rasters with their corresponding user classified rasters. 
+
+The **Covariates** datasheet is where additional spatial data are loaded into the library. Note that these data are applied to each timestep.
 
 <br>
 
@@ -121,9 +124,70 @@ The **Rasters** tab contains two datasheets, **Training Rasters** and **Covariat
 
 <br>
 
-Finally, the **Input rasters** datasheet is where all spatial data are loaded into the library. This includes training and ground-thruth rasters for creating the classifier, as well as the rasters that you would like to apply the classifier to. Note that this datasheet also contains a **Timestep** column. In the **ecoClassify** package, timesteps are used to link training rasters with their corresponding ground truth raster, and to distinguish these rasters from those that will be classified. 
+The **Advanced** datasheet is where you can select options for the model training process.
 
-<img align="middle" style="padding: 3px" width="900" src="assets/images/input-rasters.png">
+Raster preprocessing:
+* Selecting **Override band names** renames layers in each training raster in the **Training Rasters** datasheet to the template "Band[layer number]".
+* Selecting **Normalize Rasters** applies min-max normalization to each training raster in the **Training Rasters** datasheet to have values ranging between 0 and 1.
+* Adjusting the **Raster decimal places** value specifies the number of decimal places assigned to the values in each pixel. Reducing the number of decimal places can reduce the memory disk space required to process large rasters.
+
+Model tuning:
+* Selecting **Enable automated tuning** tunes the model to optimize for the **Objective** that is specified.
+    * For Random Forest models, multiple combinations of hyperparameters (`mtry`, `maxDepth`, and `nTrees`) are evaluated in parallel, and the best model is selected based on the lowest OOB error. If not enabled, default hyperparameters are used.
+    * Maxent Models are also evaluated with hyperparameter tuning, and the best model is selected based on Continuous Boyce Index (CBI).
+    * For CNN models, a greater number of epochs and a larger batch size are used to evaluate the model when automated tuning is enabled.
+* Selecting a model tuning **Objective** maximizes the specified objective (choose between "Youden", "Accuracy", "Specificity", "Sensitivity", "Precision", and "Balanced") within minimum metric constraints.
+
+Thresholding:
+* Selecting **Set probability threshold** switches to manually setting a probability threshold for classifying a pixel as "present" or "absent" rather than the default of automated probability threshold selection.
+* Adjusting the **Threshold** value defines the manual probability threshold.
+
+Contextualization:
+* Selecting the **Apply contextualization** applies spatial contextualization to the list of training rasters by computing local statistics and principal components over a square moving window.
+* Adjusting the **Window size** defines the contextualization window size. This value must be an odd number.
+
+Reproducibility:
+* Adjusting the **Random seed** value fixes the starting point of the random number sequence used for sampling the training rasters.
+
+#### Output
+
+Finally, the **Output** node contains the **Statistics** datasheet that contains key statistics from the image classifier model that is created in the model training step. 
+
+<br>
+
+### Stage 2: Predicting
+
+Next, right click on the scenario named **Snow Cover - Predicting** in the **Library Explorer** and choose **Open** from the context menu, or double-click on the scenario.
+
+Navigating to the **Pipeline** datasheet under the **General** tab shows that the **2-Predict** stage is used in this scenario.
+
+#### Input
+In the **2-Predict** stage, there is a new **Predicting** tab under **Input > Rasters**. This tab contains two new datasheets: **Predicting Rasters** and **Covariates**.
+
+The **Predicting Rasters** datasheet is where rasters to be classified are loaded into the library. As with the **Training rasters** datasheet, this datasheet also contains a **Timestep** column to provide a unique identifier for each predicting raster. These rasters must have layer names that match the names used to train the image classifer.
+
+The **Covariates** datasheet is where additional spatial data are loaded into the library. Note that these data are applied to each timestep, and their layer names must match the names used to train the image classifer.
+
+<br>
+
+### Stage 3: Post-Processing
+
+Right click on the scenario named **Snow Cover - Post-Processing** in the **Library Explorer** and choose **Open** from the context menu, or double-click on the scenario.
+
+The **Pipeline** datasheet under the **General** tab shows that the **3-Post-Process** stage is used in this scenario.
+
+#### Post-Processing Options
+The **Post-Process** stage has a new **Post-Processing Options** tab with two datasheets: **Filtering** and **Rule-Based Restrictions**.
+
+The **Filtering** datasheet contains otpions for filtering and filling in the classified rasters.
+* Selecting **Apply filtering** enables the filtering feature for all classified rasters generated from Stage 1 and 2.
+* The **Min neighbours to keep** value specifies the threshold for the number adjacent "present" pixels required in order to not filter out the central pixel. A higher value results in more filtering.
+* the **Min neighbours to fill** value specifies the threshold for the number adjacent "present" pixels required in order for the pixels surrounding the central pixel to be reclassified as "present." A higher value results in less filling.
+
+<br>
+
+### Dependencies
+Dependencies can be used to break each stage up into a separate scenario, as is done in this example library. Click on the dropdown icon on the left side of the **Snow Cover - Predicting** scenario to show the two nested folders: **Dependencies** and **Results**. Click on the **Dependencies** folder. The first scenario, **Snow Cover - Training**, is present as a dependency. The most recent results from this scenario will be used as the inputs to the Predicting scenario each time it is run
 
 <br>
 
