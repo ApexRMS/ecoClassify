@@ -132,7 +132,7 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   setSeed <- advClassifierOptionsDataframe$setSeed
 
   # assign value of 3 to contextualizationWindowSize if not specified
-  if (applyContextualization == TRUE) {
+  if (isTRUE(applyContextualization)) {
     if (
       is.null(contextualizationWindowSize) ||
         isTRUE(is.na(contextualizationWindowSize))

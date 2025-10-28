@@ -195,7 +195,7 @@ rgbOutputDataframe <- data.frame(Timestep = numeric(0), RGBImage = character(0))
 progressBar(type = "message", message = "Training model")
 
 if (modelType == "MaxEnt") {
-  modelOut <- getMaxentModel(allTrainData, nCores, modelTuning)
+  modelOut <- getMaxentModel(allTrainData, nCores, isTRUE(modelTuning))
   if (isTRUE(setManualThreshold)) {
     threshold <- manualThreshold
   } else {
@@ -207,7 +207,7 @@ if (modelType == "MaxEnt") {
     )
   }
 } else if (modelType == "Random Forest") {
-  modelOut <- getRandomForestModel(allTrainData, nCores, modelTuning)
+  modelOut <- getRandomForestModel(allTrainData, nCores, isTRUE(modelTuning))
   if (isTRUE(setManualThreshold)) {
     threshold <- manualThreshold
   } else {
@@ -219,7 +219,7 @@ if (modelType == "MaxEnt") {
     )
   }
 } else if (modelType == "CNN") {
-  modelOut <- getCNNModel(allTrainData, nCores, modelTuning)
+  modelOut <- getCNNModel(allTrainData, nCores, isTRUE(modelTuning))
   if (isTRUE(setManualThreshold)) {
     threshold <- manualThreshold
   } else {
