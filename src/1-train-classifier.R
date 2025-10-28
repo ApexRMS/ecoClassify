@@ -432,12 +432,13 @@ classifierOptionsOutputDataframe <- data.frame(
 )
 
 advClassifierOptionsOutputDataframe <- data.frame(
-  normalizeRasters = normalizeRasters,
+  normalizeRasters = isTRUE(normalizeRasters),
+  overrideBandnames = isTRUE(overrideBandnames),
   rasterDecimalPlaces = rasterDecimalPlaces,
-  modelTuning = modelTuning,
-  setManualThreshold = setManualThreshold,
-  manualThreshold = threshold,
-  applyContextualization = applyContextualization,
+  modelTuning = isTRUE(modelTuning),
+  setManualThreshold = isTRUE(setManualThreshold),
+  manualThreshold = manualThreshold,
+  applyContextualization = isTRUE(applyContextualization),
   contextualizationWindowSize = contextualizationWindowSize
 )
 
