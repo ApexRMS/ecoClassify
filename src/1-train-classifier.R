@@ -104,12 +104,12 @@ if (
 }
 
 # Normalize training rasters, if selected
-if (normalizeRasters == TRUE) {
+if (isTRUE(normalizeRasters)) {
   trainingRasterList <- normalizeRaster(trainingRasterList)
 }
 
 # Apply contextualization to training rasters, if selected
-if (applyContextualization == TRUE) {
+if (isTRUE(applyContextualization)) {
   trainingRasterList <- contextualizeRaster(trainingRasterList)
 }
 

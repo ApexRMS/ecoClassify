@@ -105,12 +105,12 @@ if (
 }
 
 # Normalize predicting rasters, if selected
-if (normalizeRasters == TRUE) {
+if (isTRUE(normalizeRasters)) {
   predictRasterList <- normalizeRaster(predictRasterList)
 }
 
 # Apply contextualization to prediction rasters, if selected
-if (applyContextualization == TRUE) {
+if (isTRUE(applyContextualization)) {
   predictRasterList <- contextualizeRaster(predictRasterList)
 }
 
@@ -121,10 +121,7 @@ predictingCovariateRaster <- processCovariates(
 )
 
 # Add covariate data to predicting rasters
-predictRasterList <- addCovariates(
-  predictRasterList,
-  predictingCovariateRaster
-)
+predictRasterList <- addCovariates(predictRasterList, predictingCovariateRaster)
 
 # Check and mask NA values in predicting rasters
 checkNA(predictRasterList)
