@@ -104,12 +104,12 @@ if (
 }
 
 # Normalize training rasters, if selected
-if (normalizeRasters == TRUE) {
+if (isTRUE(normalizeRasters)) {
   trainingRasterList <- normalizeRaster(trainingRasterList)
 }
 
 # Apply contextualization to training rasters, if selected
-if (applyContextualization == TRUE) {
+if (isTRUE(applyContextualization)) {
   trainingRasterList <- contextualizeRaster(trainingRasterList)
 }
 
@@ -195,40 +195,40 @@ rgbOutputDataframe <- data.frame(Timestep = numeric(0), RGBImage = character(0))
 progressBar(type = "message", message = "Training model")
 
 if (modelType == "MaxEnt") {
-  modelOut <- getMaxentModel(allTrainData, nCores, modelTuning)
-  if (setManualThreshold == FALSE) {
+  modelOut <- getMaxentModel(allTrainData, nCores, isTRUE(modelTuning))
+  if (isTRUE(setManualThreshold)) {
+    threshold <- manualThreshold
+  } else {
     threshold <- getOptimalThreshold(
       modelOut,
       allTestData,
       "MaxEnt",
       tuningObjective
     )
-  } else {
-    threshold <- manualThreshold
   }
 } else if (modelType == "Random Forest") {
-  modelOut <- getRandomForestModel(allTrainData, nCores, modelTuning)
-  if (setManualThreshold == FALSE) {
+  modelOut <- getRandomForestModel(allTrainData, nCores, isTRUE(modelTuning))
+  if (isTRUE(setManualThreshold)) {
+    threshold <- manualThreshold
+  } else {
     threshold <- getOptimalThreshold(
       modelOut,
       allTestData,
       "Random Forest",
       tuningObjective
     )
-  } else {
-    threshold <- manualThreshold
   }
 } else if (modelType == "CNN") {
-  modelOut <- getCNNModel(allTrainData, nCores, modelTuning)
-  if (setManualThreshold == FALSE) {
+  modelOut <- getCNNModel(allTrainData, nCores, isTRUE(modelTuning))
+  if (isTRUE(setManualThreshold)) {
+    threshold <- manualThreshold
+  } else {
     threshold <- getOptimalThreshold(
       modelOut,
       allTestData,
       "CNN",
       tuningObjective
     )
-  } else {
-    threshold <- manualThreshold
   }
 } else {
   stop("Model type not recognized")
@@ -432,12 +432,13 @@ classifierOptionsOutputDataframe <- data.frame(
 )
 
 advClassifierOptionsOutputDataframe <- data.frame(
-  normalizeRasters = normalizeRasters,
+  normalizeRasters = isTRUE(normalizeRasters),
+  overrideBandnames = isTRUE(overrideBandnames),
   rasterDecimalPlaces = rasterDecimalPlaces,
-  modelTuning = modelTuning,
-  setManualThreshold = setManualThreshold,
-  manualThreshold = threshold,
-  applyContextualization = applyContextualization,
+  modelTuning = isTRUE(modelTuning),
+  setManualThreshold = isTRUE(setManualThreshold),
+  manualThreshold = manualThreshold,
+  applyContextualization = isTRUE(applyContextualization),
   contextualizationWindowSize = contextualizationWindowSize
 )
 

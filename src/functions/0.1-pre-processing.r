@@ -132,10 +132,9 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   setSeed <- advClassifierOptionsDataframe$setSeed
 
   # assign value of 3 to contextualizationWindowSize if not specified
-  if (applyContextualization == TRUE) {
+  if (isTRUE(applyContextualization)) {
     if (
-      is.null(contextualizationWindowSize) ||
-        isTRUE(is.na(contextualizationWindowSize))
+      is.null(contextualizationWindowSize) || is.na(contextualizationWindowSize)
     ) {
       contextualizationWindowSize <- 3
       updateRunLog(
@@ -154,7 +153,8 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   }
 
   if (
-    !is.null(contextualizationWindowSize) && applyContextualization == FALSE
+    !is.null(contextualizationWindowSize) &&
+      isTRUE(applyContextualization) == FALSE
   ) {
     updateRunLog(
       "Contextualization window size was supplied but applyContextualization is set to FALSE; no contextualization will be applied",
@@ -162,7 +162,7 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
     )
   }
 
-  if (setManualThreshold == TRUE) {
+  if (isTRUE(setManualThreshold)) {
     if (
       is.null(manualThreshold) ||
         length(manualThreshold) == 0 ||
