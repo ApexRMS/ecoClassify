@@ -141,7 +141,7 @@
 
 
     <!--Transformer 1: training classifier-->
-    <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.3">
+    <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.4">
         <dataSheet name="InputTrainingRasters" type="Input"/>
         <dataSheet name="InputTrainingCovariates" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Input"/>
@@ -158,7 +158,7 @@
     </transformer>
 
     <!--Transformer 2: predicting-->
-    <transformer name="Predict" displayName="2-Predict" programName="Rscript" programArguments="2-predict.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.3">
+    <transformer name="Predict" displayName="2-Predict" programName="Rscript" programArguments="2-predict.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.4">
         <dataSheet name="InputPredictingRasters" type="Input"/>
         <dataSheet name="InputPredictingCovariates" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Input"/>
@@ -169,7 +169,7 @@
     </transformer>
 
     <!--Transformer 3: filtering-->
-    <transformer name="PostProcessing" displayName="3-Post-Process" programName="Rscript" programArguments="3-postprocess.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.3">
+    <transformer name="PostProcessing" displayName="3-Post-Process" programName="Rscript" programArguments="3-postprocess.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.4">
         <dataSheet name="RasterOutput" type="Both"/>
         <dataSheet name="ClassifiedRasterOutput" type="Both"/>
         <dataSheet name="PostProcessingFilter" type="Input"/>
