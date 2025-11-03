@@ -54,36 +54,101 @@ calculateStatistics <- function(
   # Binary classification based on threshold
   predicted <- ifelse(probs >= threshold, 1, 0)
 
-  # Prepare evaluation data
-  evalData <- tibble(
+  # Prepare evaluation data (as factors 0/1)
+  evalData <- tibble::tibble(
     truth = factor(testData$presence, levels = c(0, 1)),
     prediction = factor(predicted, levels = c(0, 1))
   )
 
-  # Confusion matrix
-  confMatrix <- conf_mat(evalData, truth = truth, estimate = prediction)
+  # Confusion matrix (yardstick)
+  confMatrix <- yardstick::conf_mat(evalData, truth = truth, estimate = prediction)
 
-  # Format confusion matrix table
+  # Reformat confusion matrix table for your downstream uses
   confusionMatrix <- as.data.frame(confMatrix$table)
   colnames(confusionMatrix) <- c("Prediction", "Reference", "Frequency")
 
-  # Collect metrics
-  metricsData <- bind_rows(
-    accuracy(evalData, truth, prediction),
-    sens = sensitivity(evalData, truth, prediction),
-    spec = specificity(evalData, truth, prediction),
-    precision(evalData, truth, prediction),
-    recall(evalData, truth, prediction),
-    f_meas(evalData, truth, prediction)
-  ) %>%
-    select(.metric, .estimate) %>%
-    rename(Statistic = .metric, Value = .estimate)
+  # ===== Build model statistics to match caret::confusionMatrix =====
+  n  <- nrow(evalData)
+  tp <- sum(evalData$truth == "1" & evalData$prediction == "1")
+  tn <- sum(evalData$truth == "0" & evalData$prediction == "0")
+  fp <- sum(evalData$truth == "0" & evalData$prediction == "1")
+  fn <- sum(evalData$truth == "1" & evalData$prediction == "0")
 
-  # Append to output dataframes
+  # Overall metrics
+  acc <- (tp + tn) / n
+  # Kappa via yardstick
+  kappa_val <- yardstick::kap(evalData, truth, prediction)$.estimate[1]
+
+  # Accuracy CI and p-value vs No Information Rate (as in caret)
+  # caret uses binom.test for exact CI and p-value
+  bt_overall <- binom.test(tp + tn, n)  # two-sided CI
+  acc_lower  <- unname(bt_overall$conf.int[1])
+  acc_upper  <- unname(bt_overall$conf.int[2])
+
+  # No Information Rate (majority class proportion in truth)
+  p_pos <- mean(evalData$truth == "1")
+  p_neg <- 1 - p_pos
+  nir   <- max(p_pos, p_neg)
+
+  bt_nir <- binom.test(tp + tn, n, p = nir, alternative = "greater")
+  acc_p  <- unname(bt_nir$p.value)
+
+  # McNemar p-value (same table layout caret expects: rows=truth, cols=prediction)
+  mcnemar_p <- stats::mcnemar.test(matrix(c(tn, fp, fn, tp), nrow = 2))$p.value
+
+  # By-class metrics (positive class = "1"), matching caret labels
+  sens <- yardstick::sensitivity(evalData, truth, prediction)$.estimate[1]  # Recall
+  spec <- yardstick::specificity(evalData, truth, prediction)$.estimate[1]
+  ppv  <- yardstick::ppv(evalData, truth, prediction)$.estimate[1]         # Pos Pred Value (Precision)
+  npv  <- yardstick::npv(evalData, truth, prediction)$.estimate[1]
+  prec <- yardstick::precision(evalData, truth, prediction)$.estimate[1]   # same as ppv
+  rec  <- yardstick::recall(evalData, truth, prediction)$.estimate[1]      # same as sens
+  f1   <- yardstick::f_meas(evalData, truth, prediction)$.estimate[1]
+  prev <- p_pos
+  det_rate <- tp / n
+  det_prev <- (tp + fp) / n
+  bal_acc  <- (sens + spec) / 2
+
+  # Assemble to the SAME structure/names your original function produced
+  overall_stats <- tibble::tibble(
+    Statistic = c(
+      "Accuracy", "Kappa",
+      "Accuracy (lower)", "Accuracy (upper)",
+      "Accuracy (null)", "Accuracy P Value",
+      "Mcnemar P value"
+    ),
+    Value = c(
+      acc, kappa_val,
+      acc_lower, acc_upper,
+      nir, acc_p,
+      mcnemar_p
+    )
+  )
+
+  class_stats <- tibble::tibble(
+    Statistic = c(
+      "Sensitivity", "Specificity",
+      "Pos Pred Value", "Neg Pred Value",
+      "Precision", "Recall", "F1",
+      "Prevalence", "Detection Rate",
+      "Detection Prevalence", "Balanced Accuracy"
+    ),
+    Value = c(
+      sens, spec,
+      ppv, npv,
+      prec, rec, f1,
+      prev, det_rate,
+      det_prev, bal_acc
+    )
+  )
+
+  model_stats <- dplyr::bind_rows(overall_stats, class_stats)
+
+  # ===== Append to output dataframes (unchanged) =====
   confusionOutputDataFrame <- addRow(confusionOutputDataFrame, confusionMatrix)
-  modelOutputDataFrame <- addRow(modelOutputDataFrame, metricsData)
+  modelOutputDataFrame <- addRow(modelOutputDataFrame, model_stats)
 
-  # Confusion matrix plot
+  # Confusion matrix plot (unchanged)
   confusionMatrixPlot <- plot_confusion_matrix(
     confusionMatrix,
     target_col = "Reference",
