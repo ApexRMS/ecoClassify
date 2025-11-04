@@ -18,21 +18,29 @@ fix_lib_paths <- function() {
   # Ensure it exists
   if (!dir.exists(env_lib)) dir.create(env_lib, recursive = TRUE, showWarnings = FALSE)
 
-  # IMPORTANT: replace, don't prepend (removes broken trailing-quote entries)
-  .libPaths(env_lib)
-
-  # Force user-lib to env lib and disable user profiles that might re-add paths
+  # **Neutralize any external library injections BEFORE setting .libPaths**
+  Sys.setenv(R_LIBS_SITE = "")   # <- stop site lib from being auto-prepended
+  Sys.setenv(R_LIBS      = "")   # <- clear any custom lib chain
   Sys.setenv(R_LIBS_USER = env_lib)
+
+  # Disable user profiles that could re-add paths
   if (.Platform$OS.type == "windows") {
     Sys.setenv(R_PROFILE_USER = "NUL", R_ENVIRON_USER = "NUL")
   } else {
     Sys.setenv(R_PROFILE_USER = "/dev/null", R_ENVIRON_USER = "/dev/null")
   }
 
+  # Set the library paths to exactly the env lib
+  .libPaths(env_lib)
+
   # Final sanity (+ ensure writability)
   if (file.access(.libPaths()[1], 2) != 0) {
     stop("Active library not writable: ", .libPaths()[1])
   }
+
+  # Quiet Windows timezone gripe
+  if (nzchar(Sys.getenv("TZ", "")) == FALSE) Sys.setenv(TZ = "UTC")
+
   message("Using library: ", .libPaths()[1])
 }
 # --- end LIB GUARD ---
@@ -216,6 +224,8 @@ installDependencies <- function(attach_minimal = c("magrittr","dplyr")) {
     message("\n=== Attaching minimal set ===")
     attach_minimal_pkgs(attach_minimal)
   }
+
+  Sys.setenv(KMP_DUPLICATE_LIB_OK = "TRUE")
 
   invisible(TRUE)
 }

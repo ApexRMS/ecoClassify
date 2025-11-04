@@ -7,6 +7,8 @@
 
 packageDir <- (Sys.getenv("ssim_package_directory"))
 
+source(file.path(packageDir, "installDependencies.r"))
+
 sourceScripts <- list.files(
   path = file.path(packageDir, "/functions"),
   pattern = "\\.[rR]$",
