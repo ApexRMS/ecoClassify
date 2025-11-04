@@ -1,9 +1,11 @@
-# 0.0-installDependencies.r  — ecoClassify
-# Robust installer for conda envs (Windows/Linux/macOS)
-# - fixes .libPaths() to the active conda env (no stray quoted entries)
-# - pre-updates 'terra' on R 4.1.* to avoid ecospat/raster DLL swaps
-# - verifies by presence/version only (no heavy attach in-session)
-# - optionally attaches a MINIMAL set (e.g., dplyr/magrittr) at the end
+## -------------------------------
+## ecoClassify - Install Dependencies
+## Installation script for ecoClassify package dependencies
+## If conda is enabled, this script:
+## 1. Checks for Rtools and installs it if needed (Windows only)
+## 2. Installs packages into the conda environment library
+## ApexRMS, November 2025
+## -------------------------------
 
 # --- early gate: skip installer when not using Conda ---
 .is_conda <- function() {

@@ -193,7 +193,7 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
     cat_vars    = cat_vars,
     num_vars    = num_vars,
     cat_levels  = cat_levels,
-    predict_df  = predict_maxent_dataframe  # <— NEW: standardized predictor
+    predict_df  = predict_maxent_dataframe
   ))
 
 }
