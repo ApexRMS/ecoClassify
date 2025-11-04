@@ -10,7 +10,6 @@ load_pkg <- function(pkg) {
 
 quiet <- function(expr) suppressPackageStartupMessages(expr)
 
-# load required packages (OPTIONAL now; installer already attached these)
 quiet({
   pkgs <- c(
     "terra",
