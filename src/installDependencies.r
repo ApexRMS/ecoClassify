@@ -1,8 +1,41 @@
 # 0.0-installDependencies.r  — ecoClassify
 # Robust installer for conda envs (Windows/Linux/macOS)
-# - avoids loading DLLs during checks (prevents cross-version errors)
-# - pre-updates 'terra' on R 4.1.* so ecospat won't try to swap DLLs mid-run
-# - skips loading packages that were just installed; prompts for fresh session
+# - fixes .libPaths() to the active conda env (no stray quoted entries)
+# - pre-updates 'terra' on R 4.1.* to avoid ecospat/raster DLL swaps
+# - verifies by presence/version only (no heavy attach in-session)
+# - optionally attaches a MINIMAL set (e.g., dplyr/magrittr) at the end
+
+# --- LIB GUARD: force installs into the active conda env library ---
+fix_lib_paths <- function() {
+  cp <- Sys.getenv("CONDA_PREFIX", unset = "")
+  env_lib <- if (nzchar(cp)) file.path(cp, "Lib", "R", "library") else .libPaths()[1]
+
+  # Strip rogue quotes and normalize
+  clean <- function(p) normalizePath(gsub('^"+|"+$|^\\\'+|\\\'+$', "", p),
+                                     winslash = "/", mustWork = FALSE)
+  env_lib <- clean(env_lib)
+
+  # Ensure it exists
+  if (!dir.exists(env_lib)) dir.create(env_lib, recursive = TRUE, showWarnings = FALSE)
+
+  # IMPORTANT: replace, don't prepend (removes broken trailing-quote entries)
+  .libPaths(env_lib)
+
+  # Force user-lib to env lib and disable user profiles that might re-add paths
+  Sys.setenv(R_LIBS_USER = env_lib)
+  if (.Platform$OS.type == "windows") {
+    Sys.setenv(R_PROFILE_USER = "NUL", R_ENVIRON_USER = "NUL")
+  } else {
+    Sys.setenv(R_PROFILE_USER = "/dev/null", R_ENVIRON_USER = "/dev/null")
+  }
+
+  # Final sanity (+ ensure writability)
+  if (file.access(.libPaths()[1], 2) != 0) {
+    stop("Active library not writable: ", .libPaths()[1])
+  }
+  message("Using library: ", .libPaths()[1])
+}
+# --- end LIB GUARD ---
 
 # -------------------------
 # Helpers (no DLL loads)
@@ -35,10 +68,24 @@ install_cran <- function(pkg, lib_path, type = NULL, ...) {
   }
 }
 
+# small utility to quietly attach a short list
+attach_minimal_pkgs <- function(pkgs) {
+  for (p in pkgs) {
+    suppressPackageStartupMessages(
+      try(library(p, character.only = TRUE, quietly = TRUE, warn.conflicts = FALSE), silent = TRUE)
+    )
+    if (p %in% (.packages())) {
+      message(sprintf("✓ %s attached", p))
+    } else {
+      message(sprintf("• %s could not be attached in this session (but is installed).", p))
+    }
+  }
+}
+
 # -------------------------
 # Main
 # -------------------------
-installDependencies <- function() {
+installDependencies <- function(attach_minimal = c("magrittr","dplyr")) {
   message("=== ecoClassify dependency installation ===")
   message(R.version.string)
   message("Platform: ", .Platform$OS.type, "\n")
@@ -129,7 +176,6 @@ installDependencies <- function() {
   Sys.setenv(TORCH_INSTALL = "1")
   # Only install backend if missing; don't force-load torch DLLs here
   if (!("torch" %in% installed_now)) {
-    # torch package already present; probe backend
     ok <- FALSE
     try(ok <- torch::torch_is_installed(), silent = TRUE)
     if (isFALSE(ok)) {
@@ -137,14 +183,11 @@ installDependencies <- function() {
       installed_now <- unique(c(installed_now, "torch"))
     }
   } else {
-    # torch just installed: install backend
     torch::install_torch()
   }
 
   # -------------------------
-  # Verification (lightweight)
-  #   - If a pkg was installed/updated *now*, tell user to verify in a fresh session.
-  #   - Otherwise, try loading it.
+  # Verification (lightweight, no attaches)
   # -------------------------
   message("\n=== Verification ===")
   verify_pkgs <- c(
@@ -156,20 +199,8 @@ installDependencies <- function() {
   for (pkg in verify_pkgs) {
     if (!pkg_is_installed(pkg, lib_path)) {
       message(sprintf("✗ %s not installed (expected in %s)", pkg, lib_path))
-      next
-    }
-    if (pkg %in% installed_now) {
-      message(sprintf("• %s installed/updated in this run; start a *new R session* to load/verify.", pkg))
-      next
-    }
-    ok <- try({
-      suppressPackageStartupMessages(library(pkg, character.only = TRUE))
-      TRUE
-    }, silent = TRUE)
-    if (isTRUE(ok)) {
-      message(sprintf("✓ %s loaded", pkg))
     } else {
-      message(sprintf("• %s is installed but could not be loaded in this session; start a new R session to verify.", pkg))
+      message(sprintf("✓ %s present (version %s)", pkg, pkg_version(pkg, lib_path)))
     }
   }
 
@@ -179,6 +210,13 @@ installDependencies <- function() {
     message("Note: restart R to verify packages installed/updated in this run: ",
             paste(sort(unique(installed_now)), collapse = ", "))
   }
+
+  # --- Attach only the MINIMAL set needed immediately (e.g., pull(), pipes) ---
+  if (!is.null(attach_minimal) && length(attach_minimal)) {
+    message("\n=== Attaching minimal set ===")
+    attach_minimal_pkgs(attach_minimal)
+  }
+
   invisible(TRUE)
 }
 
