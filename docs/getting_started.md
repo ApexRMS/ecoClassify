@@ -8,7 +8,7 @@ permalink: /getting_started
 
 ### Here we provide a guided tutorial on **ecoClassify**, an open-source package for developing and applying an image classifier model.
 
-**ecoClassify** is a package within the SyncroSim framework. Familiarity with SyncroSim is helpful but not required to follow this tutorial. Throughout the Quickstart tutorial, terminology associated with SyncroSim is italicized, and whenever possible, links are provided to the SyncroSim online documentation. For more on SyncroSim, please refer to the SyncroSim [Overview](https://docs.syncrosim.com/getting_started/overview.html){:target="_blank"} and [Quickstart tutorial](https://docs.syncrosim.com/getting_started/quickstart.html){:target="_blank"}.
+**ecoClassify** is a package within the SyncroSim framework. Familiarity with SyncroSim is helpful but not required to follow this tutorial. Throughout the Quickstart tutorial, terminology associated with SyncroSim is italicized, and whenever possible, links are provided to the SyncroSim online documentation. For more on SyncroSim, please refer to the SyncroSim [Overview](https://docs.syncrosim.com/getting_started/overview.html) and [Quickstart tutorial](https://docs.syncrosim.com/getting_started/quickstart.html).
 
 <br>
 
@@ -26,7 +26,7 @@ This quickstart tutorial will introduce you to the basics of working with **ecoC
 
 <p id="step1"> <h2>Step 1: Installing <b>ecoClassify</b></h2> </p>
 
-Before we begin, you must have SyncroSim Studio and the ecoClassify package installed. Download the latest stable release of SyncroSim Studio <a href="https://syncrosim.com/studio-download/" target="_blank">here</a> and follow the installation prompts.
+Before we begin, you must have SyncroSim Studio and the ecoClassify package installed. Download the latest stable release of SyncroSim Studio <a href="https://syncrosim.com/download/" target="_blank">here</a> and follow the installation prompts.
 
 Open SyncroSim Studio and select **File > Local Packages**. This will open the Local Packages window in the main panel of SyncroSim Studio. In the bottom left corner, click on **Install from Server…**, select **ecoClassify** from the window that opens, and click **OK**. 
 
@@ -42,13 +42,13 @@ Having installed the **ecoClassify** *package*, you are now ready to create your
 
 Start SyncroSim Studio by searching for it using the Windows toolbar and under the file menu, select Open. Once SyncroSim Studio opens, navigate to **File > New** and select **From Online Template…**.  
 
-<img align="middle" style="padding: 3px" width="700" src="assets/images/open-template-library.png">
+<img align="middle" style="padding: 3px" width="600" src="assets/images/open-template-library.png">
 
 <br>
 
-Select the ecoClassify (version 2.3.0) package. Notice that the only available template is the ecoClassify Example. Select `C:\Temp\` as the destination folder and click **OK**. The ecoClassify example will automatically open in the **SyncroSim Studio** explorer.
+Select the ecoClassify package. Notice that the only available template is the ecoClassify Example. Select `C:\Temp\` as the destination folder and click **OK**. The ecoClassify example will automatically open in the **SyncroSim Studio** explorer.
 
-<img align="middle" style="padding: 3px" width="700" src="assets/images/download-template-library.png">
+<img align="middle" style="padding: 3px" width="600" src="assets/images/download-template-library.png">
 
 <br>
 
