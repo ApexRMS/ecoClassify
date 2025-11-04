@@ -116,8 +116,8 @@ getRastLayerHistogram <- function(
 #' @noRd
 predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
   # Separate numeric and categorical variables in the model
-  numeric_layers <- intersect(unique(rastLayerHistogram$layer), model$num_vars) # numeric_layers <- model$num_vars
-  categorical_layers <- intersect(model$cat_vars, unique(rastLayerHistogram$layer)) # categorical_layers <- model$cat_vars
+  numeric_layers <- intersect(unique(rastLayerHistogram$layer), model$num_vars)
+  categorical_layers <- intersect(model$cat_vars, unique(rastLayerHistogram$layer))
 
   # Prepare prediction grid for numeric layers
   rastHistogramPredict <- rastLayerHistogram %>%
@@ -126,7 +126,7 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
     dplyr::group_by(layer) %>%
     dplyr::mutate(row = dplyr::row_number()) %>%
     dplyr::ungroup() %>%
-    tidyr::pivot_wider(names_from = layer, values_from = bin_lower)  # Updated spread() to pivot_wider()
+    tidyr::pivot_wider(names_from = layer, values_from = bin_lower)
 
   if (nrow(rastHistogramPredict) == 0) {
     warning("predictResponseHistogram: No data to predict from — raster histogram is empty.")
@@ -191,7 +191,7 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
       } else if (modelType == "Random Forest") {
         predict(model$model, predictLayerTemp, type = "response")$predictions
       } else if (modelType == "MaxEnt") {
-        predict(model$model, predictLayerTemp, type = "logistic")
+        model$predict_df(model$model, predictLayerTemp)
       } else {
         stop("Model type not recognized.")
       }

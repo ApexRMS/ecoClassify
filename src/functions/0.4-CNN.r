@@ -3,69 +3,6 @@
 ## ApexRMS, November 2024
 ## -------------------------------
 
-#' Install and load the torch package ----
-#'
-#' @description
-#' 'install_and_load_torch' installs the `torch` R package if not present,
-#' loads it, and ensures the backend is initialized. If loading fails,
-#' it retries a configurable number of times and reinstalls the backend if necessary.
-#'
-#' @param max_attempts The number of retry attempts to load the backend (default = 3).
-#' @param wait_seconds Seconds to wait between attempts (default = 5).
-#' @return None. Loads `torch` package and initializes the backend.
-#'
-#' @details
-#' Used during package initialization to ensure deep learning models
-#' using `torch` can be executed reliably.
-#' @noRd
-install_and_load_torch <- function(max_attempts = 3, wait_seconds = 5) {
-  if (!requireNamespace("torch", quietly = TRUE)) {
-    install.packages("torch", repos = 'http://cran.us.r-project.org')
-  }
-
-  Sys.setenv(TORCH_INSTALL = "1")
-
-  if (!torch::torch_is_installed()) {
-    torch::install_torch()
-  }
-
-  # Try loading backend up to `max_attempts` times
-  attempt <- 1
-  while (attempt <= max_attempts) {
-    try(
-      {
-        suppressPackageStartupMessages(library(torch))
-        torch::torch_tensor(1) # forces backend to load
-        return(invisible(TRUE))
-      },
-      silent = TRUE
-    )
-
-    updateRunLog(
-      sprintf(
-        "Attempt %d failed to load torch backend. Retrying in %d seconds...",
-        attempt,
-        wait_seconds
-      ),
-      type = "info"
-    )
-    Sys.sleep(wait_seconds)
-    attempt <- attempt + 1
-  }
-
-  updateRunLog("Torch backend still not ready. Reinstalling...", type = "info")
-  unlink(
-    get("torch_home", envir = asNamespace("torch"))(),
-    recursive = TRUE,
-    force = TRUE
-  )
-  torch::install_torch()
-  suppressPackageStartupMessages(library(torch))
-  torch::torch_tensor(1)
-}
-
-install_and_load_torch()
-
 #' Train a Convolutional Neural Network (CNN) ----
 #'
 #' @description

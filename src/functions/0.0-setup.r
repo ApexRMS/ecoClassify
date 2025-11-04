@@ -5,17 +5,11 @@
 
 # suppress additional warnings ----
 load_pkg <- function(pkg) {
-  if (!requireNamespace(pkg, quietly = TRUE)) {
-    install.packages(pkg, repos = 'http://cran.us.r-project.org')
-  }
-  suppressPackageStartupMessages(library(pkg, character.only = TRUE))
+  suppressPackageStartupMessages(library(pkg, character.only = TRUE, quietly = TRUE, warn.conflicts = FALSE))
 }
 
-quiet <- function(expr) {
-  suppressPackageStartupMessages(expr)
-}
+quiet <- function(expr) suppressPackageStartupMessages(expr)
 
-# load required packages ----
 quiet({
   pkgs <- c(
     "terra",
@@ -33,9 +27,9 @@ quiet({
     "ecospat",
     "cvms",
     "doParallel",
-    "tidymodels"
+    "tidymodels",
+    "torch"
   )
-
   invisible(lapply(pkgs, load_pkg))
 })
 
