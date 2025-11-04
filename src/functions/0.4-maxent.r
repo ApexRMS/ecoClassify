@@ -149,14 +149,53 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
   )
   maxentImportance <- getMaxentImportance(varImp)
 
+  # --- factor/level metadata like RF ---
+  cat_levels <- lapply(
+    allTrainData[, predictorVars, drop = FALSE],
+    function(x) if (is.factor(x)) levels(x) else NULL
+  )
+
+  # --- wrapper: consistent 2-col prob output ---
+  predict_maxent_dataframe <- function(mx_model, newdata) {
+    # align factor levels for any categorical predictors seen at train-time
+    if (length(cat_levels)) {
+      for (v in names(cat_levels)) {
+        if (v %in% names(newdata)) {
+          lv <- cat_levels[[v]]
+          if (!is.null(lv)) {
+            # coerce to character first to avoid level drop warnings
+            f <- factor(as.character(newdata[[v]]), levels = lv)
+            # unseen → NA (MaxEnt ignores; alternative is to set first level)
+            newdata[[v]] <- f
+          }
+        }
+      }
+    }
+
+    # ENMeval/MaxEnt logistic output is a numeric vector of P(presence)
+    p1 <- tryCatch(
+      as.numeric(predict(mx_model, newdata, type = "logistic")),
+      error = function(e) {
+        # some MaxEnt builds require 'dismo::predict' signature
+        as.numeric(dismo::predict(mx_model, newdata, args = "logistic"))
+      }
+    )
+
+    p1[!is.finite(p1)] <- NA_real_
+    cbind(absence = 1 - p1, presence = p1)
+  }
+
   model <- max1@models[[bestMax]]
 
   return(list(
-    model = model,
-    vimp = maxentImportance,
-    cat_vars = cat_vars,
-    num_vars = num_vars
+    model       = model,
+    vimp        = maxentImportance,
+    cat_vars    = cat_vars,
+    num_vars    = num_vars,
+    cat_levels  = cat_levels,
+    predict_df  = predict_maxent_dataframe  # <— NEW: standardized predictor
   ))
+
 }
 
 #' Extract Maxent Variable Importance ----

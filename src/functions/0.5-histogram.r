@@ -191,7 +191,7 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
       } else if (modelType == "Random Forest") {
         predict(model$model, predictLayerTemp, type = "response")$predictions
       } else if (modelType == "MaxEnt") {
-        predict(model$model, predictLayerTemp, type = "logistic")
+        model$predict_df(model$model, predictLayerTemp)
       } else {
         stop("Model type not recognized.")
       }
