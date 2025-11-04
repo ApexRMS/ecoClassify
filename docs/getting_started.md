@@ -62,14 +62,14 @@ The contents of your newly opened library are now displayed in the **Library Exp
 
 Most model inputs in SyncroSim Studio are organized into *scenarios*, where each *scenario* consists of a suite of *properties*, one for each of the model’s required inputs. Because you downloaded and opened a complete **ecoClassify** library, your library already contains three demonstration *scenarios* with pre-configured model inputs and outputs. In this tutorial' we'll work through the **Snow Cover - Training**, **Snow Cover - Predicting**, and **Snow Cover - Post-Processing** *scenarios*, demonstrating each of the three steps in the ecoClassify pipeline.
 
-<img align="middle" style="padding: 3px" width="350" src="assets/images/library-scenarios.png">
+<img align="middle" style="padding: 3px" width="300" src="assets/images/library-scenarios.png">
 
 <br>
 
 To view the details of the *scenario*:
 
-* Select the scenario named **Snow Cover - Training** in the **Library Explorer**.
-* Right-click and choose **Open** from the context menu, or double-click on the scenario.
+* Select the *scenario* named **Snow Cover - Training** in the **Library Explorer**.
+* Right-click and choose **Open** from the context menu, or double-click on the *scenario*.
 
 This opens the *scenario properties* window.
 
@@ -83,9 +83,9 @@ Located underneath the **General** tab, the model **Pipeline** allows you to sel
 
 * (1) **Train Classifier**: builds a model using training rasters and ground-truth data
 * (2) **Predict**: applies the trained model to classify new rasters
-* (3) **Post-Process**: filters or reclassifies outputs.
+* (3) **Post-Process**: filters or reclassifies the training and prediction outputs
 
-*Note that the **Predict** stage is dependent on the results of the previous stage, **Train Classifier**, **Post-Process** stage is dependent on the **Train Classifier** and the **Predict** stages. You cannot run a stage without having first run the previous required stages, either in the same scenario or included as dependencies.*
+> Note that the **Predict** stage is dependent on the results of the previous stage, **Train Classifier**, and the **Post-Process** stage is dependent on the **Train Classifier** and **Predict** stages. You cannot run a stage without having first run the previous required stages, either within the same scenario or included as dependencies.
 
 <img align="middle" style="padding: 3px" width="450" src="assets/images/pipeline-models.png">
 
@@ -116,19 +116,19 @@ The **Rasters** tab contains two datasheets, **Training Rasters** and **Covariat
 
 The **Training Rasters** datasheet is where training and user classified spatial data are loaded into the library. Note that this datasheet also contains a *Timestep* column. In the **ecoClassify** package, timesteps are used to link training rasters with their corresponding user classified rasters. 
 
-<img align="middle" style="padding: 3px" width="700" src="assets/images/rasters-training-datasheet.png">
+<img align="middle" style="padding: 3px" width="600" src="assets/images/rasters-training-datasheet.png">
 
 <br>
 
 The **Covariates** datasheet is where additional spatial data are loaded into the library. Note that there is no Timestep column; these data are applied to each timestep.
 
-<img align="middle" style="padding: 3px" width="700" src="assets/images/training-covariates-datasheet.png">
+<img align="middle" style="padding: 3px" width="600" src="assets/images/training-covariates-datasheet.png">
 
 <br>
 
 The **Advanced** datasheet contains several sections that control how the model is trained and tuned.
 
-<img align="middle" style="padding: 3px" width="700" src="assets/images/advanced-datasheet.png">
+<img align="middle" style="padding: 3px" width="600" src="assets/images/advanced-datasheet.png">
 
 <br>
 
@@ -182,30 +182,30 @@ Finally, the **Output** node contains the **Statistics** datasheet. This datashe
 
 ### Stage 2: Predicting
 
-Next, right click on the scenario named **Snow Cover - Predicting** in the **Library Explorer** and choose **Open** from the context menu, or double-click on the scenario.
+Next, right click on the *scenario* named **Snow Cover - Predicting** in the **Library Explorer** and choose **Open** from the context menu, or double-click on the *scenario*.
 
-Navigating to the **Pipeline** datasheet under the **General** tab shows that the **2-Predict** stage is used in this scenario.
+Navigating to the **Pipeline** datasheet under the **General** tab shows that the **2-Predict** stage is used in this *scenario*.
 
 #### Input
 In the **2-Predict** stage, there is a new **Predicting** tab under **Input > Rasters**. This tab contains two new datasheets: **Predicting Rasters** and **Covariates**.
 
 The **Predicting Rasters** datasheet is where rasters to be classified are loaded into the library. As with the **Training rasters** datasheet, this datasheet also contains a *Timestep* column to provide a unique identifier for each predicting raster. These rasters must have layer names that match the names used to train the image classifer.
 
-<img align="middle" style="padding: 3px" width="700" src="assets/images/predicting-rasters-datasheet.png">
+<img align="middle" style="padding: 3px" width="600" src="assets/images/predicting-rasters-datasheet.png">
 
 <br>
 
 The **Covariates** datasheet is where additional spatial data are loaded into the library. Note that these data are applied to each timestep, and their layer names must match the names used to train the image classifer.
 
-<img align="middle" style="padding: 3px" width="700" src="assets/images/predicting-covariates-datasheet.png">
+<img align="middle" style="padding: 3px" width="600" src="assets/images/predicting-covariates-datasheet.png">
 
 <br>
 
 ### Stage 3: Post-Processing
 
-Right click on the scenario named **Snow Cover - Post-Processing** in the **Library Explorer** and choose **Open** from the context menu, or double-click on the scenario.
+Right click on the *scenario* named **Snow Cover - Post-Processing** in the **Library Explorer** and choose **Open** from the context menu, or double-click on the *scenario*.
 
-The **Pipeline** datasheet under the **General** tab shows that the **3-Post-Process** stage is used in this scenario.
+The **Pipeline** datasheet under the **General** tab shows that the **3-Post-Process** stage is used in this *scenario*.
 
 #### Post-Processing Options
 The **Post-Process** stage has a new **Post-Processing Options** tab with two datasheets: **Filtering** and **Rule-Based Restrictions**.
@@ -215,16 +215,16 @@ The **Filtering** datasheet contains otpions for filtering and filling in the cl
 * The *Min neighbours to keep* value specifies the threshold for the number adjacent *present* pixels required in order to not filter out the central pixel. A higher value results in more filtering.
 * the *Min neighbours to fill* value specifies the threshold for the number adjacent *present* pixels required in order for the pixels surrounding the central pixel to be reclassified as *present*. A higher value results in less filling.
 
-<img align="middle" style="padding: 3px" width="500" src="assets/images/filtering-datasheet.png">
+<img align="middle" style="padding: 3px" width="400" src="assets/images/filtering-datasheet.png">
 
 <br>
 
 The **Rule-Based Restrictions** datasheet is where you can apply rules for reclassifying the rasters based on the pixel values in supplied rasters with the same resolution and spatial extent.
-* The *Class* value specifies the class that the reclassification rules should be applied to (0 or 1)
-* The *Condition Raster* is where you can load the raster containing values that the rules are based on
-* The *Minimum Value* is the lowest value in the range of rules
-* The *Maximum Value* is the highest value in the range of rules
-* The *Reclassify Value* is the value that should be assigned to pixels that fall within the specified range
+* The *Class* value specifies the class that the reclassification rules should be applied to (0 or 1).
+* The *Condition Raster* is where you can load the raster containing values that the rules are based on.
+* The *Minimum Value* is the lowest value in the range of rules.
+* The *Maximum Value* is the highest value in the range of rules.
+* The *Reclassify Value* is the value that should be assigned to pixels that fall within the specified range.
 
 In this example, the pixels are assigned a value of 1 (*present*) in the classified raster where values in the *dem-cropped-30m.tif* raster have a value between 1500-1800:
 
@@ -233,13 +233,13 @@ In this example, the pixels are assigned a value of 1 (*present*) in the classif
 <br>
 
 ### Dependencies
-Dependencies can be used to break each stage up into a separate scenario, as is done in this example library. Click on the drop-down icon on the left side of the **Snow Cover - Predicting** scenario to show the two nested folders: **Dependencies** and **Results**. Click on the **Dependencies** folder. The first scenario, **Snow Cover - Training**, is present as a dependency. The most recent results from this scenario will be used as the inputs to the Predicting scenario each time it is run. 
+Dependencies can be used to break each stage up into a separate *scenario*, as is done in this example library. Click on the drop-down icon on the left side of the **Snow Cover - Predicting** *scenario* to show the two nested folders: **Dependencies** and **Results**. Click on the **Dependencies** folder. The first *scenario*, **Snow Cover - Training**, is present as a dependency. The most recent results from this *scenario* will be used as the inputs to the Predicting *scenario* each time it is run. 
 
 <img align="middle" style="padding: 3px" width="300" src="assets/images/predicting-dependency.png">
 
 <br>
 
-Click on the **Dependencies** folder in the **Snow Cover - Post-Processing** scenario; the **Snow Cover - Predicting** scenario is present as a dependency, and the **Snow Cover - Training** dependency for the predicting scenario is included as well.  
+Click on the **Dependencies** folder in the **Snow Cover - Post-Processing** *scenario*; the **Snow Cover - Predicting** *scenario* is present as a dependency, and the **Snow Cover - Training** dependency for the predicting *scenario* is included as well.  
 
 <img align="middle" style="padding: 3px" width="300" src="assets/images/postprocessing-dependency.png">
 
@@ -247,13 +247,13 @@ Click on the **Dependencies** folder in the **Snow Cover - Post-Processing** sce
 
 <p id="step4"> <h2>Step 4: Running models</h2> </p>
 
-Right-click on the **Snow Cover - Training** scenario in the **Library Explorer** window and select **Run** from the context menu. If prompted to save your project, click **Yes**. The example model run should complete within a couple of minutes. If the run is successful, you will see a Status of **Done** in the **Run Monitor** window. If the run fails, you can click on the **Run Log** link to see a report of any problems that occurred. A **blue information symbol** indicates that there is additional information in the run log, which will occur in all scenarios using the **Training** stage.
+Right-click on the **Snow Cover - Training** *scenario* in the **Library Explorer** window and select **Run** from the context menu. If prompted to save your project, click **Yes**. The example model run should complete within a couple of minutes. If the run is successful, you will see a Status of **Done** in the **Run Monitor** window. If the run fails, you can click on the **Run Log** link to see a report of any problems that occurred. A **blue information symbol** indicates that there is additional information in the run log, which will occur in all *scenarios* using the **Training** stage.
 
 <img align="middle" style="padding: 3px" width="350" src="assets/images/run-monitor.png">
 
 <br>
 
-Repeat for each of the two remaining scenarios, **Snow Cover - Predicting** and **Snow Cover - Post-Processing**.
+Repeat for each of the two remaining *scenario*, **Snow Cover - Predicting** and **Snow Cover - Post-Processing**.
 
 <p id="step5"> <h2>Step 5: Viewing model outputs and results</h2> </p>
 
@@ -284,7 +284,7 @@ To view tabular outputs, move to the results panel at the bottom left of the **L
 
 <br>
 
-*Note: results can be added or removed from the maps and charts by right clicking on the scenario and selecting "Add to/Remove from Results" in the context window.*
+> Note: results can be added or removed from the maps and charts by right clicking on the scenario and selecting "Add to/Remove from Results" in the context window.
 
 <img align="middle" style="padding: 3px" width="400" src="assets/images/remove-results.png">
 
@@ -298,13 +298,13 @@ To view spatial outputs, move to the **Maps** tab and double-click on the **Trai
 
 <br>
 
-In order, the columns show the *User Classification* map (true presence), *Probability* map, and *Binary* map. The *Binary (Filtered)*, *Binary (Restricted)*, and *Binary (Restricted and Filtered)* columns will be populated with results from the **Snow Cover - Post-Processing** scenario. Scroll through the map page to see the Post-Processed results. 
+In order, the columns show the *User Classification* map (true presence), *Probability* map, and *Binary* map. The *Binary (Filtered)*, *Binary (Restricted)*, and *Binary (Restricted and Filtered)* columns will be populated with results from the **Snow Cover - Post-Processing** *scenario*. Scroll through the map page to see the Post-Processed results. 
 
 <img align="middle" style="padding: 3px" width="1200" src="assets/images/map1.png">
 
 <br>
 
-Next, double-click on the **Predicting** map to view the *Probability* and *Binary* panels for the *Snow Cover - Predicting* results scenario. Note that the *Binary (Restricted)*, *Binary (Filtered)*, and *Binary (Restricted and Filtered)* results of the training rasters will be populated with results from the **Snow Cover - Post-Processing** scenario. Scroll through the map page to see the Post-Processed results:
+Next, double-click on the **Predicting** map to view the *Probability* and *Binary* panels for the *Snow Cover - Predicting* results *scenario*. Note that the *Binary (Restricted)*, *Binary (Filtered)*, and *Binary (Restricted and Filtered)* results of the training rasters will be populated with results from the **Snow Cover - Post-Processing** *scenario*. Scroll through the map page to see the Post-Processed results:
 
 <img align="middle" style="padding: 3px" width="900" src="assets/images/map2.png">
 
@@ -319,15 +319,9 @@ Next, double-click on the **Predicting** map to view the *Probability* and *Bina
 
 Here, you may also view a confusion matrix quantifying the classifier's performance, a bar chart of the classifier's variable importance, and a Histogram for each training variable overlaid with the model response. 
 
-<img align="middle" style="padding: 3px" width="500" src="assets/images/confusion-matrix.png">
-
-<br>
-
-<img align="middle" style="padding: 3px" width="600" src="assets/images/variable-importance.png">
-
-<br>
-
-<img align="middle" style="padding: 3px" width="800" src="assets/images/histogram.png">
+<img align="middle" style="padding: 3px" height = "300" src="assets/images/confusion-matrix.png">
+<img align="middle" style="padding: 3px" height = "300" src="assets/images/variable-importance.png">
+<img align="middle" style="padding: 3px" height = "300" src="assets/images/histogram.png">
 
 <br>
 
