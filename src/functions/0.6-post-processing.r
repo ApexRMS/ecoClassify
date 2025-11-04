@@ -97,13 +97,13 @@ calculateStatistics <- function(
   mcnemar_p <- stats::mcnemar.test(matrix(c(tn, fp, fn, tp), nrow = 2))$p.value
 
   # By-class metrics (positive class = "1"), matching caret labels
-  sens <- yardstick::sensitivity(evalData, truth, prediction)$.estimate[1]  # Recall
-  spec <- yardstick::specificity(evalData, truth, prediction)$.estimate[1]
-  ppv  <- yardstick::ppv(evalData, truth, prediction)$.estimate[1]         # Pos Pred Value (Precision)
-  npv  <- yardstick::npv(evalData, truth, prediction)$.estimate[1]
-  prec <- yardstick::precision(evalData, truth, prediction)$.estimate[1]   # same as ppv
-  rec  <- yardstick::recall(evalData, truth, prediction)$.estimate[1]      # same as sens
-  f1   <- yardstick::f_meas(evalData, truth, prediction)$.estimate[1]
+  sens <- yardstick::sensitivity(evalData, truth, prediction, event_level = "second")$.estimate[1]
+  spec <- yardstick::specificity(evalData, truth, prediction, event_level = "second")$.estimate[1]
+  ppv  <- yardstick::ppv(evalData, truth, prediction, event_level = "second")$.estimate[1]
+  npv  <- yardstick::npv(evalData, truth, prediction, event_level = "second")$.estimate[1]
+  prec <- yardstick::precision(evalData, truth, prediction, event_level = "second")$.estimate[1]
+  rec  <- yardstick::recall(evalData, truth, prediction, event_level = "second")$.estimate[1]
+  f1   <- yardstick::f_meas(evalData, truth, prediction, event_level = "second")$.estimate[1]
   prev <- p_pos
   det_rate <- tp / n
   det_prev <- (tp + fp) / n
