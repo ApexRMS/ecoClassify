@@ -48,7 +48,7 @@ Start SyncroSim Studio by searching for it using the Windows toolbar and under t
 
 Select the ecoClassify package. Notice that the only available template is the ecoClassify Example. Select `C:\Temp\` as the destination folder and click **OK**. The ecoClassify example will automatically open in the **SyncroSim Studio** explorer.
 
-<img align="middle" style="padding: 3px" width="600" src="assets/images/download-template-library.png">
+<img align="middle" style="padding: 3px" width="400" src="assets/images/download-template-library.png">
 
 <br>
 
