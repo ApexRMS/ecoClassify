@@ -210,7 +210,7 @@ The **Pipeline** datasheet under the **General** tab shows that the **3-Post-Pro
 #### Post-Processing Options
 The **Post-Process** stage has a new **Post-Processing Options** tab with two datasheets: **Filtering** and **Rule-Based Restrictions**.
 
-The **Filtering** datasheet contains otpions for filtering and filling in the classified rasters.
+The **Filtering** datasheet contains options for filtering and filling in the classified rasters.
 * Selecting *Apply filtering* enables the filtering feature for all classified rasters generated from Stage 1 and 2.
 * The *Min neighbours to keep* value specifies the threshold for the number adjacent *present* pixels required in order to not filter out the central pixel. A higher value results in more filtering.
 * the *Min neighbours to fill* value specifies the threshold for the number adjacent *present* pixels required in order for the pixels surrounding the central pixel to be reclassified as *present*. A higher value results in less filling.
@@ -253,7 +253,7 @@ Right-click on the **Snow Cover - Training** *scenario* in the **Library Explore
 
 <br>
 
-Repeat for each of the two remaining *scenario*, **Snow Cover - Predicting** and **Snow Cover - Post-Processing**.
+Repeat for each of the two remaining *scenarios*, **Snow Cover - Predicting** and **Snow Cover - Post-Processing**.
 
 <p id="step5"> <h2>Step 5: Viewing model outputs and results</h2> </p>
 
