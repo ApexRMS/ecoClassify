@@ -3,6 +3,28 @@
 ## ApexRMS, November 2024
 ## -------------------------------
 
+# ---- small helpers ----
+
+# Drop 'ID' column if present (terra::extract quirks)
+strip_id <- function(df) {
+  if (!is.null(df) && "ID" %in% names(df)) {
+    df <- df[, setdiff(names(df), "ID"), drop = FALSE]
+  }
+  df
+}
+
+# Extract values at cell IDs
+extract_df_at_cells <- function(r, cells) {
+  xy <- terra::xyFromCell(r, cells)
+  strip_id(terra::extract(r, xy))
+}
+
+# Extract single-layer values as vector
+extract_vals_at_cells <- function(r, cells) {
+  df <- extract_df_at_cells(r, cells)
+  as.vector(df[[1]])
+}
+
 #' Get Raster Layer Value Range ----
 #'
 #' @description
@@ -32,14 +54,41 @@ getValueRange <- function(rasterList, layerName, nBins = 20, nSample = 5000) {
 
   brks <- seq(rastMin, rastMax, length.out = nBins + 1)
 
-  ## sample each raster’s layer, flatten into one vector
+  ## Sample each raster's layer (AVOID spatSample with na.rm=TRUE to prevent hangs)
   perRaster <- ceiling(nSample / length(rasterList))
   sampVals <- unlist(
     lapply(rasterList, function(r) {
-      as.vector(spatSample(r[[layerName]], perRaster, na.rm = TRUE))
+      layer <- r[[layerName]]
+      n_total <- terra::ncell(layer)
+
+      # Oversample 3x to account for NAs
+      sample_size <- min(n_total, perRaster * 3L)
+      cell_ids <- sample.int(n_total, size = sample_size, replace = FALSE)
+
+      # Extract and filter
+      vals <- extract_vals_at_cells(layer, cell_ids)
+      vals_clean <- vals[!is.na(vals)]
+
+      # Take up to perRaster samples
+      if (length(vals_clean) > perRaster) {
+        vals_clean <- sample(vals_clean, perRaster)
+      }
+
+      vals_clean
     }),
     use.names = FALSE
   )
+
+  if (length(sampVals) == 0) {
+    warning(sprintf("No valid samples found for layer '%s'", layerName))
+    return(data.frame(
+      layer = layerName,
+      bin_lower = numeric(0),
+      bin_upper = numeric(0),
+      count = numeric(0),
+      pct = numeric(0)
+    ))
+  }
 
   ## Calc histogram
   h <- hist(sampVals, breaks = brks, plot = FALSE)
