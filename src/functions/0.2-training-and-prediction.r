@@ -221,6 +221,9 @@ splitTrainTest <- function(
   # Convenience: first-layer values as a vector
   extract_vals_at_cells <- function(r, cells) {
     df <- extract_df_at_cells(r, cells)
+    if (is.null(df) || ncol(df) == 0 || nrow(df) == 0) {
+      return(numeric(0))
+    }
     as.vector(df[[1]])
   }
 
