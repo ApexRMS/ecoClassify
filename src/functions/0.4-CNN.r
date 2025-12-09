@@ -249,86 +249,144 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
 #' @return A SpatRaster (if raster input) or a vector of predictions.
 #'
 #' @noRd
-predictCNN <- function(model, newdata, isRaster = TRUE, ...) {
-  if (isRaster) {
-    df_full <- as.data.frame(newdata, xy = FALSE, cells = FALSE, na.rm = FALSE)
-    valid_idx <- stats::complete.cases(df_full)
-    df <- df_full[valid_idx, , drop = FALSE]
-  } else if (is.data.frame(newdata) || is.matrix(newdata)) {
+predictCNN <- function(model, newdata, isRaster = TRUE, filename = "", memfrac = 0.5, ...) {
+  # Handle tabular data (non-raster) - original implementation
+  if (!isRaster) {
     df <- as.data.frame(newdata, stringsAsFactors = TRUE)
     drop <- intersect(c("presence", "kfold"), names(df))
     if (length(drop)) df <- df[, setdiff(names(df), drop), drop = FALSE]
-    valid_idx <- rep(TRUE, nrow(df))
-  } else {
-    stop("`newdata` must be a SpatRaster or a data.frame / matrix of predictors")
+
+    num_vars <- model$num_vars
+    cat_vars <- model$cat_vars
+    cat_levels <- model$cat_levels
+
+    # Validate column presence
+    missing_vars <- setdiff(num_vars, names(df))
+    if (length(missing_vars) > 0) {
+      stop(sprintf("Missing numeric predictors in newdata: %s", paste(missing_vars, collapse = ", ")))
+    }
+
+    X_num <- as.matrix(df[, num_vars, drop = FALSE])
+    storage.mode(X_num) <- "double"
+    if (nrow(X_num) < 2) {
+      stop("Too few rows in numeric predictor matrix (n < 2)")
+    }
+
+    if (length(cat_vars) == 0) {
+      X_cat_tensor <- list()
+    } else {
+      X_cat <- lapply(seq_along(cat_vars), function(i) {
+        var <- cat_vars[i]
+        levels_train <- cat_levels[[i]]
+        x <- df[[var]]
+        if (!is.factor(x)) x <- factor(x, levels = levels_train)
+
+        unseen <- sum(is.na(x))
+        if (unseen > 0) {
+          updateRunLog(sprintf(
+            "PredictCNN: Variable '%s' contains %d unseen level(s) not present during training. They will be handled as a special 'unknown' category.",
+            var, unseen
+          ), type = "warning")
+        }
+
+        idx <- as.integer(x)
+        idx[is.na(idx)] <- length(levels_train) + 1
+        idx
+      })
+      X_cat_tensor <- lapply(X_cat, function(x) torch_tensor(x, dtype = torch_long()))
+    }
+
+    X_num_tensor <- torch_tensor(X_num, dtype = torch_float())
+
+    dev <- if (cuda_is_available()) torch_device("cuda") else torch_device("cpu")
+    mdl <- model$model$to(device = dev)$eval()
+
+    X_num_tensor <- X_num_tensor$to(device = dev)
+    X_cat_tensor <- lapply(X_cat_tensor, function(x) x$to(device = dev))
+
+    probs_t <- with_no_grad({
+      logits <- mdl(X_num_tensor, X_cat_tensor)
+      nnf_softmax(logits, dim = 2)$to(device = torch_device("cpu"))
+    })
+
+    mat <- as.matrix(probs_t)
+    colnames(mat) <- c("absent", "presence")
+    return(mat[, "presence"])
   }
 
+  # Handle raster data - use terra::predict for chunked processing
   num_vars <- model$num_vars
   cat_vars <- model$cat_vars
   cat_levels <- model$cat_levels
 
-  # Validate column presence
-  missing_vars <- setdiff(num_vars, names(df))
-  if (length(missing_vars) > 0) {
-    stop(sprintf("Missing numeric predictors in newdata: %s", paste(missing_vars, collapse = ", ")))
-  }
-
-  X_num <- as.matrix(df[, num_vars, drop = FALSE])
-  storage.mode(X_num) <- "double"
-  if (nrow(X_num) < 2) {
-    stop("Too few rows in numeric predictor matrix (n < 2)")
-  }
-
-  if (length(cat_vars) == 0) {
-    X_cat_tensor <- list()
-  } else {
-    X_cat <- lapply(seq_along(cat_vars), function(i) {
-      var <- cat_vars[i]
-      levels_train <- cat_levels[[i]]
-      x <- df[[var]]
-      if (!is.factor(x)) x <- factor(x, levels = levels_train)
-
-      unseen <- sum(is.na(x))
-      if (unseen > 0) {
-        updateRunLog(sprintf(
-          "PredictCNN: Variable '%s' contains %d unseen level(s) not present during training. They will be handled as a special 'unknown' category.",
-          var, unseen
-        ), type = "warning")
-      }
-
-      idx <- as.integer(x)
-      idx[is.na(idx)] <- length(levels_train) + 1
-      idx
-    })
-    X_cat_tensor <- lapply(X_cat, function(x) torch_tensor(x, dtype = torch_long()))
-  }
-
-  X_num_tensor <- torch_tensor(X_num, dtype = torch_float())
-
-  dev <- if (cuda_is_available()) torch_device("cuda") else torch_device("cpu")
+  # CRITICAL: Move model to device ONCE, not per chunk
+  # Use CPU for chunked prediction to avoid GPU memory issues
+  dev <- torch_device("cpu")
   mdl <- model$model$to(device = dev)$eval()
 
-  X_num_tensor <- X_num_tensor$to(device = dev)
-  X_cat_tensor <- lapply(X_cat_tensor, function(x) x$to(device = dev))
+  # Create wrapper function for terra::predict
+  # This function will be called many times (once per chunk)
+  predict_fn <- function(model, data, ...) {
+    # Validate column presence
+    missing_vars <- setdiff(model$num_vars, names(data))
+    if (length(missing_vars) > 0) {
+      stop(sprintf("Missing numeric predictors: %s", paste(missing_vars, collapse = ", ")))
+    }
 
-  probs_t <- with_no_grad({
-    logits <- mdl(X_num_tensor, X_cat_tensor)
-    nnf_softmax(logits, dim = 2)$to(device = torch_device("cpu"))
-  })
+    # Prepare numeric data
+    X_num <- as.matrix(data[, model$num_vars, drop = FALSE])
+    storage.mode(X_num) <- "double"
 
-  mat <- as.matrix(probs_t)
-  colnames(mat) <- c("absent", "presence")
+    # Handle categorical variables
+    if (length(model$cat_vars) == 0) {
+      X_cat_tensor <- list()
+    } else {
+      X_cat <- lapply(seq_along(model$cat_vars), function(i) {
+        var <- model$cat_vars[i]
+        levels_train <- model$cat_levels[[i]]
+        x <- data[[var]]
+        if (!is.factor(x)) x <- factor(x, levels = levels_train)
 
-  if (isRaster) {
-    outR <- newdata[[1]]
-    pred_vals <- rep(NA, terra::ncell(outR))
-    pred_vals[valid_idx] <- mat[, "presence"]
-    terra::values(outR) <- pred_vals
-    names(outR) <- "presence"
-    return(outR)
-  } else {
-    return(mat[, "presence"])
+        idx <- as.integer(x)
+        idx[is.na(idx)] <- length(levels_train) + 1
+        idx
+      })
+      X_cat_tensor <- lapply(X_cat, function(x) torch_tensor(x, dtype = torch_long()))
+    }
+
+    X_num_tensor <- torch_tensor(X_num, dtype = torch_float())
+    X_cat_tensor <- lapply(X_cat_tensor, function(x) x$to(device = dev))
+
+    # Make prediction (mdl is from parent scope, already on device)
+    probs_t <- with_no_grad({
+      logits <- mdl(X_num_tensor, X_cat_tensor)
+      nnf_softmax(logits, dim = 2)
+    })
+
+    mat <- as.matrix(probs_t)
+    result <- mat[, 2]  # Extract presence probability (column 2)
+
+    # Clean up tensors to free memory
+    rm(X_num_tensor, X_cat_tensor, probs_t, mat)
+
+    return(result)
   }
+
+  # Use terra::predict for automatic memory-efficient chunking
+  # This processes the raster in blocks instead of loading everything at once
+  # filename = "" => in-memory; set a path to write to disk for better memory efficiency
+  predictionRaster <- terra::predict(
+    newdata,
+    model,
+    fun = predict_fn,
+    na.rm = TRUE,
+    cores = 1,  # torch handles its own threading
+    memfrac = memfrac,
+    filename = filename
+  )
+
+  names(predictionRaster) <- "presence"
+  return(predictionRaster)
 }
 
 #' Save CNN Model as RDS ----

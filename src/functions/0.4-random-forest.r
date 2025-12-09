@@ -29,64 +29,72 @@
 #' This function is typically called within `getPredictionRasters()` to generate prediction maps
 #' for full raster extents.
 #' @noRd
-predictRanger <- function(raster, model) {
-  # Pre-allocate output raster
-  predictionRaster <- raster[[1]]
-  names(predictionRaster) <- "present"
-  rasterMatrix <- terra::values(raster, mat = TRUE, na.rm = FALSE)
+predictRanger <- function(raster, model, filename = "", memfrac = 0.7) {
+  # Validate that raster has all required variables
+  model_vars <- c(model$cat_vars, model$num_vars)
+  raster_vars <- names(raster)
+  missing_vars <- setdiff(model_vars, raster_vars)
 
-  # Find valid cases once
-  valid_idx <- rowSums(!is.na(rasterMatrix)) == ncol(rasterMatrix)
-  n_valid <- sum(valid_idx)
-
-  if (n_valid == 0) {
-    return(predictionRaster) # Return empty raster if no valid data
+  if (length(missing_vars) > 0) {
+    stop(
+      "Raster is missing required variables for prediction.\n",
+      "Missing: ", paste(missing_vars, collapse = ", "), "\n",
+      "Expected: ", paste(model_vars, collapse = ", "), "\n",
+      "Found: ", paste(raster_vars, collapse = ", ")
+    )
   }
 
-  # Subset to valid cases only
-  validMatrix <- rasterMatrix[valid_idx, , drop = FALSE]
+  # prediction function for terra::predict
+  predict_fn <- function(m, data, ...) {
+    # m is the model object passed in by terra::predict (same as 'model' in outer scope)
+    # Handle categorical variables
+    cat_vars_present <- intersect(m$cat_vars, names(data))
 
-  # Convert to data.frame only for valid data
-  validDF <- as.data.frame(validMatrix)
+    if (length(cat_vars_present) > 0) {
+      # Work on a local copy so we don't touch terra's internal object
+      data <- as.data.frame(data, stringsAsFactors = FALSE)
 
-  # Optimize factor handling - only process categorical variables that exist
-  cat_vars_present <- intersect(model$cat_vars, names(validDF))
+      for (var in cat_vars_present) {
+        var_levels <- m$factor_levels[[var]]
 
-  if (length(cat_vars_present) > 0) {
-    # Vectorized factor processing
-    for (var in cat_vars_present) {
-      var_levels <- model$factor_levels[[var]]
+        # Add an "unseen" level for unknown categories
+        all_levels <- c(var_levels, "unseen")
+        f <- factor(as.character(data[[var]]), levels = all_levels)
+        f[is.na(f)] <- "unseen"
 
-      # Fast factor creation with unseen level handling
-      char_vals <- as.character(validDF[[var]])
-
-      # Create factor with original levels + unseen
-      all_levels <- c(var_levels, "unseen")
-      f <- factor(char_vals, levels = all_levels)
-
-      # Set unseen values (NAs from factor creation) to "unseen"
-      f[is.na(f)] <- "unseen"
-
-      validDF[[var]] <- f
+        data[[var]] <- f
+      }
     }
+
+    # ranger prediction: force single thread to avoid per-thread copies
+    preds <- predict(m$model, data = data, num.threads = 1, verbose = FALSE)
+
+    # Extract probabilities (second column)
+    result <- if (is.data.frame(preds)) {
+      preds[, 2]
+    } else if (is.list(preds) && "predictions" %in% names(preds)) {
+      preds$predictions[, 2]
+    } else {
+      preds[, 2]
+    }
+
+    as.numeric(result)
   }
 
-  # Make prediction on valid data only
-  predictions <- predict(model$model, data = validDF)
+  # terra::predict handles chunking; memfrac controls block size.
+  # filename = "" => in-memory; set a path to write to disk.
+  predictionRaster <- terra::predict(
+    raster,
+    model = model,
+    fun = predict_fn,
+    na.rm = TRUE,
+    cores = 1,
+    memfrac = memfrac,
+    filename = filename
+  )
 
-  # Handle different ranger prediction output formats
-  if (is.data.frame(predictions)) {
-    predictedValues <- predictions[, 2]
-  } else if (is.list(predictions) && "predictions" %in% names(predictions)) {
-    predictedValues <- predictions$predictions[, 2]
-  } else {
-    predictedValues <- predictions[, 2]
-  }
-
-  # Assign predictions back to raster efficiently
-  predictionRaster[valid_idx] <- predictedValues
-
-  return(predictionRaster)
+  names(predictionRaster) <- "present"
+  predictionRaster
 }
 
 #' Train a Random Forest Model with Hyperparameter Tuning ----
@@ -110,30 +118,42 @@ predictRanger <- function(raster, model) {
 #' @import doParallel
 #' @export
 getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
-
   # ------------------- prep -------------------
-  trainingVariables <- grep("presence|kfold", colnames(allTrainData), invert = TRUE, value = TRUE)
+  trainingVariables <- grep(
+    "presence|kfold",
+    colnames(allTrainData),
+    invert = TRUE,
+    value = TRUE
+  )
 
   cat_vars <- names(allTrainData[, trainingVariables, drop = FALSE])[sapply(
-    allTrainData[, trainingVariables, drop = FALSE], is.factor)]
+    allTrainData[, trainingVariables, drop = FALSE],
+    is.factor
+  )]
   num_vars <- setdiff(trainingVariables, cat_vars)
 
   if (!is.factor(allTrainData$presence)) {
-    allTrainData$presence <- factor(allTrainData$presence, levels = c(0, 1),
-                                    labels = c("absence", "presence"))
+    allTrainData$presence <- factor(
+      allTrainData$presence,
+      levels = c(0, 1),
+      labels = c("absence", "presence")
+    )
   }
 
   df <- allTrainData[, c("presence", trainingVariables), drop = FALSE]
-  p  <- length(trainingVariables)
+  p <- length(trainingVariables)
 
   # ------------------- tuning grid -------------------
-  mtry_center   <- max(1L, round(sqrt(p)))
-  mtry_grid     <- sort(unique(pmax(1L, round(c(mtry_center * c(0.5, 0.75, 1, 1.25, 1.5))))))
-  maxDepth_grid <- c(0L, 6L, 12L, 18L)   # 0 = unlimited
-  minNode_grid  <- c(1L, 5L, 10L, 20L)
-  trees_stage1  <- if (isTuningOn) 300L  else 1000L
-  trees_stage2  <- if (isTuningOn) 1500L else 2000L
-  bestK         <- 5L
+  mtry_center <- max(1L, round(sqrt(p)))
+  mtry_grid <- sort(unique(pmax(
+    1L,
+    round(c(mtry_center * c(0.5, 0.75, 1, 1.25, 1.5)))
+  )))
+  maxDepth_grid <- c(0L, 6L, 12L, 18L) # 0 = unlimited
+  minNode_grid <- c(1L, 5L, 10L, 20L)
+  trees_stage1 <- if (isTuningOn) 300L else 1000L
+  trees_stage2 <- if (isTuningOn) 1500L else 2000L
+  bestK <- 5L
 
   # ------------------- optional subsample for tuning -------------------
   tune_nmax <- if (isTuningOn) min(nrow(df), 100000L) else nrow(df)
@@ -143,7 +163,10 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
     idx1 <- which(df$presence == "presence")
     k0 <- round(tune_nmax * length(idx0) / nrow(df))
     k1 <- tune_nmax - k0
-    tune_idx <- c(sample(idx0, min(k0, length(idx0))), sample(idx1, min(k1, length(idx1))))
+    tune_idx <- c(
+      sample(idx0, min(k0, length(idx0))),
+      sample(idx1, min(k1, length(idx1)))
+    )
     df_tune <- df[tune_idx, , drop = FALSE]
   } else {
     df_tune <- df
@@ -160,7 +183,10 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
     )
   } else {
     tuneArgsGrid <- data.frame(
-      mtry = mtry_center, maxDepth = 0L, minNode = 5L, stringsAsFactors = FALSE
+      mtry = mtry_center,
+      maxDepth = 0L,
+      minNode = 5L,
+      stringsAsFactors = FALSE
     )
   }
 
@@ -170,30 +196,35 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
     on.exit(doParallel::stopImplicitCluster(), add = TRUE)
 
     results1 <- foreach::foreach(
-      i = seq_len(nrow(tuneArgsGrid)), .combine = rbind, .packages = "ranger"
-    ) %dopar% {
-      g <- tuneArgsGrid[i, ]
-      rf1 <- ranger::ranger(
-        dependent.variable.name = "presence",
-        data          = df_tune,
-        mtry          = g$mtry,
-        num.trees     = trees_stage1,
-        max.depth     = g$maxDepth,
-        min.node.size = g$minNode,
-        classification = TRUE,
-        probability   = FALSE,     # faster for OOB error
-        importance    = "none",
-        write.forest  = FALSE,
-        num.threads   = 1          # avoid nested parallelism
-      )
-      data.frame(
-        mtry = g$mtry, maxDepth = g$maxDepth, minNode = g$minNode,
-        oobError = rf1$prediction.error,
-        stringsAsFactors = FALSE
-      )
-    }
+      i = seq_len(nrow(tuneArgsGrid)),
+      .combine = rbind,
+      .packages = "ranger"
+    ) %dopar%
+      {
+        g <- tuneArgsGrid[i, ]
+        rf1 <- ranger::ranger(
+          dependent.variable.name = "presence",
+          data = df_tune,
+          mtry = g$mtry,
+          num.trees = trees_stage1,
+          max.depth = g$maxDepth,
+          min.node.size = g$minNode,
+          classification = TRUE,
+          probability = FALSE, # faster for OOB error
+          importance = "none",
+          write.forest = FALSE,
+          num.threads = 1 # avoid nested parallelism
+        )
+        data.frame(
+          mtry = g$mtry,
+          maxDepth = g$maxDepth,
+          minNode = g$minNode,
+          oobError = rf1$prediction.error,
+          stringsAsFactors = FALSE
+        )
+      }
 
-    ord  <- order(results1$oobError, decreasing = FALSE)
+    ord <- order(results1$oobError, decreasing = FALSE)
     topK <- head(results1[ord, , drop = FALSE], bestK)
   } else {
     topK <- tuneArgsGrid
@@ -202,28 +233,33 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   # ------------------- stage 2: refit top-K on full data -------------------
   if (nrow(topK) > 1) {
     results2 <- foreach::foreach(
-      i = seq_len(nrow(topK)), .combine = rbind, .packages = "ranger"
-    ) %dopar% {
-      g <- topK[i, ]
-      rf2 <- ranger::ranger(
-        dependent.variable.name = "presence",
-        data          = df,
-        mtry          = g$mtry,
-        num.trees     = trees_stage2,
-        max.depth     = g$maxDepth,
-        min.node.size = g$minNode,
-        classification = TRUE,
-        probability   = FALSE,
-        importance    = "none",
-        write.forest  = FALSE,
-        num.threads   = 1
-      )
-      data.frame(
-        mtry = g$mtry, maxDepth = g$maxDepth, minNode = g$minNode,
-        oobError = rf2$prediction.error,
-        stringsAsFactors = FALSE
-      )
-    }
+      i = seq_len(nrow(topK)),
+      .combine = rbind,
+      .packages = "ranger"
+    ) %dopar%
+      {
+        g <- topK[i, ]
+        rf2 <- ranger::ranger(
+          dependent.variable.name = "presence",
+          data = df,
+          mtry = g$mtry,
+          num.trees = trees_stage2,
+          max.depth = g$maxDepth,
+          min.node.size = g$minNode,
+          classification = TRUE,
+          probability = FALSE,
+          importance = "none",
+          write.forest = FALSE,
+          num.threads = 1
+        )
+        data.frame(
+          mtry = g$mtry,
+          maxDepth = g$maxDepth,
+          minNode = g$minNode,
+          oobError = rf2$prediction.error,
+          stringsAsFactors = FALSE
+        )
+      }
 
     best_idx <- which.min(results2$oobError)
     best_hyp <- results2[best_idx, ]
@@ -234,16 +270,16 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   # ------------------- final model (compute importance once) -------------------
   bestModel <- ranger::ranger(
     dependent.variable.name = "presence",
-    data          = df,
-    mtry          = best_hyp$mtry,
-    num.trees     = max(2000L, trees_stage2),
-    max.depth     = best_hyp$maxDepth,
+    data = df,
+    mtry = best_hyp$mtry,
+    num.trees = max(2000L, trees_stage2),
+    max.depth = best_hyp$maxDepth,
     min.node.size = best_hyp$minNode,
     classification = TRUE,
-    probability   = TRUE,          # needed downstream
-    importance    = "impurity",    # compute once here
-    write.forest  = TRUE,
-    num.threads   = nCores         # safe: no outer parallel work now
+    probability = TRUE, # needed downstream
+    importance = "impurity", # compute once here
+    write.forest = TRUE,
+    num.threads = nCores # safe: no outer parallel work now
   )
 
   # ------------------- metadata for downstream prediction -------------------
@@ -254,7 +290,7 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
 
   list(
     model = bestModel,
-    vimp  = bestModel$variable.importance,
+    vimp = bestModel$variable.importance,
     factor_levels = factor_levels,
     cat_vars = cat_vars,
     num_vars = num_vars

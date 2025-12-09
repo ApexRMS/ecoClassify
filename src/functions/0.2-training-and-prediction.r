@@ -876,9 +876,9 @@ getOptimalThreshold <- function(
 #' Generate binary presence and probability rasters from model predictions ----
 #'
 #' @description
-#' `getPredictionRasters` applies a trained model to a multi-band raster input and returns
-#' both a binary presence/absence raster and a continuous probability raster. It supports
-#' multiple model types including Random Forest, MaxEnt, and CNN.
+#' `getPredictionRasters` applies a trained model to a multi-band raster input and writes
+#' both a binary presence/absence raster and a continuous probability raster directly to disk.
+#' It supports multiple model types including Random Forest, MaxEnt, and CNN.
 #'
 #' @param raster A SpatRaster containing predictor layers to classify.
 #' @param model A trained model object, such as the output from `getRandomForestModel()`,
@@ -887,44 +887,87 @@ getOptimalThreshold <- function(
 #' presence/absence classifications.
 #' @param modelType A string specifying the type of model to apply: `"Random Forest"`,
 #' `"MaxEnt"`, or `"CNN"`. Case sensitive.
+#' @param transferDir File path to the directory where rasters will be saved.
+#' @param category Category label used in file naming (e.g., "predicting" or "training").
+#' @param timestep Integer representing the current model timestep.
 #'
-#' @return A list containing two SpatRaster objects:
+#' @return A named list containing file paths to the generated rasters:
 #' \describe{
-#'   \item{[[1]]}{Binary presence raster based on thresholded predictions.}
-#'   \item{[[2]]}{Continuous probability raster from the model output.}
+#'   \item{presencePath}{Path to binary presence raster file.}
+#'   \item{probabilityPath}{Path to continuous probability raster file.}
 #' }
 #'
 #' @details
 #' Internally, this function dispatches to the appropriate prediction method based on `modelType`:
 #' \itemize{
-#'   \item Random Forest: calls `predictRanger()` and handles factor alignment.
-#'   \item MaxEnt: calls `predict()` from the `dismo` or `ENMeval` package.
-#'   \item CNN: calls `predictCNN()` to run forward passes through a torch-based model.
+#'   \item Random Forest: calls `predictRanger()` with filename parameter for disk writing.
+#'   \item MaxEnt: calls `predictMaxent()` with filename parameter for disk writing.
+#'   \item CNN: calls `predictCNN()` with filename parameter for disk writing.
 #' }
-#' The output probability raster is reclassified into binary form using the supplied threshold via `reclassifyRaster()`.
-#' This function is commonly used when generating per-timestep prediction maps across a study area.
+#' The probability raster is written directly to disk by the prediction function to minimize
+#' memory usage. The binary presence raster is then created by reclassifying the file-backed
+#' probability raster and written to its own file. This approach is memory-efficient for
+#' large rasters.
 #' @noRd
 getPredictionRasters <- function(
   raster,
   model,
   threshold,
-  modelType = "Random Forest"
+  modelType = "Random Forest",
+  transferDir,
+  category,
+  timestep
 ) {
-  # predict presence for each raster
+  # Construct output file paths
+  probabilityPath <- file.path(
+    transferDir,
+    paste0("Probability-", category, "-t", timestep, ".tif")
+  )
+  presencePath <- file.path(
+    transferDir,
+    paste0("PredictedPresence-", category, "-t", timestep, ".tif")
+  )
+
+  # predict presence for each raster, writing directly to disk
   if (modelType == "Random Forest") {
     # generate probabilities for each raster using ranger
-    probabilityRaster <- predictRanger(raster, model)
+    probabilityRaster <- predictRanger(
+      raster,
+      model,
+      filename = probabilityPath,
+      memfrac = 0.5
+    )
   } else if (modelType == "CNN") {
-    probabilityRaster <- predictCNN(model, raster)
+    probabilityRaster <- predictCNN(
+      model,
+      raster,
+      isRaster = TRUE,
+      filename = probabilityPath,
+      memfrac = 0.5
+    )
   } else if (modelType == "MaxEnt") {
-    probabilityRaster <- predict(model$model, raster, type = "logistic")
+    probabilityRaster <- predictMaxent(
+      raster,
+      model,
+      filename = probabilityPath,
+      memfrac = 0.5
+    )
   } else {
     stop("Model type not recognized")
   }
 
-  predictedPresence <- reclassifyRaster(probabilityRaster, threshold)
+  # Reclassify the probability raster (file-backed) to create binary presence
+  # Use terra::ifel() with filename to write directly to disk without loading into memory
+  predictedPresence <- terra::ifel(
+    probabilityRaster >= threshold,
+    1,
+    0,
+    filename = presencePath,
+    overwrite = TRUE
+  )
 
-  return(list(predictedPresence, probabilityRaster))
+  # Return paths instead of rasters
+  return(list(presencePath = presencePath, probabilityPath = probabilityPath))
 }
 
 #' Reclassify raster to binary presence/absence ----
@@ -1091,19 +1134,19 @@ getRgbDataframe <- function(
   return(rgbOutputDataframe)
 }
 
-#' Save raster and RGB image files to disk ----
+#' Save ground truth raster and RGB image files to disk ----
 #'
 #' @description
-#' `saveFiles` writes out the predicted presence raster, probability raster,
-#' optional ground truth raster, and a PNG RGB image to the specified
-#' transfer directory. This prepares output artifacts for linkage with
-#' SyncroSim datasheets or visual inspection.
+#' `saveFiles` writes out the optional ground truth raster and a PNG RGB image to the
+#' specified transfer directory. The predicted presence and probability rasters are assumed
+#' to already be written to disk by `getPredictionRasters()`. This prepares output artifacts
+#' for linkage with SyncroSim datasheets or visual inspection.
 #'
-#' @param predictedPresence A SpatRaster representing binary presence/absence predictions.
+#' @param predictedPresencePath File path to the predicted presence raster (already saved).
+#' @param probabilityPath File path to the probability raster (already saved).
+#' @param trainingRaster A SpatRaster object used to generate the RGB image.
 #' @param groundTruth Optional SpatRaster containing ground truth presence values
 #' (can be NULL if unavailable).
-#' @param probabilityRaster A SpatRaster containing continuous probability predictions.
-#' @param trainingRaster A SpatRaster used to generate the RGB image.
 #' @param category A character string used to label file outputs (e.g., "training" or "predicting").
 #' @param timestep Integer indicating the current timestep for file naming.
 #' @param transferDir File path to the directory where outputs will be written.
@@ -1111,37 +1154,26 @@ getRgbDataframe <- function(
 #' @return None. This function performs file I/O only.
 #'
 #' @details
-#' The function saves three GeoTIFF rasters:
+#' The function assumes predicted presence and probability rasters are already saved to disk.
+#' It only saves:
 #' \itemize{
-#'   \item `PredictedPresence-{category}-t{timestep}.tif`
-#'   \item `Probability-{category}-t{timestep}.tif`
-#'   \item `GroundTruth-t{timestep}.tif` (optional)
+#'   \item `GroundTruth-t{timestep}.tif` (optional, if groundTruth is provided)
+#'   \item `RGBImage-{category}-t{timestep}.png` (generated from training raster bands 3, 2, 1)
 #' }
-#' Additionally, a PNG RGB image is generated using bands 3 (R), 2 (G), and 1 (B)
-#' from the training raster and saved as `RGBImage-{category}-t{timestep}.png`.
+#' This memory-efficient approach avoids passing large raster objects when they have already
+#' been written to disk.
 #' @noRd
 saveFiles <- function(
-  predictedPresence,
-  groundTruth = NULL,
-  probabilityRaster,
+  predictedPresencePath,
+  probabilityPath,
   trainingRaster,
+  groundTruth = NULL,
   category,
   timestep,
   transferDir
 ) {
-  # save rasters
-  writeRaster(
-    predictedPresence,
-    filename = file.path(paste0(
-      transferDir,
-      "/PredictedPresence-",
-      category,
-      "-t",
-      timestep,
-      ".tif"
-    )),
-    overwrite = TRUE
-  )
+  # Predicted presence and probability rasters are already saved by getPredictionRasters()
+  # We only need to save ground truth (if provided) and generate RGB image
 
   if (!is.null(groundTruth)) {
     writeRaster(
@@ -1155,18 +1187,6 @@ saveFiles <- function(
       overwrite = TRUE
     )
   }
-  writeRaster(
-    probabilityRaster,
-    filename = file.path(paste0(
-      transferDir,
-      "/Probability-",
-      category,
-      "-t",
-      timestep,
-      ".tif"
-    )),
-    overwrite = TRUE
-  )
 
   # save RBG Image
   # prefer B03,B02,B01 if present; otherwise fall back to first three layers

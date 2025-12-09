@@ -198,6 +198,86 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
 
 }
 
+#' Predict presence probability using a Maxent model ----
+#'
+#' @description
+#' `predictMaxent` applies a trained Maxent model to a multi-layer raster
+#' and produces a continuous probability raster representing the likelihood of presence.
+#' It handles categorical predictors by aligning factor levels with those seen during training.
+#'
+#' @param raster A SpatRaster object containing the input predictor layers.
+#' @param model A trained Maxent model object returned by `getMaxentModel()`,
+#' including `$model`, `$cat_vars`, and `$cat_levels`.
+#' @param filename Character. Output filename. If "", returns in-memory raster.
+#' @param memfrac Numeric. Memory fraction for chunking (0-1). Default 0.5.
+#'
+#' @return A SpatRaster with predicted presence probabilities, with the same extent
+#' and resolution as the input raster. NA values are preserved.
+#'
+#' @details
+#' This function uses `terra::predict()` with automatic chunking to process large rasters
+#' memory-efficiently. When `filename` is provided, predictions are written directly to
+#' disk to minimize memory usage.
+#'
+#' @noRd
+predictMaxent <- function(raster, model, filename = "", memfrac = 0.5) {
+  # Check if MaxEnt dependencies are available
+  if (!MAXENT_AVAILABLE) {
+    stop(
+      "MaxEnt functionality is not available. Please ensure Java is properly configured and both rJava and ENMeval packages are installed."
+    )
+  }
+
+  # prediction function for terra::predict
+  predict_fn <- function(m, data, ...) {
+    # Handle categorical variables if present
+    cat_vars_present <- intersect(names(m$cat_levels), names(data))
+
+    if (length(cat_vars_present) > 0) {
+      # Work on a local copy
+      data <- as.data.frame(data, stringsAsFactors = FALSE)
+
+      for (var in cat_vars_present) {
+        var_levels <- m$cat_levels[[var]]
+        if (!is.null(var_levels)) {
+          # Convert to factor, coercing unseen levels to NA
+          f <- factor(as.character(data[[var]]), levels = var_levels)
+          data[[var]] <- f
+        }
+      }
+    }
+
+    # MaxEnt logistic prediction
+    p1 <- tryCatch(
+      as.numeric(predict(m$model, data, type = "logistic")),
+      error = function(e) {
+        # some MaxEnt builds require 'dismo::predict' signature
+        as.numeric(dismo::predict(m$model, data, args = "logistic"))
+      }
+    )
+
+    # Clean invalid values
+    p1[!is.finite(p1)] <- NA_real_
+
+    return(as.numeric(p1))
+  }
+
+  # terra::predict handles chunking; memfrac controls block size.
+  # filename = "" => in-memory; set a path to write to disk.
+  predictionRaster <- terra::predict(
+    raster,
+    model = model,
+    fun = predict_fn,
+    na.rm = TRUE,
+    cores = 1,
+    memfrac = memfrac,
+    filename = filename
+  )
+
+  names(predictionRaster) <- "present"
+  predictionRaster
+}
+
 #' Extract Maxent Variable Importance ----
 #'
 #' @description
