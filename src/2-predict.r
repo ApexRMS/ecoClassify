@@ -154,14 +154,18 @@ for (t in seq_along(predictRasterList)) {
     predictRasterList[[t]],
     model,
     threshold,
-    modelType
+    modelType,
+    transferDir,
+    category = "predicting",
+    timestep
   )
-  classifiedPresence <- classifiedRasters[[1]]
-  classifiedProbability <- classifiedRasters[[2]]
+  classifiedPresencePath <- classifiedRasters$presencePath
+  classifiedProbabilityPath <- classifiedRasters$probabilityPath
 
   # Generate rasterDataframe based on filtering argument
+  # Note: generateRasterDataframe constructs paths internally and doesn't use the first argument
   classifiedRasterOutputDataframe <- generateRasterDataframe(
-    classifiedPresence,
+    classifiedPresencePath,
     category = "predicting",
     timestep,
     transferDir,
@@ -177,12 +181,12 @@ for (t in seq_along(predictRasterList)) {
     transferDir
   )
 
-  # Save files
+  # Save files (ground truth and RGB only - predictions already saved)
   saveFiles(
-    classifiedPresence,
-    groundTruth = NULL,
-    classifiedProbability,
+    classifiedPresencePath,
+    classifiedProbabilityPath,
     predictRasterList[[t]],
+    groundTruth = NULL,
     category = "predicting",
     timestep,
     transferDir

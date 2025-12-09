@@ -298,27 +298,23 @@ for (t in seq_along(trainingRasterList)) {
   # Get timestep for the current raster
   timestep <- timestepList[t]
 
-  if (modelType == "CNN") {
-    predictionRasters <- getPredictionRasters(
-      trainingRasterList[[t]],
-      modelOut,
-      threshold,
-      modelType
-    )
-  } else if (modelType == "Random Forest" || modelType == "MaxEnt") {
-    predictionRasters <- getPredictionRasters(
-      trainingRasterList[[t]],
-      modelOut,
-      threshold,
-      modelType
-    )
-  }
-  predictedPresence <- predictionRasters[[1]]
-  probabilityRaster <- predictionRasters[[2]]
+  # Get prediction rasters (written directly to disk for memory efficiency)
+  predictionRasters <- getPredictionRasters(
+    trainingRasterList[[t]],
+    modelOut,
+    threshold,
+    modelType,
+    transferDir,
+    category = "training",
+    timestep
+  )
+  predictedPresencePath <- predictionRasters$presencePath
+  probabilityPath <- predictionRasters$probabilityPath
 
   # Generate rasterDataframe based on filtering argument
+  # Note: generateRasterDataframe constructs paths internally and doesn't use the first argument
   rasterOutputDataframe <- generateRasterDataframe(
-    predictedPresence,
+    predictedPresencePath,
     category = "training",
     timestep,
     transferDir,
@@ -337,12 +333,12 @@ for (t in seq_along(trainingRasterList)) {
     transferDir
   )
 
-  # Save files
+  # Save files (ground truth and RGB only - predictions already saved)
   saveFiles(
-    predictedPresence,
-    groundTruth,
-    probabilityRaster,
+    predictedPresencePath,
+    probabilityPath,
     trainingRasterList[[t]],
+    groundTruth,
     category = "training",
     timestep,
     transferDir
