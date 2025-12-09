@@ -156,7 +156,7 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
   )
 
   # --- wrapper: consistent 2-col prob output ---
-  predict_maxent_dataframe <- function(mx_model, newdata) {
+  predictMaxentDataframe <- function(mxModel, newdata) {
     # align factor levels for any categorical predictors seen at train-time
     if (length(cat_levels)) {
       for (v in names(cat_levels)) {
@@ -174,10 +174,10 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
 
     # ENMeval/MaxEnt logistic output is a numeric vector of P(presence)
     p1 <- tryCatch(
-      as.numeric(predict(mx_model, newdata, type = "logistic")),
+      as.numeric(predict(mxModel, newdata, type = "logistic")),
       error = function(e) {
         # some MaxEnt builds require 'dismo::predict' signature
-        as.numeric(dismo::predict(mx_model, newdata, args = "logistic"))
+        as.numeric(dismo::predict(mxModel, newdata, args = "logistic"))
       }
     )
 
@@ -229,7 +229,7 @@ predictMaxent <- function(raster, model, filename = "", memfrac = 0.5) {
   }
 
   # prediction function for terra::predict
-  predict_fn <- function(m, data, ...) {
+  predictFn <- function(m, data, ...) {
     # Handle categorical variables if present
     cat_vars_present <- intersect(names(m$cat_levels), names(data))
 
@@ -267,7 +267,7 @@ predictMaxent <- function(raster, model, filename = "", memfrac = 0.5) {
   predictionRaster <- terra::predict(
     raster,
     model = model,
-    fun = predict_fn,
+    fun = predictFn,
     na.rm = TRUE,
     cores = 1,
     memfrac = memfrac,

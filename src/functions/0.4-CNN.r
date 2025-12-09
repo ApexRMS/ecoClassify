@@ -326,7 +326,7 @@ predictCNN <- function(model, newdata, isRaster = TRUE, filename = "", memfrac =
 
   # Create wrapper function for terra::predict
   # This function will be called many times (once per chunk)
-  predict_fn <- function(model, data, ...) {
+  predictFn <- function(model, data, ...) {
     # Validate column presence
     missing_vars <- setdiff(model$num_vars, names(data))
     if (length(missing_vars) > 0) {
@@ -378,7 +378,7 @@ predictCNN <- function(model, newdata, isRaster = TRUE, filename = "", memfrac =
   predictionRaster <- terra::predict(
     newdata,
     model,
-    fun = predict_fn,
+    fun = predictFn,
     na.rm = TRUE,
     cores = 1,  # torch handles its own threading
     memfrac = memfrac,
@@ -546,7 +546,7 @@ loadCNNModel <- function(weights_path, metadata_path) {
 #' @return A vector of class predictions or probabilities.
 #'
 #' @noRd
-predict_cnn_dataframe <- function(model, newdata, return = c("class", "prob")) {
+predictCnnDataframe <- function(model, newdata, return = c("class", "prob")) {
   return <- match.arg(return)
 
   if (!inherits(model$model, "nn_module")) {

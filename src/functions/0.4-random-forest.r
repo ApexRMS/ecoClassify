@@ -45,7 +45,7 @@ predictRanger <- function(raster, model, filename = "", memfrac = 0.7) {
   }
 
   # prediction function for terra::predict
-  predict_fn <- function(m, data, ...) {
+  predictFn <- function(m, data, ...) {
     # m is the model object passed in by terra::predict (same as 'model' in outer scope)
     # Handle categorical variables
     cat_vars_present <- intersect(m$cat_vars, names(data))
@@ -86,7 +86,7 @@ predictRanger <- function(raster, model, filename = "", memfrac = 0.7) {
   predictionRaster <- terra::predict(
     raster,
     model = model,
-    fun = predict_fn,
+    fun = predictFn,
     na.rm = TRUE,
     cores = 1,
     memfrac = memfrac,

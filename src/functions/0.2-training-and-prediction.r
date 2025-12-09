@@ -200,7 +200,7 @@ splitTrainTest <- function(
   # ---- small helpers ----
 
   # Drop 'ID' column if present (terra::extract quirks)
-  strip_id <- function(df) {
+  stripId <- function(df) {
     if (!is.null(df) && "ID" %in% names(df)) {
       df <- df[, setdiff(names(df), "ID"), drop = FALSE]
     }
@@ -208,19 +208,19 @@ splitTrainTest <- function(
   }
 
   # Generic "extract at cell ids" for a stack
-  extract_df_at_cells <- function(r, cells) {
+  extractDfAtCells <- function(r, cells) {
     xy <- terra::xyFromCell(r, cells)
-    strip_id(terra::extract(r, xy))
+    stripId(terra::extract(r, xy))
   }
 
   # Predictors only
   extractAtCells <- function(rStack, cells) {
-    extract_df_at_cells(rStack, cells)
+    extractDfAtCells(rStack, cells)
   }
 
   # Convenience: first-layer values as a vector
-  extract_vals_at_cells <- function(r, cells) {
-    df <- extract_df_at_cells(r, cells)
+  extractValsAtCells <- function(r, cells) {
+    df <- extractDfAtCells(r, cells)
     if (is.null(df) || ncol(df) == 0 || nrow(df) == 0) {
       return(numeric(0))
     }
@@ -228,56 +228,56 @@ splitTrainTest <- function(
   }
 
   # ---- estimate class balance from a sample of GT ----
-  estimate_classes <- function(r_gt, sample_n = quick_prop_sample) {
-    n_total <- terra::ncell(r_gt)
+  estimateClasses <- function(rGt, sampleN = quick_prop_sample) {
+    nTotal <- terra::ncell(rGt)
 
     # sample size bounds
-    target_valid <- min(sample_n, max(1000L, floor(0.001 * n_total)), 10000L)
+    targetValid <- min(sampleN, max(1000L, floor(0.001 * nTotal)), 10000L)
 
     updateRunLog(
       sprintf(
         "    Estimating class proportions: sampling from %d total cells (target: %d valid samples)...",
-        n_total,
-        target_valid
+        nTotal,
+        targetValid
       ),
       type = "info"
     )
 
-    oversample_factor <- 3L
-    sample_size <- min(n_total, target_valid * oversample_factor)
+    oversampleFactor <- 3L
+    sampleSize <- min(nTotal, targetValid * oversampleFactor)
 
-    cell_ids <- sample.int(n_total, size = sample_size, replace = FALSE)
-    vals <- extract_vals_at_cells(r_gt, cell_ids)
+    cellIds <- sample.int(nTotal, size = sampleSize, replace = FALSE)
+    vals <- extractValsAtCells(rGt, cellIds)
 
-    vals_clean <- vals[!is.na(vals)]
+    valsClean <- vals[!is.na(vals)]
 
-    if (length(vals_clean) < 100) {
+    if (length(valsClean) < 100) {
       stop(
         sprintf(
           "Insufficient valid ground truth samples: only %d valid cells found from %d sampled. ",
-          length(vals_clean),
-          sample_size
+          length(valsClean),
+          sampleSize
         ),
         "The raster may have too many NA values."
       )
     }
 
-    if (length(vals_clean) > target_valid) {
-      vals_clean <- sample(vals_clean, target_valid)
+    if (length(valsClean) > targetValid) {
+      valsClean <- sample(valsClean, targetValid)
     }
 
     updateRunLog(
-      sprintf("    Successfully obtained %d valid samples", length(vals_clean)),
+      sprintf("    Successfully obtained %d valid samples", length(valsClean)),
       type = "info"
     )
 
-    uv <- sort(unique(vals_clean))
+    uv <- sort(unique(valsClean))
     if (length(uv) == 1) {
       stop("Ground truth has only one class in sampled cells.")
     }
 
     # Map arbitrary 2-level GT to 0/1 if needed
-    v <- vals_clean
+    v <- valsClean
     if (!all(uv %in% c(0, 1))) {
       v[v == min(uv)] <- 0
       v[v == max(uv)] <- 1
@@ -293,44 +293,44 @@ splitTrainTest <- function(
   }
 
   # ---- accept–reject sampling for ONE class ----
-  sample_valid_for_class <- function(
-    r_pred,
-    r_gt,
-    class_value,
-    n_target,
-    chunk_size
+  sampleValidForClass <- function(
+    rPred,
+    rGt,
+    classValue,
+    nTarget,
+    chunkSize
   ) {
-    if (n_target <= 0) {
+    if (nTarget <= 0) {
       return(integer(0))
     }
 
     got <- integer(0)
     tried <- 0L
     stalled <- 0L
-    last_count <- 0L
-    n_total <- terra::ncell(r_gt)
-    max_iter <- 50L
+    lastCount <- 0L
+    nTotal <- terra::ncell(rGt)
+    maxIter <- 50L
 
-    while (length(got) < n_target && tried < max_iter) {
+    while (length(got) < nTarget && tried < maxIter) {
       tried <- tried + 1L
 
       # Adaptive sampling: start small, get more aggressive if needed
-      multiplier <- if (tried > 5L && length(got) < n_target * 0.5) 10L else 5L
-      size_i <- min(chunk_size, max(n_target * multiplier, 5000L), n_total)
+      multiplier <- if (tried > 5L && length(got) < nTarget * 0.5) 10L else 5L
+      sizeI <- min(chunkSize, max(nTarget * multiplier, 5000L), nTotal)
 
-      cand_cells <- sample.int(n_total, size = size_i, replace = FALSE)
+      candCells <- sample.int(nTotal, size = sizeI, replace = FALSE)
 
       # Filter by class
-      gt_vals <- extract_vals_at_cells(r_gt, cand_cells)
-      match_class <- !is.na(gt_vals) & (gt_vals == class_value)
+      gtVals <- extractValsAtCells(rGt, candCells)
+      matchClass <- !is.na(gtVals) & (gtVals == classValue)
 
-      if (!any(match_class)) {
+      if (!any(matchClass)) {
         stalled <- stalled + 1L
         if (stalled >= 10L) {
           updateRunLog(
             sprintf(
               "    Early exit: no class %d cells found after %d attempts",
-              class_value,
+              classValue,
               tried
             ),
             type = "warning"
@@ -340,26 +340,26 @@ splitTrainTest <- function(
         next
       }
 
-      cand_cells <- cand_cells[match_class]
+      candCells <- candCells[matchClass]
 
       # Validate predictors at those cells
-      pred_vals <- extract_df_at_cells(r_pred, cand_cells)
-      keep <- stats::complete.cases(pred_vals)
+      predVals <- extractDfAtCells(rPred, candCells)
+      keep <- stats::complete.cases(predVals)
 
-      acc <- unique(cand_cells[keep])
+      acc <- unique(candCells[keep])
       if (length(acc)) {
         got <- unique(c(got, acc))
         stalled <- 0L
       }
 
-      if (length(got) == last_count) {
+      if (length(got) == lastCount) {
         stalled <- stalled + 1L
         if (stalled >= 10L) {
           updateRunLog(
             sprintf(
               "    Early exit: sampling stalled at %d/%d valid cells after %d iterations",
               length(got),
-              n_target,
+              nTarget,
               tried
             ),
             type = "warning"
@@ -367,47 +367,47 @@ splitTrainTest <- function(
           break
         }
       } else {
-        last_count <- length(got)
+        lastCount <- length(got)
       }
     }
 
     if (!length(got)) {
       warning(
         "No valid cells found for class ",
-        class_value,
+        classValue,
         " after sampling."
       )
     }
 
-    got[seq_len(min(length(got), n_target))]
+    got[seq_len(min(length(got), nTarget))]
   }
 
   # ---- edge weights on candidate pool only ----
-  edge_weights_for_pool <- function(r_gt, pool_cells) {
-    if (!length(pool_cells)) {
+  edgeWeightsForPool <- function(rGt, poolCells) {
+    if (!length(poolCells)) {
       return(numeric(0))
     }
 
-    pairs <- terra::adjacent(r_gt, pool_cells, directions = 4, pairs = TRUE)
+    pairs <- terra::adjacent(rGt, poolCells, directions = 4, pairs = TRUE)
     if (is.null(dim(pairs)) || nrow(pairs) == 0) {
-      return(rep(1.0, length(pool_cells)))
+      return(rep(1.0, length(poolCells)))
     }
 
-    uniq_cells <- unique(c(pool_cells, pairs[, 2]))
-    values <- extract_vals_at_cells(r_gt, uniq_cells)
+    uniqCells <- unique(c(poolCells, pairs[, 2]))
+    values <- extractValsAtCells(rGt, uniqCells)
 
-    from_vals <- values[match(pairs[, 1], uniq_cells)]
-    to_vals <- values[match(pairs[, 2], uniq_cells)]
+    fromVals <- values[match(pairs[, 1], uniqCells)]
+    toVals <- values[match(pairs[, 2], uniqCells)]
 
-    diff_pair <- (from_vals != to_vals) & !is.na(from_vals) & !is.na(to_vals)
+    diffPair <- (fromVals != toVals) & !is.na(fromVals) & !is.na(toVals)
 
-    any_diff <- tapply(diff_pair, pairs[, 1], any, na.rm = TRUE)
+    anyDiff <- tapply(diffPair, pairs[, 1], any, na.rm = TRUE)
 
-    edge_flag <- rep(FALSE, length(pool_cells))
-    m <- match(as.integer(names(any_diff)), pool_cells)
-    edge_flag[m[!is.na(m)]] <- any_diff[!is.na(m)]
+    edgeFlag <- rep(FALSE, length(poolCells))
+    m <- match(as.integer(names(anyDiff)), poolCells)
+    edgeFlag[m[!is.na(m)]] <- anyDiff[!is.na(m)]
 
-    ifelse(edge_flag, 2.5, 1.0)
+    ifelse(edgeFlag, 2.5, 1.0)
   }
 
   # ---- storage ----
@@ -422,7 +422,7 @@ splitTrainTest <- function(
     r_gt <- groundTruthRasterList[[t]]
 
     # (1) Estimate classes & current minority proportion
-    cls <- estimate_classes(r_gt, sample_n = quick_prop_sample)
+    cls <- estimateClasses(r_gt, sampleN = quick_prop_sample)
     minorityClass <- cls$minorityClass
     majorityClass <- cls$majorityClass
     currentMinorityProp <- cls$currentMinorityProp
@@ -482,20 +482,20 @@ splitTrainTest <- function(
     # (3) Sample candidates per class (validation against predictor stack inside)
     chunk_size <- max(5000L, chunk_factor * nObs)
 
-    minor_pool <- sample_valid_for_class(
-      r_pred,
-      r_gt,
-      class_value = minorityClass,
-      n_target = targetMinorityN,
-      chunk_size = chunk_size
+    minor_pool <- sampleValidForClass(
+      rPred = r_pred,
+      rGt = r_gt,
+      classValue = minorityClass,
+      nTarget = targetMinorityN,
+      chunkSize = chunk_size
     )
 
-    major_pool <- sample_valid_for_class(
-      r_pred,
-      r_gt,
-      class_value = majorityClass,
-      n_target = targetMajorityN,
-      chunk_size = chunk_size
+    major_pool <- sampleValidForClass(
+      rPred = r_pred,
+      rGt = r_gt,
+      classValue = majorityClass,
+      nTarget = targetMajorityN,
+      chunkSize = chunk_size
     )
 
     if (length(minor_pool) < targetMinorityN) {
@@ -534,14 +534,14 @@ splitTrainTest <- function(
         type = "info"
       )
       if (length(minor_pool)) {
-        w_min <- edge_weights_for_pool(r_gt, minor_pool)
+        w_min <- edgeWeightsForPool(r_gt, minor_pool)
         if (!any(is.finite(w_min)) || sum(w_min, na.rm = TRUE) == 0) {
           w_min <- rep(1, length(w_min))
         }
         minProbs <- w_min / sum(w_min)
       }
       if (length(major_pool)) {
-        w_maj <- edge_weights_for_pool(r_gt, major_pool)
+        w_maj <- edgeWeightsForPool(r_gt, major_pool)
         if (!any(is.finite(w_maj)) || sum(w_maj, na.rm = TRUE) == 0) {
           w_maj <- rep(1, length(w_maj))
         }
@@ -582,7 +582,7 @@ splitTrainTest <- function(
     }
 
     # Labels for the sampled cells
-    sampledGT <- extract_vals_at_cells(r_gt, sampledCells)
+    sampledGT <- extractValsAtCells(r_gt, sampledCells)
 
     # (6) Assign spatial blocks
     rc <- terra::rowColFromCell(r_pred, sampledCells)
