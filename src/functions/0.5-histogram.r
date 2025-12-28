@@ -236,7 +236,7 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
     # Perform prediction
     preds <- tryCatch({
       if (modelType == "CNN") {
-        predict_cnn_dataframe(model, predictLayerTemp, "prob")
+        predictCnnDataframe(model, predictLayerTemp, "prob")
       } else if (modelType == "Random Forest") {
         predict(model$model, predictLayerTemp, type = "response")$predictions
       } else if (modelType == "MaxEnt") {
