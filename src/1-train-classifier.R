@@ -423,6 +423,15 @@ if (is.null(rasterDecimalPlaces)) {
 if (is.null(contextualizationWindowSize)) {
   contextualizationWindowSize <- ""
 }
+if (is.null(manualThreshold)) {
+  manualThreshold <- ""
+}
+if (is.null(tuningObjective)) {
+  tuningObjective <- ""
+}
+if (is.null(setSeed)) {
+  setSeed <- ""
+}
 
 classifierOptionsOutputDataframe <- data.frame(
   nObs = format(nObs, scientific = FALSE),
@@ -434,10 +443,12 @@ advClassifierOptionsOutputDataframe <- data.frame(
   overrideBandnames = isTRUE(overrideBandnames),
   rasterDecimalPlaces = rasterDecimalPlaces,
   modelTuning = isTRUE(modelTuning),
+  tuningObjective = tuningObjective,
   setManualThreshold = isTRUE(setManualThreshold),
   manualThreshold = manualThreshold,
   applyContextualization = isTRUE(applyContextualization),
-  contextualizationWindowSize = contextualizationWindowSize
+  contextualizationWindowSize = contextualizationWindowSize,
+  setSeed = setSeed
 )
 
 # Save dataframes back to SyncroSim library's output datasheets ----------------
