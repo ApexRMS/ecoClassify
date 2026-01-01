@@ -164,6 +164,7 @@
         <dataSheet name="ClassifierOptions" type="Input"/>
         <dataSheet name="AdvancedClassifierOptions" type="Input"/>
         <dataSheet name="ModelObject" type="Input"/>
+        <dataSheet name="RasterOutput" type="Both"/>
         <dataSheet name="ClassifiedRasterOutput" type="Output"/>
         <dataSheet name="ClassifiedRgbOutput" type="Output"/>
     </transformer>
