@@ -161,7 +161,10 @@
     <transformer name="Predict" displayName="2-Predict" programName="Rscript" programArguments="2-predict.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.4">
         <dataSheet name="InputPredictingRasters" type="Input"/>
         <dataSheet name="InputPredictingCovariates" type="Input"/>
+        <dataSheet name="ClassifierOptions" type="Input"/>
+        <dataSheet name="AdvancedClassifierOptions" type="Input"/>
         <dataSheet name="ModelObject" type="Input"/>
+        <dataSheet name="RasterOutput" type="Both"/>
         <dataSheet name="ClassifiedRasterOutput" type="Output"/>
         <dataSheet name="ClassifiedRgbOutput" type="Output"/>
     </transformer>
