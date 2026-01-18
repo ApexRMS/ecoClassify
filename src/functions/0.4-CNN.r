@@ -530,7 +530,18 @@ loadCNNModel <- function(weights_path, metadata_path) {
   net$load_state_dict(sd)
 
   # Return the same structure you used elsewhere: model + metadata
-  c(list(model = net), metadata)
+  result <- list(
+    model = net,
+    vimp = metadata$vimp,
+    feature_names = metadata$feature_names,
+    cat_vars = metadata$cat_vars,
+    num_vars = metadata$num_vars,
+    cat_level_lengths = metadata$cat_level_lengths,
+    cat_levels = metadata$cat_levels,
+    embedding_dims = metadata$embedding_dims
+  )
+
+  return(result)
 }
 
 
