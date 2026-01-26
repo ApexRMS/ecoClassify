@@ -161,7 +161,7 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
     set.seed(1)
     idx0 <- which(df$presence == "absence")
     idx1 <- which(df$presence == "presence")
-    k0 <- round(as.integer(tune_nmax) * length(idx0) / nrow(df))
+    k0 <- round(as.numeric(tune_nmax) * length(idx0) / nrow(df))
     k1 <- tune_nmax - k0
     tune_idx <- c(
       sample(idx0, min(k0, length(idx0))),
