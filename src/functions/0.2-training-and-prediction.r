@@ -179,8 +179,7 @@ splitTrainTest <- function(
   edgeEnrichment = FALSE,
   spatialBalance = TRUE,
   # tuning knobs for sampling:
-  chunk_factor = 5L, # candidates per class per iteration ~ chunk_factor * nObs
-  quick_prop_sample = 50000L # how many GT cells to sample to estimate class proportion
+  chunk_factor = 5L # candidates per class per iteration ~ chunk_factor * nObs
 ) {
   # ---- validation ----
   blockDim <- sqrt(nBlocks)
@@ -227,57 +226,82 @@ splitTrainTest <- function(
     as.vector(df[[1]])
   }
 
-  # ---- estimate class balance from a sample of GT ----
-  estimateClasses <- function(rGt, sampleN = quick_prop_sample) {
-    nTotal <- terra::ncell(rGt)
+  # ---- estimate class balance GLOBALLY from all GT rasters ----
+  estimateGlobalClassProportions <- function(gtRasterList) {
+    n_rasters <- length(gtRasterList)
+    nCellsPerRaster <- terra::ncell(gtRasterList[[1]])
 
-    # sample size bounds
-    targetValid <- min(sampleN, max(1000L, floor(0.001 * nTotal)), 10000L)
+    # Calculate global sample size: 5% of ncells * n_rasters
+    # with min 5,000 and max 1,000,000
+    globalSampleTarget <- floor(0.05 * nCellsPerRaster * n_rasters)
+    globalSampleTarget <- max(5000L, min(1000000L, globalSampleTarget))
+
+    # Distribute samples across rasters (roughly equal per raster)
+    samplesPerRaster <- max(100L, ceiling(globalSampleTarget / n_rasters))
 
     updateRunLog(
       sprintf(
-        "    Estimating class proportions: sampling from %d total cells (target: %d valid samples)...",
-        nTotal,
-        targetValid
+        "Estimating global class proportions: sampling ~%d cells from %d rasters (total target: %d)...",
+        samplesPerRaster,
+        n_rasters,
+        globalSampleTarget
       ),
       type = "info"
     )
 
-    oversampleFactor <- 3L
-    sampleSize <- min(nTotal, targetValid * oversampleFactor)
+    # Collect samples from all rasters
+    allVals <- vector("list", n_rasters)
+    totalCollected <- 0L
 
-    cellIds <- sample.int(nTotal, size = sampleSize, replace = FALSE)
-    vals <- extractValsAtCells(rGt, cellIds)
+    for (i in seq_len(n_rasters)) {
+      rGt <- gtRasterList[[i]]
+      nTotal <- terra::ncell(rGt)
 
-    valsClean <- vals[!is.na(vals)]
+      # Oversample to account for NAs
+      oversampleFactor <- 3L
+      sampleSize <- min(nTotal, samplesPerRaster * oversampleFactor)
 
-    if (length(valsClean) < 100) {
+      cellIds <- sample.int(nTotal, size = sampleSize, replace = FALSE)
+      vals <- extractValsAtCells(rGt, cellIds)
+      valsClean <- vals[!is.na(vals)]
+
+      # Limit to target per raster
+      if (length(valsClean) > samplesPerRaster) {
+        valsClean <- sample(valsClean, samplesPerRaster)
+      }
+
+      allVals[[i]] <- valsClean
+      totalCollected <- totalCollected + length(valsClean)
+    }
+
+    # Combine all samples
+    combinedVals <- unlist(allVals)
+
+    if (length(combinedVals) < 100) {
       stop(
         sprintf(
-          "Insufficient valid ground truth samples: only %d valid cells found from %d sampled. ",
-          length(valsClean),
-          sampleSize
-        ),
-        "The raster may have too many NA values."
+          "Insufficient valid ground truth samples across all rasters: only %d valid cells found.",
+          length(combinedVals)
+        )
       )
     }
 
-    if (length(valsClean) > targetValid) {
-      valsClean <- sample(valsClean, targetValid)
-    }
-
     updateRunLog(
-      sprintf("    Successfully obtained %d valid samples", length(valsClean)),
+      sprintf(
+        "Successfully obtained %d valid samples across all %d rasters",
+        length(combinedVals),
+        n_rasters
+      ),
       type = "info"
     )
 
-    uv <- sort(unique(valsClean))
+    uv <- sort(unique(combinedVals))
     if (length(uv) == 1) {
-      stop("Ground truth has only one class in sampled cells.")
+      stop("Ground truth has only one class across all sampled rasters.")
     }
 
     # Map arbitrary 2-level GT to 0/1 if needed
-    v <- valsClean
+    v <- combinedVals
     if (!all(uv %in% c(0, 1))) {
       v[v == min(uv)] <- 0
       v[v == max(uv)] <- 1
@@ -285,101 +309,102 @@ splitTrainTest <- function(
 
     prop1 <- mean(v == 1, na.rm = TRUE)
 
-    list(
+    globalResult <- list(
       minorityClass = if (prop1 < 0.5) 1 else 0,
       majorityClass = if (prop1 < 0.5) 0 else 1,
       currentMinorityProp = min(prop1, 1 - prop1)
     )
+
+    updateRunLog(
+      sprintf(
+        "Global class distribution: %.1f%% minority (class %d), %.1f%% majority (class %d)",
+        100 * globalResult$currentMinorityProp,
+        globalResult$minorityClass,
+        100 * (1 - globalResult$currentMinorityProp),
+        globalResult$majorityClass
+      ),
+      type = "info"
+    )
+
+    return(globalResult)
   }
 
-  # ---- accept–reject sampling for ONE class ----
-  sampleValidForClass <- function(
+  # ---- efficient single-pass sampling for one timestep ----
+  # Instead of iterative accept-reject per class, sample once and split
+  sampleBothClasses <- function(
     rPred,
     rGt,
-    classValue,
-    nTarget,
-    chunkSize
+    minorityClass,
+    majorityClass,
+    targetMinorityN,
+    targetMajorityN,
+    oversampleFactor = 10L
   ) {
-    if (nTarget <= 0) {
-      return(integer(0))
-    }
-
-    got <- integer(0)
-    tried <- 0L
-    stalled <- 0L
-    lastCount <- 0L
     nTotal <- terra::ncell(rGt)
-    maxIter <- 50L
+    totalNeeded <- targetMinorityN + targetMajorityN
 
-    while (length(got) < nTarget && tried < maxIter) {
-      tried <- tried + 1L
+    # Sample enough cells to likely get what we need
+    # Oversample significantly to avoid multiple iterations
+    sampleSize <- min(nTotal, max(totalNeeded * oversampleFactor, 5000L))
 
-      # Adaptive sampling: start small, get more aggressive if needed
-      multiplier <- if (tried > 5L && length(got) < nTarget * 0.5) 10L else 5L
-      sizeI <- min(chunkSize, max(nTarget * multiplier, 5000L), nTotal)
+    candCells <- sample.int(nTotal, size = sampleSize, replace = FALSE)
 
-      candCells <- sample.int(nTotal, size = sizeI, replace = FALSE)
+    # Extract GT values in one call
+    gtVals <- extractValsAtCells(rGt, candCells)
 
-      # Filter by class
-      gtVals <- extractValsAtCells(rGt, candCells)
-      matchClass <- !is.na(gtVals) & (gtVals == classValue)
+    # Split candidates by class
+    minorIdx <- which(!is.na(gtVals) & gtVals == minorityClass)
+    majorIdx <- which(!is.na(gtVals) & gtVals == majorityClass)
 
-      if (!any(matchClass)) {
-        stalled <- stalled + 1L
-        if (stalled >= 10L) {
-          updateRunLog(
-            sprintf(
-              "    Early exit: no class %d cells found after %d attempts",
-              classValue,
-              tried
-            ),
-            type = "warning"
-          )
-          break
-        }
-        next
+    minorCells <- candCells[minorIdx]
+    majorCells <- candCells[majorIdx]
+
+    # If we don't have enough of either class, expand the sample
+    needMore <- (length(minorCells) < targetMinorityN) ||
+      (length(majorCells) < targetMajorityN)
+
+    if (needMore && sampleSize < nTotal) {
+      # Sample more cells (excluding already sampled)
+      remaining <- setdiff(seq_len(nTotal), candCells)
+      extraSize <- min(length(remaining), sampleSize * 2L)
+
+      if (extraSize > 0) {
+        extraCells <- sample(remaining, size = extraSize, replace = FALSE)
+        extraGtVals <- extractValsAtCells(rGt, extraCells)
+
+        extraMinorIdx <- which(!is.na(extraGtVals) & extraGtVals == minorityClass)
+        extraMajorIdx <- which(!is.na(extraGtVals) & extraGtVals == majorityClass)
+
+        minorCells <- c(minorCells, extraCells[extraMinorIdx])
+        majorCells <- c(majorCells, extraCells[extraMajorIdx])
       }
+    }
 
-      candCells <- candCells[matchClass]
+    # Now validate predictors - only for cells we might actually use
+    # Take slightly more than needed to account for NA filtering
+    minorToValidate <- head(minorCells, targetMinorityN * 3L)
+    majorToValidate <- head(majorCells, targetMajorityN * 3L)
 
-      # Validate predictors at those cells
-      predVals <- extractDfAtCells(rPred, candCells)
+    validMinor <- integer(0)
+    validMajor <- integer(0)
+
+    if (length(minorToValidate) > 0) {
+      predVals <- extractDfAtCells(rPred, minorToValidate)
       keep <- stats::complete.cases(predVals)
-
-      acc <- unique(candCells[keep])
-      if (length(acc)) {
-        got <- unique(c(got, acc))
-        stalled <- 0L
-      }
-
-      if (length(got) == lastCount) {
-        stalled <- stalled + 1L
-        if (stalled >= 10L) {
-          updateRunLog(
-            sprintf(
-              "    Early exit: sampling stalled at %d/%d valid cells after %d iterations",
-              length(got),
-              nTarget,
-              tried
-            ),
-            type = "warning"
-          )
-          break
-        }
-      } else {
-        lastCount <- length(got)
-      }
+      validMinor <- minorToValidate[keep]
     }
 
-    if (!length(got)) {
-      warning(
-        "No valid cells found for class ",
-        classValue,
-        " after sampling."
-      )
+    if (length(majorToValidate) > 0) {
+      predVals <- extractDfAtCells(rPred, majorToValidate)
+      keep <- stats::complete.cases(predVals)
+      validMajor <- majorToValidate[keep]
     }
 
-    got[seq_len(min(length(got), nTarget))]
+    # Return the pools (caller will sample from these)
+    list(
+      minorPool = validMinor,
+      majorPool = validMajor
+    )
   }
 
   # ---- edge weights on candidate pool only ----
@@ -416,123 +441,98 @@ splitTrainTest <- function(
   testDfs <- vector("list", n_t)
   samplingInfoRows <- vector("list", n_t)
 
-  # ---- main loop over timesteps ----
-  for (t in seq_len(n_t)) {
+  # ---- estimate global class proportions ONCE across all rasters ----
+  globalCls <- estimateGlobalClassProportions(groundTruthRasterList)
+  minorityClass <- globalCls$minorityClass
+  majorityClass <- globalCls$majorityClass
+  globalMinorityProp <- globalCls$currentMinorityProp
+
+  # (2) Calculate target sampling proportions ONCE using global estimate
+
+  maxFeasibleMinorityProp <- min(
+    globalMinorityProp * 2.5, # oversample up to 2.5x
+    0.4 # and never > 40% minority
+  )
+
+  if (minMinorityProportion > maxFeasibleMinorityProp) {
+    updateRunLog(
+      sprintf(
+        "Warning: Requested min minority %.1f%% exceeds feasible %.1f%% (global actual: %.1f%%). Using feasible limit.",
+        100 * minMinorityProportion,
+        100 * maxFeasibleMinorityProp,
+        100 * globalMinorityProp
+      ),
+      type = "warning"
+    )
+  }
+
+  targetMinorityProp <- pmin(
+    pmax(globalMinorityProp * 2.5, minMinorityProportion),
+    maxMinorityProportion,
+    maxFeasibleMinorityProp
+  )
+
+  targetMinorityN <- round(nObs * targetMinorityProp)
+  targetMajorityN <- max(0, nObs - targetMinorityN)
+
+  updateRunLog(
+    sprintf(
+      "Target sampling (all timesteps): %d minority (%.1f%%), %d majority (%.1f%%)",
+      targetMinorityN,
+      100 * targetMinorityProp,
+      targetMajorityN,
+      100 * (1 - targetMinorityProp)
+    ),
+    type = "info"
+  )
+
+  # ---- helper function to process one timestep ----
+  processOneTimestep <- function(t) {
     r_pred <- trainingRasterList[[t]]
     r_gt <- groundTruthRasterList[[t]]
 
-    # (1) Estimate classes & current minority proportion
-    cls <- estimateClasses(r_gt, sampleN = quick_prop_sample)
-    minorityClass <- cls$minorityClass
-    majorityClass <- cls$majorityClass
-    currentMinorityProp <- cls$currentMinorityProp
-
-    updateRunLog(
-      sprintf(
-        "[t=%d] (sampled) class distribution: %.1f%% minority (%d), %.1f%% majority (%d)",
-        t,
-        100 * currentMinorityProp,
-        minorityClass,
-        100 * (1 - currentMinorityProp),
-        majorityClass
-      ),
-      type = "info"
-    )
-
-    # (2) Target sampling proportions with feasibility bounds
-    maxFeasibleMinorityProp <- min(
-      currentMinorityProp * 2.5, # oversample up to 2.5x
-      0.4 # and never > 40% minority
-    )
-
-    if (minMinorityProportion > maxFeasibleMinorityProp) {
-      updateRunLog(
-        sprintf(
-          "[t=%d] Warning: Requested min minority %.1f%% exceeds feasible %.1f%% (actual: %.1f%%). Using feasible limit.",
-          t,
-          100 * minMinorityProportion,
-          100 * maxFeasibleMinorityProp,
-          100 * currentMinorityProp
-        ),
-        type = "warning"
-      )
-    }
-
-    targetMinorityProp <- pmin(
-      pmax(currentMinorityProp * 2.5, minMinorityProportion),
-      maxMinorityProportion,
-      maxFeasibleMinorityProp
-    )
-
-    targetMinorityN <- round(nObs * targetMinorityProp)
-    targetMajorityN <- max(0, nObs - targetMinorityN)
-
-    updateRunLog(
-      sprintf(
-        "[t=%d] Target sampling: %d minority (%.1f%%), %d majority (%.1f%%)",
-        t,
-        targetMinorityN,
-        100 * targetMinorityProp,
-        targetMajorityN,
-        100 * (1 - targetMinorityProp)
-      ),
-      type = "info"
-    )
-
-    # (3) Sample candidates per class (validation against predictor stack inside)
-    chunk_size <- max(5000L, chunk_factor * nObs)
-
-    minor_pool <- sampleValidForClass(
+    # Sample both classes in a single efficient pass
+    pools <- sampleBothClasses(
       rPred = r_pred,
       rGt = r_gt,
-      classValue = minorityClass,
-      nTarget = targetMinorityN,
-      chunkSize = chunk_size
+      minorityClass = minorityClass,
+      majorityClass = majorityClass,
+      targetMinorityN = targetMinorityN,
+      targetMajorityN = targetMajorityN
     )
 
-    major_pool <- sampleValidForClass(
-      rPred = r_pred,
-      rGt = r_gt,
-      classValue = majorityClass,
-      nTarget = targetMajorityN,
-      chunkSize = chunk_size
-    )
+    minor_pool <- pools$minorPool
+    major_pool <- pools$majorPool
+
+    # Track warnings to return
+    warnings_list <- character(0)
 
     if (length(minor_pool) < targetMinorityN) {
-      updateRunLog(
+      warnings_list <- c(
+        warnings_list,
         sprintf(
           "[t=%d] Warning: minority pool underfilled (%d/%d).",
           t,
           length(minor_pool),
           targetMinorityN
-        ),
-        type = "warning"
+        )
       )
     }
     if (length(major_pool) < targetMajorityN) {
-      updateRunLog(
+      warnings_list <- c(
+        warnings_list,
         sprintf(
           "[t=%d] Warning: majority pool underfilled (%d/%d).",
           t,
           length(major_pool),
           targetMajorityN
-        ),
-        type = "warning"
+        )
       )
     }
 
-    # (4) Optional edge enrichment computed only on pooled candidates
+    # Optional edge enrichment computed only on pooled candidates
     minProbs <- majProbs <- NULL
     if (edgeEnrichment) {
-      updateRunLog(
-        sprintf(
-          "[t=%d] Computing edge enrichment (minority pool: %d, majority pool: %d)...",
-          t,
-          length(minor_pool),
-          length(major_pool)
-        ),
-        type = "info"
-      )
       if (length(minor_pool)) {
         w_min <- edgeWeightsForPool(r_gt, minor_pool)
         if (!any(is.finite(w_min)) || sum(w_min, na.rm = TRUE) == 0) {
@@ -549,7 +549,7 @@ splitTrainTest <- function(
       }
     }
 
-    # (5) Draw the final samples from the validated pools
+    # Draw the final samples from the validated pools
     sampledMinority <- if (length(minor_pool)) {
       sample(
         minor_pool,
@@ -575,16 +575,18 @@ splitTrainTest <- function(
     sampledCells <- c(sampledMinority, sampledMajority)
 
     if (length(sampledCells) < 2) {
-      stop(sprintf(
-        "Timestep %d: insufficient sampled points (<2). Try lowering nObs or constraints.",
-        t
+      return(list(
+        error = sprintf(
+          "Timestep %d: insufficient sampled points (<2). Try lowering nObs or constraints.",
+          t
+        )
       ))
     }
 
     # Labels for the sampled cells
     sampledGT <- extractValsAtCells(r_gt, sampledCells)
 
-    # (6) Assign spatial blocks
+    # Assign spatial blocks
     rc <- terra::rowColFromCell(r_pred, sampledCells)
     rowBins <- cut(rc[, 1], breaks = blockDim, labels = FALSE)
     colBins <- cut(rc[, 2], breaks = blockDim, labels = FALSE)
@@ -598,17 +600,10 @@ splitTrainTest <- function(
     )
     pts <- pts[!is.na(pts$block), , drop = FALSE]
 
-    updateRunLog(
-      sprintf(
-        "[t=%d] Final sample: %d pts (%.1f%% minority).",
-        t,
-        nrow(pts),
-        100 * mean(pts$presence == minorityClass, na.rm = TRUE)
-      ),
-      type = "info"
-    )
+    finalMinorityProp <- mean(pts$presence == minorityClass, na.rm = TRUE)
 
-    # (7) Train/test split (spatial blocks or random)
+    # Train/test split (spatial blocks or random)
+    usedRandomSplit <- FALSE
     if (spatialBalance) {
       uniqueBlocks <- unique(pts$block)
       nTrainBlocks <- round(length(uniqueBlocks) * proportionTraining)
@@ -626,13 +621,7 @@ splitTrainTest <- function(
         length(unique(trainPts$presence)) < 2 ||
           length(unique(testPts$presence)) < 2
       ) {
-        updateRunLog(
-          sprintf(
-            "[t=%d] Spatial split class-imbalanced; using random split.",
-            t
-          ),
-          type = "warning"
-        )
+        usedRandomSplit <- TRUE
         tr_idx <- sample(
           seq_len(nrow(pts)),
           size = round(nrow(pts) * proportionTraining)
@@ -649,7 +638,7 @@ splitTrainTest <- function(
       testPts <- pts[-tr_idx, , drop = FALSE]
     }
 
-    # (8) Extract predictors only at sampled cells
+    # Extract predictors only at sampled cells
     trainX <- extractAtCells(r_pred, trainPts$cell)
     testX <- extractAtCells(r_pred, testPts$cell)
 
@@ -661,16 +650,15 @@ splitTrainTest <- function(
     testDf_t <- testDf_t[stats::complete.cases(testDf_t), , drop = FALSE]
 
     if (nrow(trainDf_t) < 2 || length(unique(trainDf_t$presence)) < 2) {
-      stop(sprintf(
-        "Timestep %d: insufficient/bad training data after NA filtering.",
-        t
+      return(list(
+        error = sprintf(
+          "Timestep %d: insufficient/bad training data after NA filtering.",
+          t
+        )
       ))
     }
 
-    trainDfs[[t]] <- trainDf_t
-    testDfs[[t]] <- testDf_t
-
-    samplingInfoRows[[t]] <- data.frame(
+    samplingInfo_t <- data.frame(
       timestep = t,
       minorityClass = minorityClass,
       majorityClass = majorityClass,
@@ -680,6 +668,62 @@ splitTrainTest <- function(
       nTrain = nrow(trainDf_t),
       nTest = nrow(testDf_t)
     )
+
+    list(
+      trainDf = trainDf_t,
+      testDf = testDf_t,
+      samplingInfo = samplingInfo_t,
+      nPts = nrow(pts),
+      finalMinorityProp = finalMinorityProp,
+      usedRandomSplit = usedRandomSplit,
+      warnings = warnings_list,
+      error = NULL
+    )
+  }
+
+  # ---- process timesteps sequentially ----
+  # Note: Parallel processing is not used here because terra SpatRaster objects
+
+  # contain external pointers that cannot be serialized for worker processes.
+  # The main optimization (global class estimation) already reduces overhead significantly.
+
+  results <- lapply(seq_len(n_t), function(t) {
+    result <- processOneTimestep(t)
+
+    # Log progress
+    if (is.null(result$error)) {
+      # Log any warnings
+      for (w in result$warnings) {
+        updateRunLog(w, type = "warning")
+      }
+      if (result$usedRandomSplit) {
+        updateRunLog(
+          sprintf("[t=%d] Spatial split class-imbalanced; using random split.", t),
+          type = "warning"
+        )
+      }
+      updateRunLog(
+        sprintf(
+          "[t=%d] Final sample: %d pts (%.1f%% minority).",
+          t,
+          result$nPts,
+          100 * result$finalMinorityProp
+        ),
+        type = "info"
+      )
+    }
+
+    result
+  })
+
+  # ---- collect results and check for errors ----
+  for (i in seq_len(n_t)) {
+    if (!is.null(results[[i]]$error)) {
+      stop(results[[i]]$error)
+    }
+    trainDfs[[i]] <- results[[i]]$trainDf
+    testDfs[[i]] <- results[[i]]$testDf
+    samplingInfoRows[[i]] <- results[[i]]$samplingInfo
   }
 
   # ---- combine across timesteps ----
