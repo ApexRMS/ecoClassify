@@ -306,7 +306,8 @@ for (t in seq_along(trainingRasterList)) {
     modelType,
     transferDir,
     category = "training",
-    timestep
+    timestep,
+    nCores = nCores
   )
   predictedPresencePath <- predictionRasters$presencePath
   probabilityPath <- predictionRasters$probabilityPath

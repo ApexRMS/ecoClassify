@@ -963,7 +963,8 @@ getPredictionRasters <- function(
   modelType = "Random Forest",
   transferDir,
   category,
-  timestep
+  timestep,
+  nCores = 1L
 ) {
   # Construct output file paths
   probabilityPath <- file.path(
@@ -982,7 +983,8 @@ getPredictionRasters <- function(
       raster,
       model,
       filename = probabilityPath,
-      memfrac = 0.5
+      memfrac = 0.5,
+      nCores = nCores
     )
   } else if (modelType == "CNN") {
     probabilityRaster <- predictCNN(

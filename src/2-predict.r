@@ -65,6 +65,10 @@ rasterDecimalPlaces <- inputVariables[[10]]
 tuningObjective <- inputVariables[[11]]
 overrideBandnames <- inputVariables[[12]]
 
+# Check if multiprocessing is selected
+mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
+nCores <- setCores(mulitprocessingSheet)
+
 # Load model and threshold
 if (modelType == "CNN") {
   model <- loadCNNModel(
@@ -157,7 +161,8 @@ for (t in seq_along(predictRasterList)) {
     modelType,
     transferDir,
     category = "predicting",
-    timestep
+    timestep,
+    nCores = nCores
   )
   classifiedPresencePath <- classifiedRasters$presencePath
   classifiedProbabilityPath <- classifiedRasters$probabilityPath

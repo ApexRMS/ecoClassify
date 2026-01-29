@@ -29,7 +29,7 @@
 #' This function is typically called within `getPredictionRasters()` to generate prediction maps
 #' for full raster extents.
 #' @noRd
-predictRanger <- function(raster, model, filename = "", memfrac = 0.7) {
+predictRanger <- function(raster, model, filename = "", memfrac = 0.7, nCores = 1L) {
   # Validate that raster has all required variables
   model_vars <- c(model$cat_vars, model$num_vars)
   raster_vars <- names(raster)
@@ -66,8 +66,8 @@ predictRanger <- function(raster, model, filename = "", memfrac = 0.7) {
       }
     }
 
-    # ranger prediction: force single thread to avoid per-thread copies
-    preds <- predict(m$model, data = data, num.threads = 1, verbose = FALSE)
+    # ranger prediction: use available cores for speed
+    preds <- predict(m$model, data = data, num.threads = nCores, verbose = FALSE)
 
     # Extract probabilities (second column)
     result <- if (is.data.frame(preds)) {
@@ -88,7 +88,7 @@ predictRanger <- function(raster, model, filename = "", memfrac = 0.7) {
     model = model,
     fun = predictFn,
     na.rm = TRUE,
-    cores = 1,
+    cores = nCores,
     memfrac = memfrac,
     filename = filename
   )
@@ -161,7 +161,8 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
     set.seed(1)
     idx0 <- which(df$presence == "absence")
     idx1 <- which(df$presence == "presence")
-    k0 <- round(tune_nmax * length(idx0) / nrow(df))
+    # Use as.numeric to avoid integer overflow
+    k0 <- round(as.numeric(tune_nmax) * length(idx0) / nrow(df))
     k1 <- tune_nmax - k0
     tune_idx <- c(
       sample(idx0, min(k0, length(idx0))),
