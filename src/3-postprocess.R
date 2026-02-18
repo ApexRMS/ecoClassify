@@ -215,6 +215,10 @@ if (nrow(ruleReclassDataframe) != 0) {
       # Rules
       for (i in seq_len(nrow(ruleReclassDataframe))) {
 
+        # Disable disk-backing for this iteration
+        old_todisk <- terraOptions()$todisk
+        terraOptions(todisk = FALSE)
+
           # Load rule raster
           rulePath <- ruleReclassDataframe$ruleRasterFile[i]
           if (length(rulePath) == 0 || is.na(rulePath) || !file.exists(rulePath)) {
@@ -222,6 +226,8 @@ if (nrow(ruleReclassDataframe) != 0) {
               paste0("Rule raster missing for rule index ", i, "; skipping."),
               type = "warning"
             )
+            # Restore before next
+            terraOptions(todisk = old_todisk)
             next
           }
           ruleRaster <- rast(rulePath)
@@ -232,6 +238,8 @@ if (nrow(ruleReclassDataframe) != 0) {
               "Rule raster extent does not match unfiltered training raster extent. Skipping reclassification.",
               type = "warning"
             )
+            # Restore before next
+            terraOptions(todisk = old_todisk)
             next
           }
 
@@ -244,6 +252,8 @@ if (nrow(ruleReclassDataframe) != 0) {
               paste0("Rule values (min/max/reclass) contain NA for rule index ", i, "; skipping."),
               type = "warning"
             )
+            # Restore before next
+            terraOptions(todisk = old_todisk)
             next
           }
           if (vmin > vmax) {
@@ -285,6 +295,8 @@ if (nrow(ruleReclassDataframe) != 0) {
             rm(classedMask); gc()
           }
 
+          # Restore setting at end of iteration
+          terraOptions(todisk = old_todisk)
           gc()
         }
 
@@ -362,6 +374,10 @@ if (nrow(ruleReclassDataframe) != 0) {
       # Apply rules (if any)
       for (i in seq_len(nrow(ruleReclassDataframe))) {
 
+        # Disable disk-backing for this iteration
+        old_todisk <- terraOptions()$todisk
+        terraOptions(todisk = FALSE)
+
           # Load rule raster
           rulePath <- ruleReclassDataframe$ruleRasterFile[i]
           if (length(rulePath) == 0 || is.na(rulePath) || !file.exists(rulePath)) {
@@ -369,6 +385,8 @@ if (nrow(ruleReclassDataframe) != 0) {
               paste0("Rule raster missing for rule index ", i, "; skipping."),
               type = "warning"
             )
+            # Restore before next
+            terraOptions(todisk = old_todisk)
             next
           }
           ruleRaster <- rast(rulePath)
@@ -379,6 +397,8 @@ if (nrow(ruleReclassDataframe) != 0) {
               "Rule raster extent does not match predicting raster extent. Skipping reclassification.",
               type = "warning"
             )
+            # Restore before next
+            terraOptions(todisk = old_todisk)
             next
           }
 
@@ -391,6 +411,8 @@ if (nrow(ruleReclassDataframe) != 0) {
               paste0("Rule values (min/max/reclass) contain NA for rule index ", i, "; skipping."),
               type = "warning"
             )
+            # Restore before next
+            terraOptions(todisk = old_todisk)
             next
           }
           if (vmin > vmax) {
@@ -432,6 +454,8 @@ if (nrow(ruleReclassDataframe) != 0) {
             rm(classedMask); gc()
           }
 
+          # Restore setting at end of iteration
+          terraOptions(todisk = old_todisk)
           gc()
         }
 

@@ -288,6 +288,10 @@ plotVariableImportance <- function(importanceData, transferDir) {
 #'
 #' @noRd
 filterPredictionRaster <- function(r, filterValue = NULL, fillValue = NULL) {
+  # Temporarily disable disk-backing to avoid file conflicts
+  old_todisk <- terraOptions()$todisk
+  terraOptions(todisk = FALSE)
+  
   rBin <- classify(
     r,
     matrix(c(-Inf, 0.5, 0, 0.5, Inf, 1), ncol = 3, byrow = TRUE)
@@ -320,9 +324,11 @@ filterPredictionRaster <- function(r, filterValue = NULL, fillValue = NULL) {
     rBin <- ifel(rBin == 0 & neighborSum >= fillValue, 1, rBin)
   }
 
+  # Restore original setting
+  terraOptions(todisk = old_todisk)
+  
   return(rBin)
 }
-
 
 #' Filter predicted presence raster and write to file ----
 #'
