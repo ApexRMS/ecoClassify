@@ -111,32 +111,70 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
     {
       usableCores <- max(1, min(nCores, parallel::detectCores() - 1))
       useParallel <- usableCores > 1
-      ENMevaluate(
-        occ = presenceTrainData,
-        bg.coords = absenceTrainData,
-        tune.args = tuneArgs,
-        progbar = FALSE,
-        partitions = "randomkfold",
-        parallel = useParallel,
-        numCores = usableCores,
-        quiet = TRUE,
-        algorithm = 'maxent.jar'
-      )
+      
+      # Try new ENMeval 2.0+ API first
+      tryCatch({
+        ENMeval::ENMevaluate(
+          occs = presenceTrainData,
+          bg = absenceTrainData,
+          tune.args = tuneArgs,
+          partitions = "randomkfold",
+          algorithm = 'maxent.jar',
+          parallel = useParallel,
+          numCores = usableCores,
+          quiet = TRUE
+        )
+      }, error = function(e1) {
+        # If that fails, try old ENMeval < 2.0 API
+        if (grepl("unused argument|unexpected.*argument|object.*not found", conditionMessage(e1))) {
+          ENMeval::ENMevaluate(
+            occ = presenceTrainData,
+            bg.coords = absenceTrainData,
+            tune.args = tuneArgs,
+            partitions = "randomkfold",
+            algorithm = 'maxent.jar',
+            parallel = useParallel,
+            numCores = usableCores,
+            quiet = TRUE
+          )
+        } else {
+          stop(e1)
+        }
+      })
     },
     error = function(e) {
       warning(
-        "Parallel Maxent failed due to memory issue. Retrying in serial mode..."
+        "Parallel Maxent failed. Retrying in serial mode...\n",
+        "Original error: ", conditionMessage(e)
       )
-      ENMevaluate(
-        occ = presenceTrainData,
-        bg.coords = absenceTrainData,
-        tune.args = tuneArgs,
-        progbar = FALSE,
-        partitions = "randomkfold",
-        parallel = FALSE,
-        quiet = TRUE,
-        algorithm = 'maxent.jar'
-      )
+
+      # Retry in serial mode with new API
+      tryCatch({
+        ENMeval::ENMevaluate(
+          occs = presenceTrainData,
+          bg = absenceTrainData,
+          tune.args = tuneArgs,
+          partitions = "randomkfold",
+          algorithm = 'maxent.jar',
+          parallel = FALSE,
+          quiet = TRUE
+        )
+      }, error = function(e2) {
+        # If that fails, try old API in serial
+        if (grepl("unused argument|unexpected.*argument|object.*not found", conditionMessage(e2))) {
+          ENMeval::ENMevaluate(
+            occ = presenceTrainData,
+            bg.coords = absenceTrainData,
+            tune.args = tuneArgs,
+            partitions = "randomkfold",
+            algorithm = 'maxent.jar',
+            parallel = FALSE,
+            quiet = TRUE
+          )
+        } else {
+          stop(e2)
+        }
+      })
     }
   )
 
