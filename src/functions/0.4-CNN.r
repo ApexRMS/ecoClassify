@@ -314,7 +314,7 @@ predictCNN <- function(model, newdata, isRaster = TRUE, filename = "", memfrac =
     return(mat[, "presence"])
   }
 
-  # Handle raster data - use terra::predict for chunked processing
+  # Store metadata in local variables
   num_vars <- model$num_vars
   cat_vars <- model$cat_vars
   cat_levels <- model$cat_levels
@@ -326,24 +326,24 @@ predictCNN <- function(model, newdata, isRaster = TRUE, filename = "", memfrac =
 
   # Create wrapper function for terra::predict
   # This function will be called many times (once per chunk)
-  predictFn <- function(model, data, ...) {
+  predictFn <- function(m, data, ...) {
     # Validate column presence
-    missing_vars <- setdiff(model$num_vars, names(data))
+    missing_vars <- setdiff(num_vars, names(data))
     if (length(missing_vars) > 0) {
       stop(sprintf("Missing numeric predictors: %s", paste(missing_vars, collapse = ", ")))
     }
 
     # Prepare numeric data
-    X_num <- as.matrix(data[, model$num_vars, drop = FALSE])
+    X_num <- as.matrix(data[, num_vars, drop = FALSE])
     storage.mode(X_num) <- "double"
 
     # Handle categorical variables
-    if (length(model$cat_vars) == 0) {
+    if (length(cat_vars) == 0) {
       X_cat_tensor <- list()
     } else {
-      X_cat <- lapply(seq_along(model$cat_vars), function(i) {
-        var <- model$cat_vars[i]
-        levels_train <- model$cat_levels[[i]]
+      X_cat <- lapply(seq_along(cat_vars), function(i) {
+        var <- cat_vars[i]
+        levels_train <- cat_levels[[i]]
         x <- data[[var]]
         if (!is.factor(x)) x <- factor(x, levels = levels_train)
 

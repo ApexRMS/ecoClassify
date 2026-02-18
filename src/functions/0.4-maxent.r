@@ -111,32 +111,55 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
     {
       usableCores <- max(1, min(nCores, parallel::detectCores() - 1))
       useParallel <- usableCores > 1
-      ENMevaluate(
-        occ = presenceTrainData,
-        bg.coords = absenceTrainData,
-        tune.args = tuneArgs,
-        progbar = FALSE,
-        partitions = "randomkfold",
-        parallel = useParallel,
-        numCores = usableCores,
-        quiet = TRUE,
-        algorithm = 'maxent.jar'
-      )
+      
+      # Try new ENMeval 2.0+ API first
+      tryCatch({
+        ENMeval::ENMevaluate(
+          occs = presenceTrainData,
+          bg = absenceTrainData,
+          tune.args = tuneArgs,
+          partitions = "randomkfold",
+          algorithm = 'maxent.jar',
+          parallel = useParallel,
+          numCores = usableCores,
+          quiet = TRUE
+        )
+      }, error = function(e1) {
+        # If that fails, try old ENMeval < 2.0 API
+        if (grepl("unused argument|unexpected.*argument|object.*not found", conditionMessage(e1))) {
+          rsyncrosim::updateRunLog(type = "warning", message = "ENMevaluate failed, update ENMeval package to version 2.0")
+          stop(e1)
+        } else {
+          stop(e1)
+        }
+      })
     },
     error = function(e) {
       warning(
-        "Parallel Maxent failed due to memory issue. Retrying in serial mode..."
+        "Parallel Maxent failed. Retrying in serial mode...\n",
+        "Original error: ", conditionMessage(e)
       )
-      ENMevaluate(
-        occ = presenceTrainData,
-        bg.coords = absenceTrainData,
-        tune.args = tuneArgs,
-        progbar = FALSE,
-        partitions = "randomkfold",
-        parallel = FALSE,
-        quiet = TRUE,
-        algorithm = 'maxent.jar'
-      )
+
+      # Retry in serial mode with new API
+      tryCatch({
+        ENMeval::ENMevaluate(
+          occs = presenceTrainData,
+          bg = absenceTrainData,
+          tune.args = tuneArgs,
+          partitions = "randomkfold",
+          algorithm = 'maxent.jar',
+          parallel = FALSE,
+          quiet = TRUE
+        )
+      }, error = function(e2) {
+        # If that fails, try old API in serial
+        if (grepl("unused argument|unexpected.*argument|object.*not found", conditionMessage(e2))) {
+          rsyncrosim::updateRunLog(type = "warning", message = "ENMevaluate failed, update ENMeval package to version 2.0")
+          stop(e2)
+        } else {
+          stop(e2)
+        }
+      })
     }
   )
 
@@ -174,7 +197,7 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
 
     # ENMeval/MaxEnt logistic output is a numeric vector of P(presence)
     p1 <- tryCatch(
-      as.numeric(predict(mxModel, newdata, type = "logistic")),
+      as.numeric(dismo::predict(mxModel, newdata, type = "logistic")),
       error = function(e) {
         # some MaxEnt builds require 'dismo::predict' signature
         as.numeric(dismo::predict(mxModel, newdata, args = "logistic"))
@@ -249,7 +272,7 @@ predictMaxent <- function(raster, model, filename = "", memfrac = 0.5) {
 
     # MaxEnt logistic prediction
     p1 <- tryCatch(
-      as.numeric(predict(m$model, data, type = "logistic")),
+      as.numeric(dismo::predict(m$model, data, type = "logistic")),
       error = function(e) {
         # some MaxEnt builds require 'dismo::predict' signature
         as.numeric(dismo::predict(m$model, data, args = "logistic"))
