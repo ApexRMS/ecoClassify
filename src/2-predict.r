@@ -68,8 +68,12 @@ overrideBandnames <- inputVariables[[12]]
 # Read TargetClassOptions ------------------------------------------------------
 
 targetClassSheet <- datasheet(myScenario, "ecoClassify_TargetClassOptions")
-targetClassValue <- if (nrow(targetClassSheet) > 0) targetClassSheet$targetClassValue[1] else NULL
-targetClassLabel <- if (nrow(targetClassSheet) > 0) targetClassSheet$targetClassLabel[1] else NULL
+targetClassValue <- NA_integer_
+targetClassLabel <- NA_character_
+if (nrow(targetClassSheet) > 0) {
+  if (!is.null(targetClassSheet$targetClassValue) && isTRUE(!is.na(targetClassSheet$targetClassValue[1]))) targetClassValue <- as.integer(targetClassSheet$targetClassValue[1])
+  if (!is.null(targetClassSheet$targetClassLabel) && isTRUE(!is.na(targetClassSheet$targetClassLabel[1]))) targetClassLabel <- as.character(targetClassSheet$targetClassLabel[1])
+}
 
 # Load model and threshold
 if (modelType == "CNN") {
@@ -201,14 +205,18 @@ for (t in seq_along(predictRasterList)) {
   )
 
   # Accumulate summary row for this timestep
-  summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
-    predictionRaster  = terra::rast(classifiedPresencePath),
-    probabilityRaster = terra::rast(classifiedProbabilityPath),
-    timestep          = timestep,
-    predictionType    = "predicting",
-    targetClassValue  = targetClassValue,
-    targetClassLabel  = targetClassLabel
-  )
+  tryCatch({
+    summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
+      predictionRaster  = terra::rast(classifiedPresencePath),
+      probabilityRaster = terra::rast(classifiedProbabilityPath),
+      timestep          = timestep,
+      predictionType    = "predicting",
+      targetClassValue  = targetClassValue,
+      targetClassLabel  = targetClassLabel
+    )
+  }, error = function(e) {
+    updateRunLog(paste0("Could not build summary row for timestep ", timestep, ": ", conditionMessage(e)), type = "warning")
+  })
 }
 
 # Save dataframes back to SyncroSim library's output datasheets ----------------

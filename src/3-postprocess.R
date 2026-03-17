@@ -83,8 +83,12 @@ ruleReclassDataframe <- datasheet(
 ### TargetClassOptions -------------------------------------------
 
 targetClassSheet <- datasheet(myScenario, "ecoClassify_TargetClassOptions")
-targetClassValue <- if (nrow(targetClassSheet) > 0) targetClassSheet$targetClassValue[1] else NULL
-targetClassLabel <- if (nrow(targetClassSheet) > 0) targetClassSheet$targetClassLabel[1] else NULL
+targetClassValue <- NA_integer_
+targetClassLabel <- NA_character_
+if (nrow(targetClassSheet) > 0) {
+  if (!is.null(targetClassSheet$targetClassValue) && isTRUE(!is.na(targetClassSheet$targetClassValue[1]))) targetClassValue <- as.integer(targetClassSheet$targetClassValue[1])
+  if (!is.null(targetClassSheet$targetClassLabel) && isTRUE(!is.na(targetClassSheet$targetClassLabel[1]))) targetClassLabel <- as.character(targetClassSheet$targetClassLabel[1])
+}
 
 
 ### Output datasheets ---------------------------------------------

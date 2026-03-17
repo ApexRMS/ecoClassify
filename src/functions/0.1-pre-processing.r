@@ -220,11 +220,11 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
 #' @noRd
 reclassifyGroundTruth <- function(groundTruthRasterList,
                                    useTargetClass = FALSE,
-                                   targetClassValue = NULL,
-                                   backgroundValues = NULL,
-                                   ignoreValues = NULL) {
+                                   targetClassValue = NA,
+                                   backgroundValues = NA,
+                                   ignoreValues = NA) {
   lapply(groundTruthRasterList, function(raster) {
-    if (isTRUE(useTargetClass) && !is.null(targetClassValue)) {
+    if (isTRUE(useTargetClass) && !is.na(targetClassValue)) {
       result <- raster
       result[] <- NA
       vals <- terra::values(raster)
@@ -232,11 +232,11 @@ reclassifyGroundTruth <- function(groundTruthRasterList,
       # target class → 1
       result[vals == targetClassValue] <- 1
 
-      if (!is.null(backgroundValues) && !is.na(backgroundValues) && nchar(trimws(backgroundValues)) > 0) {
+      if (!is.na(backgroundValues) && nchar(trimws(backgroundValues)) > 0) {
         bgVals <- as.integer(trimws(strsplit(backgroundValues, ",")[[1]]))
         result[vals %in% bgVals] <- 0
       } else {
-        ignoreVals <- if (!is.null(ignoreValues) && !is.na(ignoreValues) && nchar(trimws(ignoreValues)) > 0)
+        ignoreVals <- if (!is.na(ignoreValues) && nchar(trimws(ignoreValues)) > 0)
           as.integer(trimws(strsplit(ignoreValues, ",")[[1]]))
         else integer(0)
         result[!is.na(vals) & vals != targetClassValue & !(vals %in% ignoreVals)] <- 0
@@ -244,10 +244,10 @@ reclassifyGroundTruth <- function(groundTruthRasterList,
 
       return(result)
     } else {
-      # Original binary logic: min → 0, max → 1
-      rcl <- matrix(c(min(terra::values(raster), na.rm = TRUE), 0,
-                      max(terra::values(raster), na.rm = TRUE), 1), ncol = 2)
-      return(terra::classify(raster, rcl, others = NA))
+      # Original binary logic: min → 0, max → 1 (in-place, preserves any intermediate values)
+      raster[raster == min(terra::values(raster), na.rm = TRUE)] <- 0
+      raster[raster == max(terra::values(raster), na.rm = TRUE)] <- 1
+      return(raster)
     }
   })
 }

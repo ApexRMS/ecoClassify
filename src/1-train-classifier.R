@@ -73,11 +73,18 @@ nCores <- setCores(mulitprocessingSheet)
 # Read TargetClassOptions ------------------------------------------------------
 
 targetClassSheet <- datasheet(myScenario, "ecoClassify_TargetClassOptions")
-useTargetClass   <- if (nrow(targetClassSheet) > 0 && !is.na(targetClassSheet$useTargetClass[1])) targetClassSheet$useTargetClass[1] else FALSE
-targetClassValue <- if (nrow(targetClassSheet) > 0) targetClassSheet$targetClassValue[1] else NULL
-backgroundValues <- if (nrow(targetClassSheet) > 0) targetClassSheet$backgroundValues[1] else NULL
-ignoreValues     <- if (nrow(targetClassSheet) > 0) targetClassSheet$ignoreValues[1] else NULL
-targetClassLabel <- if (nrow(targetClassSheet) > 0) targetClassSheet$targetClassLabel[1] else NULL
+useTargetClass   <- FALSE
+targetClassValue <- NA_integer_
+backgroundValues <- NA_character_
+ignoreValues     <- NA_character_
+targetClassLabel <- NA_character_
+if (nrow(targetClassSheet) > 0) {
+  if (isTRUE(targetClassSheet$useTargetClass[1]))                                                    useTargetClass   <- TRUE
+  if (!is.null(targetClassSheet$targetClassValue) && isTRUE(!is.na(targetClassSheet$targetClassValue[1]))) targetClassValue <- as.integer(targetClassSheet$targetClassValue[1])
+  if (!is.null(targetClassSheet$backgroundValues) && isTRUE(!is.na(targetClassSheet$backgroundValues[1]))) backgroundValues <- as.character(targetClassSheet$backgroundValues[1])
+  if (!is.null(targetClassSheet$ignoreValues)     && isTRUE(!is.na(targetClassSheet$ignoreValues[1])))     ignoreValues     <- as.character(targetClassSheet$ignoreValues[1])
+  if (!is.null(targetClassSheet$targetClassLabel) && isTRUE(!is.na(targetClassSheet$targetClassLabel[1]))) targetClassLabel <- as.character(targetClassSheet$targetClassLabel[1])
+}
 
 
 # Extract list of training and ground truth rasters ----------------------------
@@ -363,14 +370,18 @@ for (t in seq_along(trainingRasterList)) {
   )
 
   # Accumulate summary row for this timestep
-  summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
-    predictionRaster = terra::rast(predictedPresencePath),
-    probabilityRaster = terra::rast(probabilityPath),
-    timestep = timestep,
-    predictionType = "training",
-    targetClassValue = targetClassValue,
-    targetClassLabel = targetClassLabel
-  )
+  tryCatch({
+    summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
+      predictionRaster  = terra::rast(predictedPresencePath),
+      probabilityRaster = terra::rast(probabilityPath),
+      timestep          = timestep,
+      predictionType    = "training",
+      targetClassValue  = targetClassValue,
+      targetClassLabel  = targetClassLabel
+    )
+  }, error = function(e) {
+    updateRunLog(paste0("Could not build summary row for timestep ", timestep, ": ", conditionMessage(e)), type = "warning")
+  })
 }
 
 progressBar(type = "message", message = "Calculating summary statistics")
@@ -410,11 +421,15 @@ modelOutputDataframe <- outputDataframes[[2]]
 confusionMatrixPlot <- outputDataframes[[3]]
 
 # Accumulate metrics row
-metricsRows[[1]] <- buildMetricsRow(
-  statsDataframe   = modelOutputDataframe,
-  targetClassValue = targetClassValue,
-  targetClassLabel = targetClassLabel
-)
+tryCatch({
+  metricsRows[[1]] <- buildMetricsRow(
+    statsDataframe   = modelOutputDataframe,
+    targetClassValue = targetClassValue,
+    targetClassLabel = targetClassLabel
+  )
+}, error = function(e) {
+  updateRunLog(paste0("Could not build metrics row: ", conditionMessage(e)), type = "warning")
+})
 
 # Generate model chart dataframe --------------------------------
 
