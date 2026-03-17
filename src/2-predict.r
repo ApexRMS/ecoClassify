@@ -65,6 +65,12 @@ rasterDecimalPlaces <- inputVariables[[10]]
 tuningObjective <- inputVariables[[11]]
 overrideBandnames <- inputVariables[[12]]
 
+# Read TargetClassOptions ------------------------------------------------------
+
+targetClassSheet <- datasheet(myScenario, "ecoClassify_TargetClassOptions")
+targetClassValue <- if (nrow(targetClassSheet) > 0) targetClassSheet$targetClassValue[1] else NULL
+targetClassLabel <- if (nrow(targetClassSheet) > 0) targetClassSheet$targetClassLabel[1] else NULL
+
 # Load model and threshold
 if (modelType == "CNN") {
   model <- loadCNNModel(
@@ -142,6 +148,8 @@ classifiedRgbOutputDataframe <- data.frame(
   RGBImage = character(0)
 )
 
+summaryRows <- list()
+
 # Predict presence for rasters to classify -------------------------------------
 
 progressBar(type = "message", message = "Predicting")
@@ -191,6 +199,16 @@ for (t in seq_along(predictRasterList)) {
     timestep,
     transferDir
   )
+
+  # Accumulate summary row for this timestep
+  summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
+    predictionRaster  = terra::rast(classifiedPresencePath),
+    probabilityRaster = terra::rast(classifiedProbabilityPath),
+    timestep          = timestep,
+    predictionType    = "predicting",
+    targetClassValue  = targetClassValue,
+    targetClassLabel  = targetClassLabel
+  )
 }
 
 # Save dataframes back to SyncroSim library's output datasheets ----------------
@@ -206,3 +224,11 @@ saveDatasheet(
   data = classifiedRgbOutputDataframe,
   name = "ecoClassify_ClassifiedRgbOutput"
 )
+
+if (length(summaryRows) > 0) {
+  saveDatasheet(
+    myScenario,
+    data = do.call(rbind, summaryRows),
+    name = "ecoClassify_SummaryOutput"
+  )
+}

@@ -56,6 +56,14 @@
         <record columns="overrideBandnames|normalizeRasters|rasterDecimalPlaces|modelTuning|tuningObjective|setManualThreshold|manualThreshold|applyContextualization|contextualizationWindowSize|setSeed" values="0|0|2|0|5|0|0.5|0|3|0"/>
     </dataSheet>
     
+    <dataSheet name="TargetClassOptions" displayName="Target Class Options" isSingleRow="True">
+        <column name="useTargetClass" dataType="Boolean" displayName="Use target class" isOptional="True"/>
+        <column name="targetClassValue" dataType="Integer" displayName="Target class value" isOptional="True"/>
+        <column name="backgroundValues" dataType="String" displayName="Background values (comma-separated)" isOptional="True"/>
+        <column name="ignoreValues" dataType="String" displayName="Ignore values (comma-separated)" isOptional="True"/>
+        <column name="targetClassLabel" dataType="String" displayName="Target class label" isOptional="True"/>
+    </dataSheet>
+
     <dataSheet name="PostProcessingFilter" displayName="Filtering" isSingleRow="True">
         <column name="applyFiltering" dataType="Boolean" displayName="Apply filtering"/>
         <column name="filterValue" dataType="Integer" displayName="Min neighbors to keep"/>
@@ -71,6 +79,30 @@
     </dataSheet>
 
     <!--Output-->
+    <dataSheet name="SummaryOutput" displayName="Prediction Summary" isSingleRow="False" hasTimestep="True">
+        <column name="TimestepID" dataType="Integer" displayName="Timestep" isOptional="True"/>
+        <column name="TargetClassValue" dataType="Integer" displayName="Target class value" isOptional="True"/>
+        <column name="TargetClassLabel" dataType="String" displayName="Target class label" isOptional="True"/>
+        <column name="PredictionType" dataType="String" displayName="Prediction type" isOptional="True"/>
+        <column name="PredictedPixels" dataType="Integer" displayName="Predicted pixels" isOptional="True"/>
+        <column name="PredictedArea" dataType="Double" displayName="Predicted area (map units²)" isOptional="True"/>
+        <column name="MeanProbability" dataType="Double" displayName="Mean probability" isOptional="True"/>
+        <column name="MedianProbability" dataType="Double" displayName="Median probability" isOptional="True"/>
+        <column name="MinProbability" dataType="Double" displayName="Min probability" isOptional="True"/>
+        <column name="MaxProbability" dataType="Double" displayName="Max probability" isOptional="True"/>
+    </dataSheet>
+
+    <dataSheet name="ModelMetricsByClass" displayName="Model Metrics by Class" isSingleRow="False">
+        <column name="TargetClassValue" dataType="Integer" displayName="Target class value" isOptional="True"/>
+        <column name="TargetClassLabel" dataType="String" displayName="Target class label" isOptional="True"/>
+        <column name="Accuracy" dataType="Double" displayName="Accuracy" isOptional="True"/>
+        <column name="Precision" dataType="Double" displayName="Precision" isOptional="True"/>
+        <column name="Recall" dataType="Double" displayName="Recall (Sensitivity)" isOptional="True"/>
+        <column name="Specificity" dataType="Double" displayName="Specificity" isOptional="True"/>
+        <column name="F1" dataType="Double" displayName="F1 Score" isOptional="True"/>
+        <column name="AUC" dataType="Double" displayName="AUC" isOptional="True"/>
+    </dataSheet>
+
     <dataSheet name="RasterOutput" displayName="Training Rasters" hasTimestep="True">
         <column name="PredictedUnfiltered" dataType="String" displayName="Predicted" isExternalFile="True" isRaster="True" bandColumn="Band"/>
         <column name="PredictedUnfilteredRestricted" dataType="String" displayName="Predicted Restricted" isExternalFile="True" isRaster="True" bandColumn="Band"/>
@@ -146,6 +178,7 @@
         <dataSheet name="InputTrainingCovariates" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Input"/>
         <dataSheet name="AdvancedClassifierOptions" type="Input"/>
+        <dataSheet name="TargetClassOptions" type="Input"/>
         <dataSheet name="RasterOutput" type="Output"/>
         <dataSheet name="ConfusionMatrix" type="Output"/>
         <dataSheet name="ModelStatistics" type="Output"/>
@@ -155,6 +188,8 @@
         <dataSheet name="RgbOutput" type="Output"/>
         <dataSheet name="ModelObject" type="Output"/>
         <dataSheet name="ModelChartData" type="Output"/>
+        <dataSheet name="SummaryOutput" type="Output"/>
+        <dataSheet name="ModelMetricsByClass" type="Output"/>
     </transformer>
 
     <!--Transformer 2: predicting-->
@@ -163,10 +198,12 @@
         <dataSheet name="InputPredictingCovariates" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Input"/>
         <dataSheet name="AdvancedClassifierOptions" type="Input"/>
+        <dataSheet name="TargetClassOptions" type="Input"/>
         <dataSheet name="ModelObject" type="Input"/>
         <dataSheet name="RasterOutput" type="Both"/>
         <dataSheet name="ClassifiedRasterOutput" type="Output"/>
         <dataSheet name="ClassifiedRgbOutput" type="Output"/>
+        <dataSheet name="SummaryOutput" type="Output"/>
     </transformer>
 
     <!--Transformer 3: filtering-->
@@ -175,8 +212,10 @@
         <dataSheet name="ClassifiedRasterOutput" type="Both"/>
         <dataSheet name="PostProcessingFilter" type="Input"/>
         <dataSheet name="PostProcessingRule" type="Input"/>
+        <dataSheet name="TargetClassOptions" type="Input"/>
         <dataSheet name="InputTrainingRasters" type="Input"/>
         <dataSheet name="InputPredictingRasters" type="Input"/>
+        <dataSheet name="SummaryOutput" type="Output"/>
     </transformer>
 
     <!--Export transformers-->
@@ -216,6 +255,7 @@
                 </group>
             </group>
             <item name="AdvancedClassifierOptions"/>
+            <item name="TargetClassOptions"/>
             <group name="PostProcessingOptions" displayName="Post-Processing Options">
                 <item name="PostProcessingFilter"/>
                 <item name="PostProcessingRule"/>
@@ -224,6 +264,8 @@
 
         <group name="AllOutputs" displayName="Output">
             <item name="ModelStatistics"/>
+            <item name="SummaryOutput"/>
+            <item name="ModelMetricsByClass"/>
         </group>
 
     </layout>

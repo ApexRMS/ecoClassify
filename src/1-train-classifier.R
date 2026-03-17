@@ -70,6 +70,15 @@ if (!is.null(setSeed) && !is.na(setSeed)) {
 mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
 nCores <- setCores(mulitprocessingSheet)
 
+# Read TargetClassOptions ------------------------------------------------------
+
+targetClassSheet <- datasheet(myScenario, "ecoClassify_TargetClassOptions")
+useTargetClass   <- if (nrow(targetClassSheet) > 0 && !is.na(targetClassSheet$useTargetClass[1])) targetClassSheet$useTargetClass[1] else FALSE
+targetClassValue <- if (nrow(targetClassSheet) > 0) targetClassSheet$targetClassValue[1] else NULL
+backgroundValues <- if (nrow(targetClassSheet) > 0) targetClassSheet$backgroundValues[1] else NULL
+ignoreValues     <- if (nrow(targetClassSheet) > 0) targetClassSheet$ignoreValues[1] else NULL
+targetClassLabel <- if (nrow(targetClassSheet) > 0) targetClassSheet$targetClassLabel[1] else NULL
+
 
 # Extract list of training and ground truth rasters ----------------------------
 
@@ -116,7 +125,13 @@ if (isTRUE(applyContextualization)) {
 }
 
 # Reclassify ground truth rasters
-groundTruthRasterList <- reclassifyGroundTruth(groundTruthRasterList)
+groundTruthRasterList <- reclassifyGroundTruth(
+  groundTruthRasterList,
+  useTargetClass   = useTargetClass,
+  targetClassValue = targetClassValue,
+  backgroundValues = backgroundValues,
+  ignoreValues     = ignoreValues
+)
 
 # Extract covariate rasters and convert to correct data type
 trainingCovariateRaster <- processCovariates(
@@ -190,6 +205,9 @@ confusionOutputDataframe <- data.frame(
 modelOutputDataframe <- data.frame(Statistic = character(0), Value = numeric(0))
 
 rgbOutputDataframe <- data.frame(Timestep = numeric(0), RGBImage = character(0))
+
+summaryRows <- list()
+metricsRows <- list()
 
 
 # Train model ------------------------------------------------------------------
@@ -343,6 +361,16 @@ for (t in seq_along(trainingRasterList)) {
     timestep,
     transferDir
   )
+
+  # Accumulate summary row for this timestep
+  summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
+    predictionRaster = terra::rast(predictedPresencePath),
+    probabilityRaster = terra::rast(probabilityPath),
+    timestep = timestep,
+    predictionType = "training",
+    targetClassValue = targetClassValue,
+    targetClassLabel = targetClassLabel
+  )
 }
 
 progressBar(type = "message", message = "Calculating summary statistics")
@@ -380,6 +408,13 @@ outputDataframes <- calculateStatistics(
 confusionOutputDataframe <- outputDataframes[[1]]
 modelOutputDataframe <- outputDataframes[[2]]
 confusionMatrixPlot <- outputDataframes[[3]]
+
+# Accumulate metrics row
+metricsRows[[1]] <- buildMetricsRow(
+  statsDataframe   = modelOutputDataframe,
+  targetClassValue = targetClassValue,
+  targetClassLabel = targetClassLabel
+)
 
 # Generate model chart dataframe --------------------------------
 
@@ -524,3 +559,19 @@ saveDatasheet(
   data = modelChartDataframe,
   name = "ecoClassify_ModelChartData"
 )
+
+if (length(summaryRows) > 0) {
+  saveDatasheet(
+    myScenario,
+    data = do.call(rbind, summaryRows),
+    name = "ecoClassify_SummaryOutput"
+  )
+}
+
+if (length(metricsRows) > 0) {
+  saveDatasheet(
+    myScenario,
+    data = do.call(rbind, metricsRows),
+    name = "ecoClassify_ModelMetricsByClass"
+  )
+}

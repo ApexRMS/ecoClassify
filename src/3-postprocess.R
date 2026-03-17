@@ -80,6 +80,13 @@ ruleReclassDataframe <- datasheet(
 )
 
 
+### TargetClassOptions -------------------------------------------
+
+targetClassSheet <- datasheet(myScenario, "ecoClassify_TargetClassOptions")
+targetClassValue <- if (nrow(targetClassSheet) > 0) targetClassSheet$targetClassValue[1] else NULL
+targetClassLabel <- if (nrow(targetClassSheet) > 0) targetClassSheet$targetClassLabel[1] else NULL
+
+
 ### Output datasheets ---------------------------------------------
 
 trainingOutputDataframe <- datasheet(
@@ -118,6 +125,8 @@ predTimestepList <- predictingRasterDataframe %>%
 
 progressBar(type = "message", message = "Filtering")
 
+summaryRows <- list()
+
 ### Training step -------------------------------------------------
 
 for (t in trainTimestepList) {
@@ -146,6 +155,21 @@ for (t in trainTimestepList) {
     trainingOutputDataframe$PredictedFiltered[
       trainingOutputDataframe$Timestep == t
     ] <- filteredTraining$PredictedFiltered
+
+    # Accumulate filtered summary row
+    if (isTRUE(applyFiltering) && !is.na(filteredTraining$PredictedFiltered)) {
+      probPath <- trainingOutputDataframe$Probability[trainingOutputDataframe$Timestep == t]
+      if (!is.na(probPath) && file.exists(probPath)) {
+        summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
+          predictionRaster  = terra::rast(filteredTraining$PredictedFiltered),
+          probabilityRaster = terra::rast(probPath),
+          timestep          = t,
+          predictionType    = "filtered",
+          targetClassValue  = targetClassValue,
+          targetClassLabel  = targetClassLabel
+        )
+      }
+    }
   }
 }
 
@@ -177,6 +201,21 @@ for (t in predTimestepList) {
     predictingOutputDataframe$ClassifiedFiltered[
       predictingOutputDataframe$Timestep == t
     ] <- filteredPredicting$PredictedFiltered
+
+    # Accumulate filtered summary row
+    if (isTRUE(applyFiltering) && !is.na(filteredPredicting$PredictedFiltered)) {
+      probPath <- predictingOutputDataframe$ClassifiedProbability[predictingOutputDataframe$Timestep == t]
+      if (!is.na(probPath) && file.exists(probPath)) {
+        summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
+          predictionRaster  = terra::rast(filteredPredicting$PredictedFiltered),
+          probabilityRaster = terra::rast(probPath),
+          timestep          = t,
+          predictionType    = "filtered",
+          targetClassValue  = targetClassValue,
+          targetClassLabel  = targetClassLabel
+        )
+      }
+    }
   }
 }
 
@@ -313,6 +352,19 @@ if (nrow(ruleReclassDataframe) != 0) {
         trainingOutputDataframe$Timestep == t
       ] <- reclassedPathTrain
 
+      # Accumulate restricted summary row
+      probPath <- trainingOutputDataframe$Probability[trainingOutputDataframe$Timestep == t]
+      if (!is.na(probPath) && file.exists(probPath)) {
+        summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
+          predictionRaster  = terra::rast(reclassedPathTrain),
+          probabilityRaster = terra::rast(probPath),
+          timestep          = t,
+          predictionType    = "restricted",
+          targetClassValue  = targetClassValue,
+          targetClassLabel  = targetClassLabel
+        )
+      }
+
       # ---- filter after reclassification to create FilteredRestricted ----
       if (isTRUE(applyFiltering)) {
         filteredRestricted <- filterRasterDataframe(
@@ -340,6 +392,18 @@ if (nrow(ruleReclassDataframe) != 0) {
         trainingOutputDataframe$PredictedFilteredRestricted[
           trainingOutputDataframe$Timestep == t
         ] <- reclassedFilteredPathTrain
+
+        # Accumulate filtered_restricted summary row
+        if (!is.na(probPath) && file.exists(probPath)) {
+          summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
+            predictionRaster  = terra::rast(reclassedFilteredPathTrain),
+            probabilityRaster = terra::rast(probPath),
+            timestep          = t,
+            predictionType    = "filtered_restricted",
+            targetClassValue  = targetClassValue,
+            targetClassLabel  = targetClassLabel
+          )
+        }
       }
 
       # Cleanup per-timestep
@@ -472,6 +536,19 @@ if (nrow(ruleReclassDataframe) != 0) {
         predictingOutputDataframe$Timestep == t
       ] <- reclassedPathPred
 
+      # Accumulate restricted summary row
+      predProbPath <- predictingOutputDataframe$ClassifiedProbability[predictingOutputDataframe$Timestep == t]
+      if (!is.na(predProbPath) && file.exists(predProbPath)) {
+        summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
+          predictionRaster  = terra::rast(reclassedPathPred),
+          probabilityRaster = terra::rast(predProbPath),
+          timestep          = t,
+          predictionType    = "restricted",
+          targetClassValue  = targetClassValue,
+          targetClassLabel  = targetClassLabel
+        )
+      }
+
       # ---- filter after reclassification to create FilteredRestricted ----
       if (isTRUE(applyFiltering)) {
         filteredRestricted <- filterRasterDataframe(
@@ -499,6 +576,18 @@ if (nrow(ruleReclassDataframe) != 0) {
         predictingOutputDataframe$ClassifiedFilteredRestricted[
           predictingOutputDataframe$Timestep == t
         ] <- reclassedFilteredPathPred
+
+        # Accumulate filtered_restricted summary row
+        if (!is.na(predProbPath) && file.exists(predProbPath)) {
+          summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
+            predictionRaster  = terra::rast(reclassedFilteredPathPred),
+            probabilityRaster = terra::rast(predProbPath),
+            timestep          = t,
+            predictionType    = "filtered_restricted",
+            targetClassValue  = targetClassValue,
+            targetClassLabel  = targetClassLabel
+          )
+        }
       }
 
       # Cleanup per-timestep
@@ -528,5 +617,13 @@ if (dim(predictingOutputDataframe)[1] != 0) {
     myScenario,
     data = predictingOutputDataframe,
     name = "ecoClassify_ClassifiedRasterOutput"
+  )
+}
+
+if (length(summaryRows) > 0) {
+  saveDatasheet(
+    myScenario,
+    data = do.call(rbind, summaryRows),
+    name = "ecoClassify_SummaryOutput"
   )
 }

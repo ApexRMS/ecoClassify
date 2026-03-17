@@ -413,3 +413,75 @@ filterRasterDataframe <- function(
 
   return(rasterDataframe)
 }
+
+#' Build a SummaryOutput row for a prediction raster ----
+#'
+#' @description
+#' Computes pixel count, area, and probability statistics for predicted-present
+#' pixels (value == 1) and returns a single-row data.frame matching the
+#' SummaryOutput datasheet schema.
+#'
+#' @param predictionRaster SpatRaster of binary 0/1 predictions.
+#' @param probabilityRaster SpatRaster of continuous probability values.
+#' @param timestep Integer timestep identifier.
+#' @param predictionType Character label (e.g. "training", "predicting", "filtered").
+#' @param targetClassValue Integer or NA.
+#' @param targetClassLabel Character or NA.
+#'
+#' @return A one-row data.frame.
+#' @noRd
+buildSummaryRow <- function(predictionRaster, probabilityRaster, timestep,
+                             predictionType, targetClassValue = NA,
+                             targetClassLabel = NA) {
+  predVals  <- terra::values(predictionRaster, mat = FALSE)
+  probVals  <- terra::values(probabilityRaster, mat = FALSE)
+  pixelArea <- prod(terra::res(predictionRaster))
+
+  presentMask <- !is.na(predVals) & predVals == 1
+  probPresent <- probVals[presentMask]
+
+  data.frame(
+    TimestepID        = timestep,
+    TargetClassValue  = targetClassValue,
+    TargetClassLabel  = targetClassLabel,
+    PredictionType    = predictionType,
+    PredictedPixels   = sum(presentMask, na.rm = TRUE),
+    PredictedArea     = sum(presentMask, na.rm = TRUE) * pixelArea,
+    MeanProbability   = mean(probPresent, na.rm = TRUE),
+    MedianProbability = median(probPresent, na.rm = TRUE),
+    MinProbability    = if (length(probPresent) > 0) min(probPresent) else NA_real_,
+    MaxProbability    = if (length(probPresent) > 0) max(probPresent) else NA_real_
+  )
+}
+
+#' Build a ModelMetricsByClass row from calculateStatistics() output ----
+#'
+#' @description
+#' Extracts named statistics from the modelOutputDataFrame produced by
+#' calculateStatistics() and returns a single-row data.frame matching the
+#' ModelMetricsByClass datasheet schema.
+#'
+#' @param statsDataframe Data.frame with columns Statistic and Value.
+#' @param targetClassValue Integer or NA.
+#' @param targetClassLabel Character or NA.
+#' @param auc Numeric AUC or NA.
+#'
+#' @return A one-row data.frame.
+#' @noRd
+buildMetricsRow <- function(statsDataframe, targetClassValue = NA,
+                             targetClassLabel = NA, auc = NA) {
+  getMetric <- function(name) {
+    val <- statsDataframe$Value[statsDataframe$Statistic == name]
+    if (length(val) == 0) NA_real_ else as.numeric(val)
+  }
+  data.frame(
+    TargetClassValue = targetClassValue,
+    TargetClassLabel = targetClassLabel,
+    Accuracy    = getMetric("Accuracy"),
+    Precision   = getMetric("Precision"),
+    Recall      = getMetric("Sensitivity"),
+    Specificity = getMetric("Specificity"),
+    F1          = getMetric("F1"),
+    AUC         = auc
+  )
+}
