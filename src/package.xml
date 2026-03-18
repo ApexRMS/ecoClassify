@@ -80,7 +80,6 @@
 
     <!--Output-->
     <dataSheet name="SummaryOutput" displayName="Prediction Summary" isSingleRow="False" hasTimestep="True">
-        <column name="TimestepID" dataType="Integer" displayName="Timestep" isOptional="True"/>
         <column name="TargetClassValue" dataType="Integer" displayName="Target class value" isOptional="True"/>
         <column name="TargetClassLabel" dataType="String" displayName="Target class label" isOptional="True"/>
         <column name="PredictionType" dataType="String" displayName="Prediction type" isOptional="True"/>
@@ -277,6 +276,20 @@
             <item name="modelPrecision" displayName="Precision" dataSheet="ModelChartData" column="Precision"/>
             <item name="modelSensitivity" displayName="Sensitivity" dataSheet="ModelChartData" column="Sensitivity"/>
             <item name="modelSpecificity" displayName="Specificity" dataSheet="ModelChartData" column="Specificity"/>
+        </group>
+        <group name="modelMetricsChart" displayName="Model Metrics by Class">
+            <item name="metricsAccuracy"    displayName="Accuracy"    dataSheet="ModelMetricsByClass" column="Accuracy"/>
+            <item name="metricsPrecision"   displayName="Precision"   dataSheet="ModelMetricsByClass" column="Precision"/>
+            <item name="metricsRecall"      displayName="Recall"      dataSheet="ModelMetricsByClass" column="Recall"/>
+            <item name="metricsSpecificity" displayName="Specificity" dataSheet="ModelMetricsByClass" column="Specificity"/>
+            <item name="metricsF1"          displayName="F1 Score"    dataSheet="ModelMetricsByClass" column="F1"/>
+            <item name="metricsAUC"         displayName="AUC"         dataSheet="ModelMetricsByClass" column="AUC"/>
+        </group>
+        <group name="predictionSummaryChart" displayName="Prediction Summary">
+            <item name="summaryPredictedPixels"   displayName="Predicted Pixels" dataSheet="SummaryOutput" column="PredictedPixels"/>
+            <item name="summaryPredictedArea"     displayName="Predicted Area"   dataSheet="SummaryOutput" column="PredictedArea"/>
+            <item name="summaryMeanProbability"   displayName="Mean Probability" dataSheet="SummaryOutput" column="MeanProbability" yMinColumn="MinProbability" yMaxColumn="MaxProbability"/>
+            <item name="summaryMedianProbability" displayName="Median Probability" dataSheet="SummaryOutput" column="MedianProbability"/>
         </group>
     </layout>
 

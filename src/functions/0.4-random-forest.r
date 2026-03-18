@@ -29,7 +29,7 @@
 #' This function is typically called within `getPredictionRasters()` to generate prediction maps
 #' for full raster extents.
 #' @noRd
-predictRanger <- function(raster, model, filename = "", memfrac = 0.7) {
+predictRanger <- function(raster, model, filename = "", memfrac = 0.2) {
   # Validate that raster has all required variables
   model_vars <- c(model$cat_vars, model$num_vars)
   raster_vars <- names(raster)
@@ -151,8 +151,8 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   )))
   maxDepth_grid <- c(0L, 6L, 12L, 18L) # 0 = unlimited
   minNode_grid <- c(1L, 5L, 10L, 20L)
-  trees_stage1 <- if (isTuningOn) 300L else 1000L
-  trees_stage2 <- if (isTuningOn) 1500L else 2000L
+  trees_stage1 <- if (isTuningOn) 100L else 500L
+  trees_stage2 <- if (isTuningOn) 500L else 500L
   bestK <- 5L
 
   # ------------------- optional subsample for tuning -------------------
@@ -272,14 +272,14 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
     dependent.variable.name = "presence",
     data = df,
     mtry = best_hyp$mtry,
-    num.trees = max(2000L, trees_stage2),
+    num.trees = 500L,
     max.depth = best_hyp$maxDepth,
     min.node.size = best_hyp$minNode,
     classification = TRUE,
     probability = TRUE, # needed downstream
     importance = "impurity", # compute once here
     write.forest = TRUE,
-    num.threads = nCores # safe: no outer parallel work now
+    num.threads = min(nCores, 4L) # cap threads to limit memory pressure
   )
 
   # ------------------- metadata for downstream prediction -------------------

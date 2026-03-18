@@ -938,7 +938,7 @@ getPredictionRasters <- function(
       raster,
       model,
       filename = probabilityPath,
-      memfrac = 0.5
+      memfrac = 0.2
     )
   } else if (modelType == "CNN") {
     probabilityRaster <- predictCNN(

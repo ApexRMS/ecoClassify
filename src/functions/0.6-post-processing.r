@@ -441,7 +441,7 @@ buildSummaryRow <- function(predictionRaster, probabilityRaster, timestep,
   probPresent <- probVals[presentMask]
 
   data.frame(
-    TimestepID        = timestep,
+    Timestep          = timestep,
     TargetClassValue  = targetClassValue,
     TargetClassLabel  = targetClassLabel,
     PredictionType    = predictionType,
