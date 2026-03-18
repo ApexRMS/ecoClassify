@@ -44,6 +44,9 @@ predictingCovariateDataframe <- datasheet(
 
 modelObjectDataframe <- datasheet(myScenario, name = "ecoClassify_ModelObject")
 
+# Check if multiprocessing is selected
+mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
+nCores <- setCores(mulitprocessingSheet)
 
 # Assign variables -------------------------------------------------------------
 
@@ -169,7 +172,8 @@ for (t in seq_along(predictRasterList)) {
     modelType,
     transferDir,
     category = "predicting",
-    timestep
+    timestep,
+    nCores = nCores
   )
   classifiedPresencePath <- classifiedRasters$presencePath
   classifiedProbabilityPath <- classifiedRasters$probabilityPath

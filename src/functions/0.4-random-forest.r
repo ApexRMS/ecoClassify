@@ -29,7 +29,7 @@
 #' This function is typically called within `getPredictionRasters()` to generate prediction maps
 #' for full raster extents.
 #' @noRd
-predictRanger <- function(raster, model, filename = "", memfrac = 0.2) {
+predictRanger <- function(raster, model, filename = "", nThreads = 2L) {
   # Validate that raster has all required variables
   model_vars <- c(model$cat_vars, model$num_vars)
   raster_vars <- names(raster)
@@ -44,57 +44,62 @@ predictRanger <- function(raster, model, filename = "", memfrac = 0.2) {
     )
   }
 
-  # prediction function for terra::predict
-  predictFn <- function(m, data, ...) {
-    # m is the model object passed in by terra::predict (same as 'model' in outer scope)
-    # Handle categorical variables
-    cat_vars_present <- intersect(m$cat_vars, names(data))
+  # ranger predict is read-only on the forest — threading is cheap (no copies),
+  # so use half of available cores as a floor, regardless of nCores config
+  nThreads <- max(nThreads, max(1L, parallel::detectCores() %/% 2L))
 
-    if (length(cat_vars_present) > 0) {
-      # Work on a local copy so we don't touch terra's internal object
-      data <- as.data.frame(data, stringsAsFactors = FALSE)
+  # Pre-compute factor level mappings once (not per chunk)
+  has_cat_vars <- length(model$cat_vars) > 0
+  cat_vars_present <- intersect(model$cat_vars, names(raster))
+  cat_var_levels <- lapply(cat_vars_present, function(var) {
+    c(model$factor_levels[[var]], "unseen")
+  })
+  names(cat_var_levels) <- cat_vars_present
 
-      for (var in cat_vars_present) {
-        var_levels <- m$factor_levels[[var]]
+  # Manual block iteration for full control over chunking and threading
+  out <- terra::rast(raster, nlyr = 1, names = "present")
+  nAdditional <- terra::nlyr(raster) + 2
+  bs <- terra::blocks(out, n = nAdditional)
+  terra::writeStart(out, filename, overwrite = TRUE, n = nAdditional)
 
-        # Add an "unseen" level for unknown categories
-        all_levels <- c(var_levels, "unseen")
-        f <- factor(as.character(data[[var]]), levels = all_levels)
-        f[is.na(f)] <- "unseen"
-
-        data[[var]] <- f
-      }
-    }
-
-    # ranger prediction: force single thread to avoid per-thread copies
-    preds <- predict(m$model, data = data, num.threads = 1, verbose = FALSE)
-
-    # Extract probabilities (second column)
-    result <- if (is.data.frame(preds)) {
-      preds[, 2]
-    } else if (is.list(preds) && "predictions" %in% names(preds)) {
-      preds$predictions[, 2]
+  for (i in seq_len(bs$n)) {
+    # Use matrix when no categorical vars (much faster than dataframe)
+    if (has_cat_vars) {
+      chunk <- terra::readValues(raster, row = bs$row[i], nrows = bs$nrows[i], dataframe = TRUE)
     } else {
-      preds[, 2]
+      chunk <- terra::readValues(raster, row = bs$row[i], nrows = bs$nrows[i], mat = TRUE)
+      colnames(chunk) <- names(raster)
     }
 
-    as.numeric(result)
+    nChunkRows <- nrow(chunk)
+    valid <- complete.cases(chunk)
+
+    if (any(valid)) {
+      data_valid <- chunk[valid, , drop = FALSE]
+
+      # Apply pre-computed factor levels (only when categorical vars exist)
+      if (has_cat_vars) {
+        for (var in cat_vars_present) {
+          f <- factor(as.character(data_valid[[var]]), levels = cat_var_levels[[var]])
+          f[is.na(f)] <- "unseen"
+          data_valid[[var]] <- f
+        }
+      }
+
+      preds <- predict(model$model, data = data_valid, num.threads = nThreads, verbose = FALSE)
+
+      result <- rep(NA_real_, nChunkRows)
+      result[valid] <- preds$predictions[, 2]
+    } else {
+      result <- rep(NA_real_, nChunkRows)
+    }
+
+    terra::writeValues(out, result, bs$row[i], bs$nrows[i])
+    rm(chunk, result)
   }
 
-  # terra::predict handles chunking; memfrac controls block size.
-  # filename = "" => in-memory; set a path to write to disk.
-  predictionRaster <- terra::predict(
-    raster,
-    model = model,
-    fun = predictFn,
-    na.rm = TRUE,
-    cores = 1,
-    memfrac = memfrac,
-    filename = filename
-  )
-
-  names(predictionRaster) <- "present"
-  predictionRaster
+  terra::writeStop(out)
+  out
 }
 
 #' Train a Random Forest Model with Hyperparameter Tuning ----
@@ -288,9 +293,17 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
     function(x) if (is.factor(x)) levels(x) else NULL
   )
 
+  vimp <- bestModel$variable.importance
+
+  # Strip large unused fields to free RAM before prediction
+  bestModel$predictions <- NULL
+  bestModel$inbag.counts <- NULL
+  bestModel$variable.importance <- NULL
+  gc()
+
   list(
     model = bestModel,
-    vimp = bestModel$variable.importance,
+    vimp = vimp,
     factor_levels = factor_levels,
     cat_vars = cat_vars,
     num_vars = num_vars

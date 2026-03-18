@@ -315,6 +315,10 @@ varImportanceOutputDataframe <- as.data.frame(variableImportance) %>%
   tibble::rownames_to_column("Variable") %>%
   rename(Importance = "variableImportance")
 
+# Free training data and redundant copies before prediction to reduce memory pressure
+rm(allTrainData, model, variableImportance)
+gc()
+
 # Predict presence for training rasters in each timestep group -----------------
 
 progressBar(type = "message", message = "Predict training rasters")
@@ -331,7 +335,8 @@ for (t in seq_along(trainingRasterList)) {
     modelType,
     transferDir,
     category = "training",
-    timestep
+    timestep,
+    nCores = nCores
   )
   predictedPresencePath <- predictionRasters$presencePath
   probabilityPath <- predictionRasters$probabilityPath
