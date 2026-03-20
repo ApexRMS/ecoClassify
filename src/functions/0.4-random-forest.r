@@ -126,7 +126,6 @@ predictRanger <- function(raster, model, filename = "", nThreads = 2L) {
     rm(chunk, result)
   }
 
-  terra::writeStop(out)
   out
 }
 
