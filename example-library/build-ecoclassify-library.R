@@ -69,7 +69,8 @@ saveDatasheet(
   scBase,
   data.frame(
     nObs = 100,
-    modelType = 2 # 0 = random forest | 2 = CNN 
+    modelType = 2 # 0 = random forest | 2 = CNN
+  ),
   "ecoClassify_ClassifierOptions"
 )
 
@@ -89,7 +90,7 @@ saveDatasheet(
   ),
   "ecoClassify_AdvancedClassifierOptions"
 )
-saveDatasheet(myScenario, myData, "core_Pipeline", append = FALSE)
+
 saveDatasheet(
   scBase,
   data.frame(StageNameId = c("ecoClassify_TrainClassifier"), RunOrder = 1),
