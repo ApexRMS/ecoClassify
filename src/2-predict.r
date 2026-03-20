@@ -48,6 +48,16 @@ modelObjectDataframe <- datasheet(myScenario, name = "ecoClassify_ModelObject")
 mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
 nCores <- setCores(mulitprocessingSheet)
 
+# When spatial tiling is active, SyncroSim runs one prediction process per tile
+# concurrently. Using multiple ranger threads per tile causes nTiles * nThreads
+# total threads, far exceeding available cores and exhausting virtual memory.
+# Limit per-tile threads to 1 so total parallelism = nTiles (matching nCores).
+spatialMPSheet <- datasheet(myScenario, "core_SpatialMultiprocessing")
+isSpatialMP <- nrow(spatialMPSheet) > 0 &&
+  !is.na(spatialMPSheet$MaskFileName[1]) &&
+  nzchar(spatialMPSheet$MaskFileName[1])
+nCoresForPrediction <- if (isSpatialMP) 1L else nCores
+
 # Assign variables -------------------------------------------------------------
 
 inputVariables <- assignVariables(
@@ -173,7 +183,7 @@ for (t in seq_along(predictRasterList)) {
     transferDir,
     category = "predicting",
     timestep,
-    nCores = nCores
+    nCores = nCoresForPrediction
   )
   classifiedPresencePath <- classifiedRasters$presencePath
   classifiedProbabilityPath <- classifiedRasters$probabilityPath

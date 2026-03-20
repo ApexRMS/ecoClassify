@@ -39,7 +39,6 @@
     <dataSheet name="ClassifierOptions" displayName="Classifier Options" isSingleRow="True">
         <column name="nObs" dataType="Integer" displayName="Sample size"/>
         <column name="modelType" displayName="Model type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt|2:CNN"/>
-        <record columns="nObs|modelType" values="10000|0"/>
     </dataSheet>
 
     <dataSheet name="AdvancedClassifierOptions" displayName="Advanced" isSingleRow="True" viewClassName="ecoclassifyUI.AdvancedForm" viewClassAssembly="ecoclassifyUI">
@@ -53,7 +52,6 @@
         <column name="applyContextualization" dataType="Boolean" displayName="Apply contextualization"/>
         <column name="contextualizationWindowSize" dataType="Integer" displayName="Contextualization window size" isOptional="True"/>
         <column name="setSeed" dataType="Integer" displayName="Random seed" isOptional="True"/>
-        <record columns="overrideBandnames|normalizeRasters|rasterDecimalPlaces|modelTuning|tuningObjective|setManualThreshold|manualThreshold|applyContextualization|contextualizationWindowSize|setSeed" values="0|0|2|0|5|0|0.5|0|3|0"/>
     </dataSheet>
     
     <dataSheet name="TargetClassOptions" displayName="Target Class Options" isSingleRow="True">
@@ -178,12 +176,10 @@
 
 
     <!--Transformer 0: prepare spatial tiling-->
-    <transformer name="PrepareSpatialTiling" displayName="0-Prepare Spatial Tiling"
-        programName="Rscript" programArguments="0-prepare-spatial-tiling.R"
-        condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.4"
+    <transformer name="PrepareSpatialTiling" displayName="2a-Prepare Spatial Tiling"
+        programName="Rscript" programArguments="2a-prepare-spatial-tiling.R"
+        condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.5"
         isMultiprocessing="False">
-        <dataSheet name="InputTrainingRasters" type="Input"/>
-        <dataSheet name="InputTrainingCovariates" type="Input"/>
         <dataSheet name="InputPredictingRasters" type="Input"/>
         <dataSheet name="InputPredictingCovariates" type="Input"/>
         <dataSheet name="TilingOptions" type="Input"/>
@@ -191,7 +187,7 @@
     </transformer>
 
     <!--Transformer 1: training classifier-->
-    <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.4">
+    <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.5">
         <dataSheet name="InputTrainingRasters" type="Input"/>
         <dataSheet name="InputTrainingCovariates" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Both"/>
@@ -211,7 +207,7 @@
     </transformer>
 
     <!--Transformer 2: predicting-->
-    <transformer name="Predict" displayName="2-Predict" programName="Rscript" programArguments="2-predict.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.4">
+    <transformer name="Predict" displayName="2-Predict" programName="Rscript" programArguments="2-predict.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.5">
         <dataSheet name="InputPredictingRasters" type="Input"/>
         <dataSheet name="InputPredictingCovariates" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Input"/>
@@ -226,7 +222,7 @@
     </transformer>
 
     <!--Transformer 3: filtering-->
-    <transformer name="PostProcessing" displayName="3-Post-Process" programName="Rscript" programArguments="3-postprocess.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.4">
+    <transformer name="PostProcessing" displayName="3-Post-Process" programName="Rscript" programArguments="3-postprocess.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.5">
         <dataSheet name="RasterOutput" type="Both"/>
         <dataSheet name="ClassifiedRasterOutput" type="Both"/>
         <dataSheet name="PostProcessingFilter" type="Input"/>

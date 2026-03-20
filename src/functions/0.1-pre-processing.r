@@ -118,17 +118,44 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
     name = "ecoClassify_AdvancedClassifierOptions"
   )
 
-  # Extract model input values
+  # Extract model input values with fallback defaults
   nObs <- classifierOptionsDataframe$nObs
-  applyContextualization <- advClassifierOptionsDataframe$applyContextualization
-  contextualizationWindowSize <- advClassifierOptionsDataframe$contextualizationWindowSize
-  modelType <- as.character(classifierOptionsDataframe$modelType)
-  modelTuning <- advClassifierOptionsDataframe$modelTuning
-  tuningObjective <- as.character(advClassifierOptionsDataframe$tuningObjective)
-  setManualThreshold <- advClassifierOptionsDataframe$setManualThreshold
-  manualThreshold <- advClassifierOptionsDataframe$manualThreshold
+  if (is.null(nObs) || length(nObs) == 0 || is.na(nObs)) nObs <- 10000L
+
+  modelType_raw <- classifierOptionsDataframe$modelType
+  if (is.null(modelType_raw) || length(modelType_raw) == 0 || is.na(modelType_raw)) {
+    modelType <- "Random Forest"
+  } else {
+    modelType <- as.character(modelType_raw)
+  }
+
   normalizeRasters <- advClassifierOptionsDataframe$normalizeRasters
+  if (is.null(normalizeRasters) || length(normalizeRasters) == 0 || is.na(normalizeRasters)) normalizeRasters <- FALSE
+
   rasterDecimalPlaces <- advClassifierOptionsDataframe$rasterDecimalPlaces
+  if (is.null(rasterDecimalPlaces) || length(rasterDecimalPlaces) == 0 || is.na(rasterDecimalPlaces)) rasterDecimalPlaces <- 2L
+
+  modelTuning <- advClassifierOptionsDataframe$modelTuning
+  if (is.null(modelTuning) || length(modelTuning) == 0 || is.na(modelTuning)) modelTuning <- FALSE
+
+  tuningObjective_raw <- advClassifierOptionsDataframe$tuningObjective
+  if (is.null(tuningObjective_raw) || length(tuningObjective_raw) == 0 || is.na(tuningObjective_raw)) {
+    tuningObjective <- "Youden"
+  } else {
+    tuningObjective <- as.character(tuningObjective_raw)
+  }
+
+  setManualThreshold <- advClassifierOptionsDataframe$setManualThreshold
+  if (is.null(setManualThreshold) || length(setManualThreshold) == 0 || is.na(setManualThreshold)) setManualThreshold <- FALSE
+
+  manualThreshold <- advClassifierOptionsDataframe$manualThreshold
+  if (is.null(manualThreshold) || length(manualThreshold) == 0 || is.na(manualThreshold)) manualThreshold <- 0.5
+
+  applyContextualization <- advClassifierOptionsDataframe$applyContextualization
+  if (is.null(applyContextualization) || length(applyContextualization) == 0 || is.na(applyContextualization)) applyContextualization <- FALSE
+
+  contextualizationWindowSize <- advClassifierOptionsDataframe$contextualizationWindowSize
+
   setSeed <- advClassifierOptionsDataframe$setSeed
 
   # assign value of 3 to contextualizationWindowSize if not specified

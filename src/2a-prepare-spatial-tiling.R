@@ -37,11 +37,6 @@ predictingRasterDataframe <- datasheet(
   name = "ecoClassify_InputPredictingRasters"
 )
 
-trainingRasterDataframe <- datasheet(
-  myScenario,
-  name = "ecoClassify_InputTrainingRasters"
-)
-
 tilingOptionsDataframe <- datasheet(
   myScenario,
   name = "ecoClassify_TilingOptions"
@@ -75,7 +70,7 @@ if (autoTiling) {
   nCores <- setCores(multiprocessingSheet)
   nTiles <- max(nCores, 1L)
   numTilesX <- ceiling(sqrt(nTiles))
-  numTilesY <- ceiling(nTiles / numTilesX)
+  numTilesY <- floor(nTiles / numTilesX)
   updateRunLog(paste0(
     "Auto-tiling: ", nCores, " core(s) available -> ",
     numTilesX, " x ", numTilesY, " tile grid (",
@@ -101,7 +96,6 @@ progressBar(type = "message", message = "Resolving template raster")
 
 templateRasterPath <- NA_character_
 
-# Prefer predicting rasters; fall back to training rasters
 if (nrow(predictingRasterDataframe) > 0) {
   candidatePaths <- predictingRasterDataframe$predictingRasterFile
   candidatePaths <- candidatePaths[!is.na(candidatePaths) & nzchar(candidatePaths)]
@@ -111,19 +105,10 @@ if (nrow(predictingRasterDataframe) > 0) {
   }
 }
 
-if (is.na(templateRasterPath) && nrow(trainingRasterDataframe) > 0) {
-  candidatePaths <- trainingRasterDataframe$TrainingRasterFile
-  candidatePaths <- candidatePaths[!is.na(candidatePaths) & nzchar(candidatePaths)]
-  if (length(candidatePaths) > 0) {
-    templateRasterPath <- candidatePaths[1]
-    updateRunLog(paste0("Using training raster as template: ", templateRasterPath))
-  }
-}
-
 if (is.na(templateRasterPath)) {
   stop(paste0(
-    "PrepareSpatialTiling requires at least one predicting or training raster ",
-    "to be specified. Please configure InputPredictingRasters or InputTrainingRasters."
+    "PrepareSpatialTiling requires at least one predicting raster to be specified. ",
+    "Please configure InputPredictingRasters."
   ))
 }
 
@@ -134,10 +119,7 @@ if (!file.exists(templateRasterPath)) {
 
 # Check for mismatched extents across all input rasters ------------------------
 
-allRasterPaths <- c(
-  predictingRasterDataframe$predictingRasterFile,
-  trainingRasterDataframe$TrainingRasterFile
-)
+allRasterPaths <- predictingRasterDataframe$predictingRasterFile
 allRasterPaths <- allRasterPaths[!is.na(allRasterPaths) & nzchar(allRasterPaths)]
 allRasterPaths <- allRasterPaths[file.exists(allRasterPaths)]
 
@@ -245,5 +227,16 @@ saveDatasheet(
 )
 
 updateRunLog("core_SpatialMultiprocessing datasheet updated.")
+
+# Limit regular multiprocessing to 1 job per tile so that total R processes
+# equals the number of tiles rather than nTiles * nJobs.
+saveDatasheet(
+  myScenario,
+  data = data.frame(EnableMultiprocessing = TRUE, MaximumJobs = 1L,
+                    stringsAsFactors = FALSE),
+  name = "core_Multiprocessing"
+)
+
+updateRunLog("core_Multiprocessing set to 1 job per tile (spatial tiling handles parallelism).")
 
 progressBar(type = "message", message = "Spatial tiling preparation complete")
