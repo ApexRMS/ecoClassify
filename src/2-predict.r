@@ -44,6 +44,9 @@ predictingCovariateDataframe <- datasheet(
 
 modelObjectDataframe <- datasheet(myScenario, name = "ecoClassify_ModelObject")
 
+# Check if multiprocessing is selected
+mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
+nCores <- setCores(mulitprocessingSheet)
 
 # Assign variables -------------------------------------------------------------
 
@@ -64,6 +67,16 @@ normalizeRasters <- inputVariables[[9]]
 rasterDecimalPlaces <- inputVariables[[10]]
 tuningObjective <- inputVariables[[11]]
 overrideBandnames <- inputVariables[[12]]
+
+# Read TargetClassOptions ------------------------------------------------------
+
+targetClassSheet <- datasheet(myScenario, "ecoClassify_TargetClassOptions")
+targetClassValue <- NA_integer_
+targetClassLabel <- NA_character_
+if (nrow(targetClassSheet) > 0) {
+  if (!is.null(targetClassSheet$targetClassValue) && isTRUE(!is.na(targetClassSheet$targetClassValue[1]))) targetClassValue <- as.integer(targetClassSheet$targetClassValue[1])
+  if (!is.null(targetClassSheet$targetClassLabel) && isTRUE(!is.na(targetClassSheet$targetClassLabel[1]))) targetClassLabel <- as.character(targetClassSheet$targetClassLabel[1])
+}
 
 # Load model and threshold
 if (modelType == "CNN") {
@@ -142,6 +155,8 @@ classifiedRgbOutputDataframe <- data.frame(
   RGBImage = character(0)
 )
 
+summaryRows <- list()
+
 # Predict presence for rasters to classify -------------------------------------
 
 progressBar(type = "message", message = "Predicting")
@@ -157,7 +172,8 @@ for (t in seq_along(predictRasterList)) {
     modelType,
     transferDir,
     category = "predicting",
-    timestep
+    timestep,
+    nCores = nCores
   )
   classifiedPresencePath <- classifiedRasters$presencePath
   classifiedProbabilityPath <- classifiedRasters$probabilityPath
@@ -191,6 +207,20 @@ for (t in seq_along(predictRasterList)) {
     timestep,
     transferDir
   )
+
+  # Accumulate summary row for this timestep
+  tryCatch({
+    summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
+      predictionRaster  = terra::rast(classifiedPresencePath),
+      probabilityRaster = terra::rast(classifiedProbabilityPath),
+      timestep          = timestep,
+      predictionType    = "predicting",
+      targetClassValue  = targetClassValue,
+      targetClassLabel  = targetClassLabel
+    )
+  }, error = function(e) {
+    updateRunLog(paste0("Could not build summary row for timestep ", timestep, ": ", conditionMessage(e)), type = "warning")
+  })
 }
 
 # Save dataframes back to SyncroSim library's output datasheets ----------------
@@ -206,3 +236,11 @@ saveDatasheet(
   data = classifiedRgbOutputDataframe,
   name = "ecoClassify_ClassifiedRgbOutput"
 )
+
+if (length(summaryRows) > 0) {
+  saveDatasheet(
+    myScenario,
+    data = do.call(rbind, summaryRows),
+    name = "ecoClassify_SummaryOutput"
+  )
+}

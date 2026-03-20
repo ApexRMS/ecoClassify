@@ -70,6 +70,22 @@ if (!is.null(setSeed) && !is.na(setSeed)) {
 mulitprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
 nCores <- setCores(mulitprocessingSheet)
 
+# Read TargetClassOptions ------------------------------------------------------
+
+targetClassSheet <- datasheet(myScenario, "ecoClassify_TargetClassOptions")
+useTargetClass   <- FALSE
+targetClassValue <- NA_integer_
+backgroundValues <- NA_character_
+ignoreValues     <- NA_character_
+targetClassLabel <- NA_character_
+if (nrow(targetClassSheet) > 0) {
+  if (isTRUE(targetClassSheet$useTargetClass[1]))                                                    useTargetClass   <- TRUE
+  if (!is.null(targetClassSheet$targetClassValue) && isTRUE(!is.na(targetClassSheet$targetClassValue[1]))) targetClassValue <- as.integer(targetClassSheet$targetClassValue[1])
+  if (!is.null(targetClassSheet$backgroundValues) && isTRUE(!is.na(targetClassSheet$backgroundValues[1]))) backgroundValues <- as.character(targetClassSheet$backgroundValues[1])
+  if (!is.null(targetClassSheet$ignoreValues)     && isTRUE(!is.na(targetClassSheet$ignoreValues[1])))     ignoreValues     <- as.character(targetClassSheet$ignoreValues[1])
+  if (!is.null(targetClassSheet$targetClassLabel) && isTRUE(!is.na(targetClassSheet$targetClassLabel[1]))) targetClassLabel <- as.character(targetClassSheet$targetClassLabel[1])
+}
+
 
 # Extract list of training and ground truth rasters ----------------------------
 
@@ -116,7 +132,13 @@ if (isTRUE(applyContextualization)) {
 }
 
 # Reclassify ground truth rasters
-groundTruthRasterList <- reclassifyGroundTruth(groundTruthRasterList)
+groundTruthRasterList <- reclassifyGroundTruth(
+  groundTruthRasterList,
+  useTargetClass   = useTargetClass,
+  targetClassValue = targetClassValue,
+  backgroundValues = backgroundValues,
+  ignoreValues     = ignoreValues
+)
 
 # Extract covariate rasters and convert to correct data type
 trainingCovariateRaster <- processCovariates(
@@ -190,6 +212,9 @@ confusionOutputDataframe <- data.frame(
 modelOutputDataframe <- data.frame(Statistic = character(0), Value = numeric(0))
 
 rgbOutputDataframe <- data.frame(Timestep = numeric(0), RGBImage = character(0))
+
+summaryRows <- list()
+metricsRows <- list()
 
 
 # Train model ------------------------------------------------------------------
@@ -290,6 +315,10 @@ varImportanceOutputDataframe <- as.data.frame(variableImportance) %>%
   tibble::rownames_to_column("Variable") %>%
   rename(Importance = "variableImportance")
 
+# Free training data and redundant copies before prediction to reduce memory pressure
+rm(allTrainData, model, variableImportance)
+gc()
+
 # Predict presence for training rasters in each timestep group -----------------
 
 progressBar(type = "message", message = "Predict training rasters")
@@ -306,7 +335,8 @@ for (t in seq_along(trainingRasterList)) {
     modelType,
     transferDir,
     category = "training",
-    timestep
+    timestep,
+    nCores = nCores
   )
   predictedPresencePath <- predictionRasters$presencePath
   probabilityPath <- predictionRasters$probabilityPath
@@ -343,6 +373,20 @@ for (t in seq_along(trainingRasterList)) {
     timestep,
     transferDir
   )
+
+  # Accumulate summary row for this timestep
+  tryCatch({
+    summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
+      predictionRaster  = terra::rast(predictedPresencePath),
+      probabilityRaster = terra::rast(probabilityPath),
+      timestep          = timestep,
+      predictionType    = "training",
+      targetClassValue  = targetClassValue,
+      targetClassLabel  = targetClassLabel
+    )
+  }, error = function(e) {
+    updateRunLog(paste0("Could not build summary row for timestep ", timestep, ": ", conditionMessage(e)), type = "warning")
+  })
 }
 
 progressBar(type = "message", message = "Calculating summary statistics")
@@ -380,6 +424,17 @@ outputDataframes <- calculateStatistics(
 confusionOutputDataframe <- outputDataframes[[1]]
 modelOutputDataframe <- outputDataframes[[2]]
 confusionMatrixPlot <- outputDataframes[[3]]
+
+# Accumulate metrics row
+tryCatch({
+  metricsRows[[1]] <- buildMetricsRow(
+    statsDataframe   = modelOutputDataframe,
+    targetClassValue = targetClassValue,
+    targetClassLabel = targetClassLabel
+  )
+}, error = function(e) {
+  updateRunLog(paste0("Could not build metrics row: ", conditionMessage(e)), type = "warning")
+})
 
 # Generate model chart dataframe --------------------------------
 
@@ -524,3 +579,19 @@ saveDatasheet(
   data = modelChartDataframe,
   name = "ecoClassify_ModelChartData"
 )
+
+if (length(summaryRows) > 0) {
+  saveDatasheet(
+    myScenario,
+    data = do.call(rbind, summaryRows),
+    name = "ecoClassify_SummaryOutput"
+  )
+}
+
+if (length(metricsRows) > 0) {
+  saveDatasheet(
+    myScenario,
+    data = do.call(rbind, metricsRows),
+    name = "ecoClassify_ModelMetricsByClass"
+  )
+}

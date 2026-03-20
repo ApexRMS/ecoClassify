@@ -204,32 +204,52 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
 #' Reclassify Ground Truth Rasters ----
 #'
 #' @description
-#' Converts ground truth raster values to binary 0/1.
+#' Converts ground truth raster values to binary 0/1. When useTargetClass is
+#' TRUE, maps a specific class value to 1 and all others (except ignored values)
+#' to 0. Otherwise falls back to the original min→0 / max→1 behaviour.
 #'
 #' @param groundTruthRasterList List of SpatRasters.
+#' @param useTargetClass Logical. If TRUE, apply target-class selection logic.
+#' @param targetClassValue Integer. The class value to map to 1.
+#' @param backgroundValues Character. Comma-separated integers to map to 0.
+#'   If NULL, all non-target non-ignored non-NA values become 0.
+#' @param ignoreValues Character. Comma-separated integers to leave as NA.
 #'
 #' @return List of reclassified SpatRasters.
 #'
 #' @noRd
-reclassifyGroundTruth <- function(groundTruthRasterList) {
-  reclassifiedGroundTruthList <- c()
+reclassifyGroundTruth <- function(groundTruthRasterList,
+                                   useTargetClass = FALSE,
+                                   targetClassValue = NA,
+                                   backgroundValues = NA,
+                                   ignoreValues = NA) {
+  lapply(groundTruthRasterList, function(raster) {
+    if (isTRUE(useTargetClass) && !is.na(targetClassValue)) {
+      result <- raster
+      result[] <- NA
+      vals <- terra::values(raster)
 
-  for (i in seq_along(groundTruthRasterList)) {
-    groundTruthRaster <- groundTruthRasterList[[i]]
-    groundTruthRaster[
-      groundTruthRaster == min(values(groundTruthRaster), na.rm = TRUE)
-    ] <- 0
-    groundTruthRaster[
-      groundTruthRaster == max(values(groundTruthRaster), na.rm = TRUE)
-    ] <- 1
+      # target class → 1
+      result[vals == targetClassValue] <- 1
 
-    reclassifiedGroundTruthList <- c(
-      reclassifiedGroundTruthList,
-      groundTruthRaster
-    )
-  }
+      if (!is.na(backgroundValues) && nchar(trimws(backgroundValues)) > 0) {
+        bgVals <- as.integer(trimws(strsplit(backgroundValues, ",")[[1]]))
+        result[vals %in% bgVals] <- 0
+      } else {
+        ignoreVals <- if (!is.na(ignoreValues) && nchar(trimws(ignoreValues)) > 0)
+          as.integer(trimws(strsplit(ignoreValues, ",")[[1]]))
+        else integer(0)
+        result[!is.na(vals) & vals != targetClassValue & !(vals %in% ignoreVals)] <- 0
+      }
 
-  return(reclassifiedGroundTruthList)
+      return(result)
+    } else {
+      # Original binary logic: min → 0, max → 1 (in-place, preserves any intermediate values)
+      raster[raster == min(terra::values(raster), na.rm = TRUE)] <- 0
+      raster[raster == max(terra::values(raster), na.rm = TRUE)] <- 1
+      return(raster)
+    }
+  })
 }
 
 #' Load and Process Covariate Rasters ----
