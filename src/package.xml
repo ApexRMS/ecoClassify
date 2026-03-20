@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 
-<package 
-    name="ecoClassify" displayName="ecoClassify" version="2.4.1"
+<package
+    name="ecoClassify" displayName="ecoClassify" version="2.5.0"
     description="Image classifier using semantic image segmentation" 
     url="https://apexrms.github.io/ecoClassify/" 
     minSyncroSimVersion="3.1.0">
@@ -76,6 +76,12 @@
         <column name="ruleMinValue" dataType="Double" displayName="Minimum Value"/>
         <column name="ruleMaxValue" dataType="Double" displayName="Maximum Value"/>
         <column name="ruleReclassValue" dataType="Integer" displayName="Reclassify Value" validationType="List" formula1="0:0|1:1"/>
+    </dataSheet>
+
+    <dataSheet name="TilingOptions" displayName="Tiling Options" isSingleRow="True">
+        <column name="AutoTiling" dataType="Boolean" displayName="Auto-calculate tile count from cores" isOptional="True"/>
+        <column name="NumTilesX" dataType="Integer" displayName="Number of Tiles (X axis)" isOptional="True" defaultValue="2"/>
+        <column name="NumTilesY" dataType="Integer" displayName="Number of Tiles (Y axis)" isOptional="True" defaultValue="2"/>
     </dataSheet>
 
     <!--Output-->
@@ -171,13 +177,26 @@
     </dataSheet>
 
 
+    <!--Transformer 0: prepare spatial tiling-->
+    <transformer name="PrepareSpatialTiling" displayName="0-Prepare Spatial Tiling"
+        programName="Rscript" programArguments="0-prepare-spatial-tiling.R"
+        condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.4"
+        isMultiprocessing="False">
+        <dataSheet name="InputTrainingRasters" type="Input"/>
+        <dataSheet name="InputTrainingCovariates" type="Input"/>
+        <dataSheet name="InputPredictingRasters" type="Input"/>
+        <dataSheet name="InputPredictingCovariates" type="Input"/>
+        <dataSheet name="TilingOptions" type="Input"/>
+        <dataSheet name="core_SpatialMultiprocessing" type="Output"/>
+    </transformer>
+
     <!--Transformer 1: training classifier-->
     <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.4">
         <dataSheet name="InputTrainingRasters" type="Input"/>
         <dataSheet name="InputTrainingCovariates" type="Input"/>
-        <dataSheet name="ClassifierOptions" type="Input"/>
-        <dataSheet name="AdvancedClassifierOptions" type="Input"/>
-        <dataSheet name="TargetClassOptions" type="Input"/>
+        <dataSheet name="ClassifierOptions" type="Both"/>
+        <dataSheet name="AdvancedClassifierOptions" type="Both"/>
+        <dataSheet name="TargetClassOptions" type="Both"/>
         <dataSheet name="RasterOutput" type="Output"/>
         <dataSheet name="ConfusionMatrix" type="Output"/>
         <dataSheet name="ModelStatistics" type="Output"/>
@@ -199,8 +218,9 @@
         <dataSheet name="AdvancedClassifierOptions" type="Input"/>
         <dataSheet name="TargetClassOptions" type="Input"/>
         <dataSheet name="ModelObject" type="Input"/>
+        <dataSheet name="core_SpatialMultiprocessing" type="Input"/>
         <dataSheet name="RasterOutput" type="Both"/>
-        <dataSheet name="ClassifiedRasterOutput" type="Output"/>
+        <dataSheet name="ClassifiedRasterOutput" type="Output" spatialMultiProcessing="True"/>
         <dataSheet name="ClassifiedRgbOutput" type="Output"/>
         <dataSheet name="SummaryOutput" type="Output"/>
     </transformer>
@@ -214,6 +234,7 @@
         <dataSheet name="TargetClassOptions" type="Input"/>
         <dataSheet name="InputTrainingRasters" type="Input"/>
         <dataSheet name="InputPredictingRasters" type="Input"/>
+        <dataSheet name="core_SpatialMultiprocessing" type="Input"/>
         <dataSheet name="SummaryOutput" type="Output"/>
     </transformer>
 
@@ -255,6 +276,7 @@
             </group>
             <item name="AdvancedClassifierOptions"/>
             <item name="TargetClassOptions"/>
+            <item name="TilingOptions"/>
             <group name="PostProcessingOptions" displayName="Post-Processing Options">
                 <item name="PostProcessingFilter"/>
                 <item name="PostProcessingRule"/>

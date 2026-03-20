@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<update comment="Update ecoClassify to version 2.4">
+
+  <!-- Add new TilingOptions datasheet for spatial tiling support -->
+  <action code="Exec" condition="TableNotExists" criteria="ecoClassify_TilingOptions">
+    <item>CREATE TABLE ecoClassify_TilingOptions(TilingOptionsId INTEGER PRIMARY KEY, AutoTiling BOOLEAN, NumTilesX INTEGER, NumTilesY INTEGER)</item>
+  </action>
+
+</update>
