@@ -38,15 +38,24 @@ predictRanger <- function(raster, model, filename = "", nThreads = 2L) {
   if (length(missing_vars) > 0) {
     stop(
       "Raster is missing required variables for prediction.\n",
-      "Missing: ", paste(missing_vars, collapse = ", "), "\n",
-      "Expected: ", paste(model_vars, collapse = ", "), "\n",
-      "Found: ", paste(raster_vars, collapse = ", ")
+      "Missing: ",
+      paste(missing_vars, collapse = ", "),
+      "\n",
+      "Expected: ",
+      paste(model_vars, collapse = ", "),
+      "\n",
+      "Found: ",
+      paste(raster_vars, collapse = ", ")
     )
   }
 
   # ranger predict is read-only on the forest — threading is cheap (no copies),
   # so use half of available cores as a floor, regardless of nCores config
-  nThreads <- max(nThreads, max(1L, parallel::detectCores() %/% 2L))
+  detected <- parallel::detectCores()
+  if (is.na(detected)) {
+    detected <- nThreads
+  }
+  nThreads <- max(1L, min(as.integer(nThreads), detected))
 
   # Pre-compute factor level mappings once (not per chunk)
   has_cat_vars <- length(model$cat_vars) > 0
@@ -61,13 +70,24 @@ predictRanger <- function(raster, model, filename = "", nThreads = 2L) {
   nAdditional <- terra::nlyr(raster) + 2
   bs <- terra::blocks(out, n = nAdditional)
   terra::writeStart(out, filename, overwrite = TRUE, n = nAdditional)
+  on.exit(terra::writeStop(out), add = TRUE)
 
   for (i in seq_len(bs$n)) {
     # Use matrix when no categorical vars (much faster than dataframe)
     if (has_cat_vars) {
-      chunk <- terra::readValues(raster, row = bs$row[i], nrows = bs$nrows[i], dataframe = TRUE)
+      chunk <- terra::readValues(
+        raster,
+        row = bs$row[i],
+        nrows = bs$nrows[i],
+        dataframe = TRUE
+      )
     } else {
-      chunk <- terra::readValues(raster, row = bs$row[i], nrows = bs$nrows[i], mat = TRUE)
+      chunk <- terra::readValues(
+        raster,
+        row = bs$row[i],
+        nrows = bs$nrows[i],
+        mat = TRUE
+      )
       colnames(chunk) <- names(raster)
     }
 
@@ -80,13 +100,21 @@ predictRanger <- function(raster, model, filename = "", nThreads = 2L) {
       # Apply pre-computed factor levels (only when categorical vars exist)
       if (has_cat_vars) {
         for (var in cat_vars_present) {
-          f <- factor(as.character(data_valid[[var]]), levels = cat_var_levels[[var]])
+          f <- factor(
+            as.character(data_valid[[var]]),
+            levels = cat_var_levels[[var]]
+          )
           f[is.na(f)] <- "unseen"
           data_valid[[var]] <- f
         }
       }
 
-      preds <- predict(model$model, data = data_valid, num.threads = nThreads, verbose = FALSE)
+      preds <- predict(
+        model$model,
+        data = data_valid,
+        num.threads = nThreads,
+        verbose = FALSE
+      )
 
       result <- rep(NA_real_, nChunkRows)
       result[valid] <- preds$predictions[, 2]
