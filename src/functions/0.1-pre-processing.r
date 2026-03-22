@@ -682,32 +682,52 @@ validateAndAlignRasters <- function(trainingRasterList, groundTruthRasterList) {
   return(aligned_groundTruthRasterList)
 }
 
-#' Override Band Names with Standardized Names ----
+#' Override Band Names Using a Label File ----
 #'
 #' @description
-#' Renames all bands in raster stacks to band1, band2, band3, etc.
-#' This prevents errors when using multiple JPEGs or other images with
-#' filename-based band names.
+#' Renames all bands in raster stacks using a user-supplied CSV file that maps
+#' band position to a new label. The file must have one band name per row (in
+#' band order), with an optional header. The number of names in the file must
+#' match the number of bands in the rasters.
 #'
 #' @param rasterList List of SpatRasters.
+#' @param bandLabelFile Path to a CSV file with one column of band names in order.
 #'
-#' @return List of SpatRasters with standardized band names.
+#' @return List of SpatRasters with renamed bands.
 #'
 #' @noRd
-overrideBandNames <- function(rasterList) {
+overrideBandNames <- function(rasterList, bandLabelFile) {
+  # Read band names from file
+  bandLabels <- tryCatch(
+    read.csv(bandLabelFile, header = TRUE, stringsAsFactors = FALSE),
+    error = function(e) stop(paste0(
+      "Could not read band label file '", bandLabelFile, "': ", conditionMessage(e)
+    ))
+  )
+  newNames <- bandLabels[[1]]
+
+  # Validate against first raster
+  nBands <- terra::nlyr(rasterList[[1]])
+  if (length(newNames) != nBands) {
+    stop(paste0(
+      "Band label file has ", length(newNames), " entries but rasters have ",
+      nBands, " bands. The file must have one name per band."
+    ))
+  }
+
+  # Log the renaming using first raster's original names as example
+  oldNames <- names(rasterList[[1]])
+  updateRunLog(
+    paste0(
+      "Renaming ", nBands, " bands using label file: ",
+      paste(oldNames, "->", newNames, collapse = ", ")
+    ),
+    type = "info"
+  )
+
   renamedRasterList <- c()
-
   for (raster in rasterList) {
-    # Get number of bands
-    nBands <- terra::nlyr(raster)
-
-    # Generate standardized band names
-    newNames <- paste0("band", seq_len(nBands))
-
-    # Assign new names
     names(raster) <- newNames
-
-    # Append to list
     renamedRasterList <- c(renamedRasterList, raster)
   }
 

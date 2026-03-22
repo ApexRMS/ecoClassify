@@ -1174,7 +1174,8 @@ saveFiles <- function(
   groundTruth = NULL,
   category,
   timestep,
-  transferDir
+  transferDir,
+  rgbBands = NULL
 ) {
   # Predicted presence and probability rasters are already saved by getPredictionRasters()
   # We only need to save ground truth (if provided) and generate RGB image
@@ -1193,8 +1194,48 @@ saveFiles <- function(
   }
 
   # save RBG Image
-  # prefer B03,B02,B01 if present; otherwise fall back to first three layers
+  # use user-specified band names if provided, otherwise fall back to bands 3, 2, 1
   rgb_idx <- c(3, 2, 1)
+  if (!is.null(rgbBands)) {
+    bandNamesInRaster <- names(trainingRaster)
+    redIdx   <- match(rgbBands$red,   bandNamesInRaster)
+    greenIdx <- match(rgbBands$green, bandNamesInRaster)
+    blueIdx  <- match(rgbBands$blue,  bandNamesInRaster)
+    if (!is.na(redIdx) && !is.na(greenIdx) && !is.na(blueIdx)) {
+      rgb_idx <- c(redIdx, greenIdx, blueIdx)
+      updateRunLog(
+        sprintf(
+          "t=%s: RGB image using specified bands - R: %s (index %d), G: %s (index %d), B: %s (index %d).",
+          timestep,
+          rgbBands$red, redIdx, rgbBands$green, greenIdx, rgbBands$blue, blueIdx
+        ),
+        type = "info"
+      )
+    } else {
+      missingBands <- c(
+        if (is.na(redIdx))   paste0("R='", rgbBands$red,   "'"),
+        if (is.na(greenIdx)) paste0("G='", rgbBands$green, "'"),
+        if (is.na(blueIdx))  paste0("B='", rgbBands$blue,  "'")
+      )
+      updateRunLog(
+        sprintf(
+          "t=%s: RGB band name(s) not found in raster (%s); falling back to bands 3, 2, 1. Available bands: %s.",
+          timestep,
+          paste(missingBands, collapse = ", "),
+          paste(bandNamesInRaster, collapse = ", ")
+        ),
+        type = "warning"
+      )
+    }
+  } else {
+    updateRunLog(
+      sprintf(
+        "t=%s: No RGB band names specified; using bands 3, 2, 1 for RGB image.",
+        timestep
+      ),
+      type = "info"
+    )
+  }
   if (terra::nlyr(trainingRaster) >= 3) {
     rgb_rast <- trainingRaster[[rgb_idx]]
   } else if (terra::nlyr(trainingRaster) == 2) {

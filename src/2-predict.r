@@ -24,11 +24,37 @@ progressBar(
 
 # Get the SyncroSim Scenario that is currently running
 myScenario <- scenario()
+myProject <- project(myScenario)
 
 # Retrieve the transfer directory for storing output rasters
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
+
+# Load project-level datasheets ------------------------------------------------
+terminologyDataframe <- datasheet(myProject, name = "ecoClassify_Terminology")
+
+bandLabelFile <- if (
+  nrow(terminologyDataframe) > 0 &&
+  !is.null(terminologyDataframe$bandNames) &&
+  !is.na(terminologyDataframe$bandNames[1]) &&
+  nchar(terminologyDataframe$bandNames[1]) > 0
+) terminologyDataframe$bandNames[1] else NULL
+
+rgbBands <- if (
+  nrow(terminologyDataframe) > 0 &&
+  !is.null(terminologyDataframe$redBand) && !is.na(terminologyDataframe$redBand[1]) &&
+  !is.null(terminologyDataframe$greenBand) && !is.na(terminologyDataframe$greenBand[1]) &&
+  !is.null(terminologyDataframe$blueBand) && !is.na(terminologyDataframe$blueBand[1])
+) {
+  list(
+    red   = terminologyDataframe$redBand[1],
+    green = terminologyDataframe$greenBand[1],
+    blue  = terminologyDataframe$blueBand[1]
+  )
+} else {
+  NULL
+}
 
 # Load raster input datasheets -------------------------------------------------
 
@@ -109,8 +135,24 @@ if (setManualThreshold == FALSE) {
 predictRasterList <- extractRasters(predictingRasterDataframe, column = 2)
 
 # Override band names if selected
-if (overrideBandnames == TRUE) {
-  predictRasterList <- overrideBandNames(predictRasterList)
+if (isTRUE(overrideBandnames)) {
+  if (!is.null(bandLabelFile)) {
+    updateRunLog("Applying band label override to predicting rasters.", type = "info")
+    predictRasterList <- overrideBandNames(predictRasterList, bandLabelFile)
+  } else {
+    updateRunLog(
+      "Override band names is enabled but no band label file was supplied; band names will not be changed.",
+      type = "warning"
+    )
+  }
+} else {
+  updateRunLog(
+    paste0(
+      "Using original band names: ",
+      paste(names(predictRasterList[[1]]), collapse = ", ")
+    ),
+    type = "info"
+  )
 }
 
 # Pre-processing ---------------------------------------------------------------
@@ -215,7 +257,8 @@ for (t in seq_along(predictRasterList)) {
     groundTruth = NULL,
     category = "predicting",
     timestep,
-    transferDir
+    transferDir,
+    rgbBands = rgbBands
   )
 
   # Accumulate summary row for this timestep

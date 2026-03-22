@@ -24,10 +24,36 @@ progressBar(
 
 # Get the SyncroSim Scenario that is currently running
 myScenario <- scenario()
+myProject <- project(myScenario)
 
 # Retrieve the transfer directory for storing output rasters
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
+
+# Load project-level datasheets ------------------------------------------------
+terminologyDataframe <- datasheet(myProject, name = "ecoClassify_Terminology")
+
+bandLabelFile <- if (
+  nrow(terminologyDataframe) > 0 &&
+  !is.null(terminologyDataframe$bandNames) &&
+  !is.na(terminologyDataframe$bandNames[1]) &&
+  nchar(terminologyDataframe$bandNames[1]) > 0
+) terminologyDataframe$bandNames[1] else NULL
+
+rgbBands <- if (
+  nrow(terminologyDataframe) > 0 &&
+  !is.null(terminologyDataframe$redBand) && !is.na(terminologyDataframe$redBand[1]) &&
+  !is.null(terminologyDataframe$greenBand) && !is.na(terminologyDataframe$greenBand[1]) &&
+  !is.null(terminologyDataframe$blueBand) && !is.na(terminologyDataframe$blueBand[1])
+) {
+  list(
+    red   = terminologyDataframe$redBand[1],
+    green = terminologyDataframe$greenBand[1],
+    blue  = terminologyDataframe$blueBand[1]
+  )
+} else {
+  NULL
+}
 
 # Load raster input datasheets -------------------------------------------------
 trainingRasterDataframe <- datasheet(
@@ -93,8 +119,24 @@ trainingRasterList <- extractRasters(trainingRasterDataframe, column = 2)
 groundTruthRasterList <- extractRasters(trainingRasterDataframe, column = 3)
 
 # Override band names if selected
-if (overrideBandnames == TRUE) {
-  trainingRasterList <- overrideBandNames(trainingRasterList)
+if (isTRUE(overrideBandnames)) {
+  if (!is.null(bandLabelFile)) {
+    updateRunLog("Applying band label override to training rasters.", type = "info")
+    trainingRasterList <- overrideBandNames(trainingRasterList, bandLabelFile)
+  } else {
+    updateRunLog(
+      "Override band names is enabled but no band label file was supplied; band names will not be changed.",
+      type = "warning"
+    )
+  }
+} else {
+  updateRunLog(
+    paste0(
+      "Using original band names: ",
+      paste(names(trainingRasterList[[1]]), collapse = ", ")
+    ),
+    type = "info"
+  )
 }
 
 # Validate and align rasters ---------------------------------------------------
@@ -371,7 +413,8 @@ for (t in seq_along(trainingRasterList)) {
     groundTruth,
     category = "training",
     timestep,
-    transferDir
+    transferDir,
+    rgbBands = rgbBands
   )
 
   # Accumulate summary row for this timestep

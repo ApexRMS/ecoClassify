@@ -8,8 +8,13 @@
 
     <!--Project Level-->
     <dataSheet name="Terminology" isSingleRow="True" dataScope="Project">
-        <column name="bandNames" dataType="String" displayName="Training raster band names" isExternalFile="True"/>
+        <column name="bandNames" dataType="String" displayName="Band label override file" isExternalFile="True"/>
         <column name="timestepName" dataType="String" displayName="Raster group name"/>
+        <column name="redBand" dataType="String" displayName="Red band" isOptional="True"/>
+        <column name="greenBand" dataType="String" displayName="Green band" isOptional="True"/>
+        <column name="blueBand" dataType="String" displayName="Blue band" isOptional="True"/>
+        <column name="nirBand" dataType="String" displayName="NIR band" isOptional="True"/>
+        <column name="swirBand" dataType="String" displayName="SWIR band" isOptional="True"/>
         <record columns="timestepName" values="Timestep"/>
     </dataSheet>
 
@@ -256,6 +261,11 @@
     <transformer name="ClassifiedFilteredExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedFiltered" isRasterExport="True"/>
     <transformer name="ClassifiedFilteredRestrictedExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedFilteredRestricted" isRasterExport="True"/>
     <transformer name="ClassifiedProbabilityExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedProbability" isRasterExport="True"/>
+
+    <!--Project Layout-->
+    <layout type="Project">
+        <item name="Terminology"/>
+    </layout>
 
     <!--Scenario Layout-->
     <layout type="Scenario">
