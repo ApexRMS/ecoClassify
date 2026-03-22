@@ -39,6 +39,7 @@
     <dataSheet name="ClassifierOptions" displayName="Classifier Options" isSingleRow="True">
         <column name="nObs" dataType="Integer" displayName="Sample size"/>
         <column name="modelType" displayName="Model type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt|2:CNN"/>
+        <record columns="nObs|modelType" values="10000|0"/>
     </dataSheet>
 
     <dataSheet name="AdvancedClassifierOptions" displayName="Advanced" isSingleRow="True" viewClassName="ecoclassifyUI.AdvancedForm" viewClassAssembly="ecoclassifyUI">
@@ -52,6 +53,7 @@
         <column name="applyContextualization" dataType="Boolean" displayName="Apply contextualization"/>
         <column name="contextualizationWindowSize" dataType="Integer" displayName="Contextualization window size" isOptional="True"/>
         <column name="setSeed" dataType="Integer" displayName="Random seed" isOptional="True"/>
+        <record columns="overrideBandnames|normalizeRasters|rasterDecimalPlaces|modelTuning|tuningObjective|setManualThreshold|manualThreshold|applyContextualization|contextualizationWindowSize" values="0|0|2|1|5|0|0.5|0|3"/>
     </dataSheet>
     
     <dataSheet name="TargetClassOptions" displayName="Target Class Options" isSingleRow="True">

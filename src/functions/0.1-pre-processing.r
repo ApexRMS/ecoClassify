@@ -136,7 +136,7 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
   if (is.null(rasterDecimalPlaces) || length(rasterDecimalPlaces) == 0 || is.na(rasterDecimalPlaces)) rasterDecimalPlaces <- 2L
 
   modelTuning <- advClassifierOptionsDataframe$modelTuning
-  if (is.null(modelTuning) || length(modelTuning) == 0 || is.na(modelTuning)) modelTuning <- FALSE
+  if (is.null(modelTuning) || length(modelTuning) == 0 || is.na(modelTuning)) modelTuning <- TRUE
 
   tuningObjective_raw <- advClassifierOptionsDataframe$tuningObjective
   if (is.null(tuningObjective_raw) || length(tuningObjective_raw) == 0 || is.na(tuningObjective_raw)) {
