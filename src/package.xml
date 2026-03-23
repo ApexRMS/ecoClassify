@@ -58,7 +58,7 @@
         <column name="applyContextualization" dataType="Boolean" displayName="Apply contextualization"/>
         <column name="contextualizationWindowSize" dataType="Integer" displayName="Contextualization window size" isOptional="True"/>
         <column name="setSeed" dataType="Integer" displayName="Random seed" isOptional="True"/>
-        <record columns="overrideBandnames|normalizeRasters|rasterDecimalPlaces|modelTuning|tuningObjective|setManualThreshold|manualThreshold|applyContextualization|contextualizationWindowSize" values="0|0|2|1|5|0|0.5|0|3"/>
+        <record columns="overrideBandnames|normalizeRasters|rasterDecimalPlaces|modelTuning|tuningObjective|setManualThreshold|manualThreshold|applyContextualization|contextualizationWindowSize|setSeed" values="0|0|2|0|5|0|0.5|0|3|0"/>
     </dataSheet>
     
     <dataSheet name="TargetClassOptions" displayName="Target Class Options" isSingleRow="True">
@@ -197,9 +197,9 @@
     <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.5">
         <dataSheet name="InputTrainingRasters" type="Input"/>
         <dataSheet name="InputTrainingCovariates" type="Input"/>
-        <dataSheet name="ClassifierOptions" type="Both"/>
-        <dataSheet name="AdvancedClassifierOptions" type="Both"/>
-        <dataSheet name="TargetClassOptions" type="Both"/>
+        <dataSheet name="ClassifierOptions" type="Input"/>
+        <dataSheet name="AdvancedClassifierOptions" type="Input"/>
+        <dataSheet name="TargetClassOptions" type="Input"/>
         <dataSheet name="RasterOutput" type="Output"/>
         <dataSheet name="ConfusionMatrix" type="Output"/>
         <dataSheet name="ModelStatistics" type="Output"/>

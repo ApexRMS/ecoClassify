@@ -130,6 +130,12 @@ if (isTRUE(overrideBandnames)) {
     )
   }
 } else {
+  if (!is.null(bandLabelFile)) {
+    updateRunLog(
+      "A band label file was supplied but 'Override band names' is not enabled; band names will not be changed.",
+      type = "info"
+    )
+  }
   updateRunLog(
     paste0(
       "Using original band names: ",
