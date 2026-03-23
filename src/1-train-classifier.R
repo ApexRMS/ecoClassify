@@ -485,23 +485,6 @@ tryCatch({
   updateRunLog(paste0("Could not build metrics row: ", conditionMessage(e)), type = "warning")
 })
 
-# Generate model chart dataframe --------------------------------
-
-modelChartDataframe <- data.frame(
-  Accuracy = modelOutputDataframe %>%
-    filter(Statistic == "Accuracy") %>%
-    pull(Value),
-  Precision = modelOutputDataframe %>%
-    filter(Statistic == "Precision") %>%
-    pull(Value),
-  Sensitivity = modelOutputDataframe %>%
-    filter(Statistic == "Sensitivity") %>%
-    pull(Value),
-  Specificity = modelOutputDataframe %>%
-    filter(Statistic == "Specificity") %>%
-    pull(Value)
-)
-
 # Make a confusion matrix output dataframe
 ggsave(
   filename = file.path(paste0(transferDir, "/ConfusionMatrixPlot.png")),
@@ -621,12 +604,6 @@ saveDatasheet(
   myScenario,
   data = varImportanceOutputDataframe,
   name = "ecoClassify_VariableImportanceOutputDataframe"
-)
-
-saveDatasheet(
-  myScenario,
-  data = modelChartDataframe,
-  name = "ecoClassify_ModelChartData"
 )
 
 if (length(summaryRows) > 0) {

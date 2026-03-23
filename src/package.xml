@@ -103,7 +103,7 @@
         <column name="MaxProbability" dataType="Double" displayName="Max probability" isOptional="True"/>
     </dataSheet>
 
-    <dataSheet name="ModelMetricsByClass" displayName="Model Metrics by Class" isSingleRow="False">
+    <dataSheet name="ModelMetricsByClass" displayName="Model Evaluation Metrics" isSingleRow="False">
         <column name="TargetClassValue" dataType="Integer" displayName="Target class value" isOptional="True"/>
         <column name="TargetClassLabel" dataType="String" displayName="Target class label" isOptional="True"/>
         <column name="Accuracy" dataType="Double" displayName="Accuracy" isOptional="True"/>
@@ -293,7 +293,7 @@
 
     <!--Chart Layout-->
 	<layout type="Chart">
-        <group name="modelMetricsChart" displayName="Model Metrics by Class">
+        <group name="modelMetricsChart" displayName="Model Evaluation Metrics">
             <item name="metricsAccuracy"    displayName="Accuracy"    dataSheet="ModelMetricsByClass" column="Accuracy"/>
             <item name="metricsPrecision"   displayName="Precision"   dataSheet="ModelMetricsByClass" column="Precision"/>
             <item name="metricsRecall"      displayName="Recall"      dataSheet="ModelMetricsByClass" column="Recall"/>
