@@ -67,12 +67,25 @@ if (nrow(tilingOptionsDataframe) > 0) {
 }
 
 if (autoTiling) {
-  nCores <- setCores(multiprocessingSheet)
+  # Read MaximumJobs directly rather than using setCores(), because this
+  # transformer runs with isMultiprocessing="False" so SyncroSim sets
+  # EnableMultiprocessing=FALSE in the execution context, causing setCores()
+  # to always return 1.
+  nCores <- if (
+    nrow(multiprocessingSheet) > 0 &&
+    !is.null(multiprocessingSheet$MaximumJobs) &&
+    !is.na(multiprocessingSheet$MaximumJobs[1]) &&
+    multiprocessingSheet$MaximumJobs[1] > 0L
+  ) {
+    as.integer(multiprocessingSheet$MaximumJobs[1])
+  } else {
+    parallel::detectCores()
+  }
   nTiles <- max(nCores, 1L)
   numTilesX <- ceiling(sqrt(nTiles))
   numTilesY <- floor(nTiles / numTilesX)
   updateRunLog(paste0(
-    "Auto-tiling: ", nCores, " core(s) available -> ",
+    "Auto-tiling: ", nCores, " job(s) configured -> ",
     numTilesX, " x ", numTilesY, " tile grid (",
     numTilesX * numTilesY, " tiles)."
   ))
@@ -87,6 +100,18 @@ if (autoTiling) {
     "Tiling configuration: ", numTilesX, " tile(s) along X, ",
     numTilesY, " tile(s) along Y (", numTilesX * numTilesY, " total tiles)."
   ))
+  configuredJobs <- if (
+    nrow(multiprocessingSheet) > 0 &&
+    !is.null(multiprocessingSheet$MaximumJobs) &&
+    !is.na(multiprocessingSheet$MaximumJobs[1])
+  ) as.integer(multiprocessingSheet$MaximumJobs[1]) else 1L
+  if (numTilesX * numTilesY > configuredJobs) {
+    updateRunLog(paste0(
+      "Number of tiles (", numTilesX * numTilesY, ") exceeds the number of configured jobs (", configuredJobs, "). ",
+      "Tiles will run in batches of ", configuredJobs, ". ",
+      "To run all tiles simultaneously, set Maximum Jobs to ", numTilesX * numTilesY, " or more."
+    ), type = "info")
+  }
 }
 
 
@@ -228,15 +253,14 @@ saveDatasheet(
 
 updateRunLog("core_SpatialMultiprocessing datasheet updated.")
 
-# Limit regular multiprocessing to 1 job per tile so that total R processes
-# equals the number of tiles rather than nTiles * nJobs.
+totalTiles <- as.integer(numTilesX * numTilesY)
 saveDatasheet(
   myScenario,
-  data = data.frame(EnableMultiprocessing = TRUE, MaximumJobs = 1L,
+  data = data.frame(EnableMultiprocessing = TRUE, MaximumJobs = totalTiles,
                     stringsAsFactors = FALSE),
   name = "core_Multiprocessing"
 )
 
-updateRunLog("core_Multiprocessing set to 1 job per tile (spatial tiling handles parallelism).")
+updateRunLog(paste0("core_Multiprocessing set to ", totalTiles, " job(s) to match tile count."))
 
 progressBar(type = "message", message = "Spatial tiling preparation complete")

@@ -58,7 +58,7 @@
         <column name="applyContextualization" dataType="Boolean" displayName="Apply contextualization"/>
         <column name="contextualizationWindowSize" dataType="Integer" displayName="Contextualization window size" isOptional="True"/>
         <column name="setSeed" dataType="Integer" displayName="Random seed" isOptional="True"/>
-        <record columns="overrideBandnames|normalizeRasters|rasterDecimalPlaces|modelTuning|tuningObjective|setManualThreshold|manualThreshold|applyContextualization|contextualizationWindowSize|setSeed" values="0|0|2|0|5|0|0.5|0|3|0"/>
+        <record columns="overrideBandnames|normalizeRasters|rasterDecimalPlaces|modelTuning|tuningObjective|setManualThreshold|manualThreshold|applyContextualization|contextualizationWindowSize|setSeed" values="0|0|2|-1|5|0|0.5|0|3|0"/>
     </dataSheet>
     
     <dataSheet name="TargetClassOptions" displayName="Target Class Options" isSingleRow="True">
@@ -85,8 +85,9 @@
 
     <dataSheet name="TilingOptions" displayName="Tiling Options" isSingleRow="True">
         <column name="AutoTiling" dataType="Boolean" displayName="Auto-calculate tile count from cores" isOptional="True"/>
-        <column name="NumTilesX" dataType="Integer" displayName="Number of Tiles (X axis)" isOptional="True" defaultValue="2"/>
-        <column name="NumTilesY" dataType="Integer" displayName="Number of Tiles (Y axis)" isOptional="True" defaultValue="2"/>
+        <column name="NumTilesX" dataType="Integer" displayName="Number of Tiles (X axis)" isOptional="True"/>
+        <column name="NumTilesY" dataType="Integer" displayName="Number of Tiles (Y axis)" isOptional="True"/>
+        <record columns="AutoTiling|NumTilesX|NumTilesY" values="-1|2|2"/>
     </dataSheet>
 
     <!--Output-->
