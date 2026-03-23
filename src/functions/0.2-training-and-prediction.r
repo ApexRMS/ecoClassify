@@ -822,6 +822,14 @@ getOptimalThreshold <- function(
     stop("All testing predictions were dropped due to NA.")
   }
 
+  if (length(testingPredictions) < 10) {
+    warning(paste0(
+      "Testing dataset has only ", length(testingPredictions), " sample(s); ",
+      "threshold optimization requires more data for reliable results. ",
+      "Increase the number of observations or adjust the train/test split."
+    ))
+  }
+
   # --- evaluate metric vectors across the same grid (minimal change) ---
   metrics <- t(sapply(
     thresholds,

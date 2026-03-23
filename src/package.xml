@@ -87,7 +87,7 @@
         <column name="AutoTiling" dataType="Boolean" displayName="Auto-calculate tile count from cores" isOptional="True"/>
         <column name="NumTilesX" dataType="Integer" displayName="Number of Tiles (X axis)" isOptional="True"/>
         <column name="NumTilesY" dataType="Integer" displayName="Number of Tiles (Y axis)" isOptional="True"/>
-        <record columns="AutoTiling|NumTilesX|NumTilesY" values="-1|2|2"/>
+        <record columns="AutoTiling" values="-1"/>
     </dataSheet>
 
     <!--Output-->
@@ -175,14 +175,6 @@
         <column name="Weights" dataType="String" isExternalFile="True"/>
     </dataSheet>
 
-    <dataSheet name="ModelChartData" displayName="Model Chart Data">
-	    <column name="Accuracy" dataType="Double"/>
-        <column name="Precision" dataType="Double"/>
-        <column name="Sensitivity" dataType="Double"/>
-        <column name="Specificity" dataType="Double"/>
-    </dataSheet>
-
-
     <!--Transformer 0: prepare spatial tiling-->
     <transformer name="PrepareSpatialTiling" displayName="2a-Prepare Spatial Tiling"
         programName="Rscript" programArguments="2a-prepare-spatial-tiling.R"
@@ -209,7 +201,6 @@
         <dataSheet name="LayerHistogramPlotOutput" type="Output"/>
         <dataSheet name="RgbOutput" type="Output"/>
         <dataSheet name="ModelObject" type="Output"/>
-        <dataSheet name="ModelChartData" type="Output"/>
         <dataSheet name="SummaryOutput" type="Output"/>
         <dataSheet name="ModelMetricsByClass" type="Output"/>
     </transformer>
@@ -302,12 +293,6 @@
 
     <!--Chart Layout-->
 	<layout type="Chart">
-        <group name="modelFitChart" displayName="Model Fit">
-            <item name="modelAccuracy" displayName="Accuracy" dataSheet="ModelChartData" column="Accuracy"/>
-            <item name="modelPrecision" displayName="Precision" dataSheet="ModelChartData" column="Precision"/>
-            <item name="modelSensitivity" displayName="Sensitivity" dataSheet="ModelChartData" column="Sensitivity"/>
-            <item name="modelSpecificity" displayName="Specificity" dataSheet="ModelChartData" column="Specificity"/>
-        </group>
         <group name="modelMetricsChart" displayName="Model Metrics by Class">
             <item name="metricsAccuracy"    displayName="Accuracy"    dataSheet="ModelMetricsByClass" column="Accuracy"/>
             <item name="metricsPrecision"   displayName="Precision"   dataSheet="ModelMetricsByClass" column="Precision"/>
