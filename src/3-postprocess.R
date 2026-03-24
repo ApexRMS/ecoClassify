@@ -104,6 +104,17 @@ predictingOutputDataframe <- datasheet(
 )
 
 
+### Existing summary output (to be preserved and overwritten) -----
+
+existingSummaryOutput <- datasheet(myScenario, name = "ecoClassify_SummaryOutput")
+postProcessingTypes <- c("filtered", "restricted", "filtered_restricted")
+if (nrow(existingSummaryOutput) > 0 && "PredictionType" %in% names(existingSummaryOutput)) {
+  existingSummaryOutput <- existingSummaryOutput[
+    !existingSummaryOutput$PredictionType %in% postProcessingTypes, , drop = FALSE
+  ]
+}
+
+
 ### Unique timesteps ----------------------------------------------
 
 trainingRasterDataframe <- datasheet(
@@ -624,10 +635,148 @@ if (dim(predictingOutputDataframe)[1] != 0) {
   )
 }
 
+# Combine post-processing summary rows with preserved existing rows and overwrite
 if (length(summaryRows) > 0) {
+  newSummaryRows <- do.call(rbind, summaryRows)
+  combinedSummary <- if (nrow(existingSummaryOutput) > 0) {
+    rbind(existingSummaryOutput, newSummaryRows)
+  } else {
+    newSummaryRows
+  }
+} else {
+  combinedSummary <- existingSummaryOutput
+}
+
+if (nrow(combinedSummary) > 0) {
   saveDatasheet(
     myScenario,
-    data = do.call(rbind, summaryRows),
+    data = combinedSummary,
     name = "ecoClassify_SummaryOutput"
   )
+}
+
+# Recalculate model statistics and metrics from post-processed rasters ----------
+if (length(trainTimestepList) > 0) {
+  allPredVals  <- integer(0)
+  allTruthVals <- integer(0)
+
+  for (t in trainTimestepList) {
+    row_idx <- trainingOutputDataframe$Timestep == t
+
+    frc_path <- trainingOutputDataframe$PredictedFilteredRestricted[row_idx]
+    urc_path <- trainingOutputDataframe$PredictedUnfilteredRestricted[row_idx]
+    flt_path <- trainingOutputDataframe$PredictedFiltered[row_idx]
+    unf_path <- trainingOutputDataframe$PredictedUnfiltered[row_idx]
+
+    predPath <- NA_character_
+    if (length(frc_path) > 0 && !is.na(frc_path) && file.exists(frc_path)) {
+      predPath <- frc_path
+    } else if (length(urc_path) > 0 && !is.na(urc_path) && file.exists(urc_path)) {
+      predPath <- urc_path
+    } else if (length(flt_path) > 0 && !is.na(flt_path) && file.exists(flt_path)) {
+      predPath <- flt_path
+    } else if (length(unf_path) > 0 && !is.na(unf_path) && file.exists(unf_path)) {
+      predPath <- unf_path
+    }
+
+    truthPath <- trainingOutputDataframe$GroundTruth[row_idx]
+
+    if (is.na(predPath) || length(truthPath) == 0 || is.na(truthPath) || !file.exists(truthPath)) next
+
+    predVals  <- terra::values(terra::rast(predPath),  mat = FALSE)
+    truthVals <- terra::values(terra::rast(truthPath), mat = FALSE)
+
+    valid <- !is.na(predVals) & !is.na(truthVals) & truthVals %in% c(0L, 1L)
+    allPredVals  <- c(allPredVals,  as.integer(predVals[valid]))
+    allTruthVals <- c(allTruthVals, as.integer(truthVals[valid]))
+  }
+
+  if (length(allPredVals) > 0) {
+    tp <- sum(allTruthVals == 1L & allPredVals == 1L)
+    tn <- sum(allTruthVals == 0L & allPredVals == 0L)
+    fp <- sum(allTruthVals == 0L & allPredVals == 1L)
+    fn <- sum(allTruthVals == 1L & allPredVals == 0L)
+    n  <- tp + tn + fp + fn
+
+    acc      <- (tp + tn) / n
+    sens     <- if ((tp + fn) > 0) tp / (tp + fn) else NA_real_
+    spec     <- if ((tn + fp) > 0) tn / (tn + fp) else NA_real_
+    ppv      <- if ((tp + fp) > 0) tp / (tp + fp) else NA_real_
+    npv      <- if ((tn + fn) > 0) tn / (tn + fn) else NA_real_
+    prec     <- ppv
+    rec      <- sens
+    f1       <- if (!is.na(prec) && !is.na(rec) && (prec + rec) > 0) 2 * prec * rec / (prec + rec) else NA_real_
+    p_pos    <- (tp + fn) / n
+    nir      <- max(p_pos, 1 - p_pos)
+    pe       <- (((tp + fn) * (tp + fp)) + ((fp + tn) * (fn + tn))) / (n ^ 2)
+    kappa_val <- if ((1 - pe) > 0) (acc - pe) / (1 - pe) else NA_real_
+    bal_acc  <- if (!is.na(sens) && !is.na(spec)) (sens + spec) / 2 else NA_real_
+    det_rate <- tp / n
+    det_prev <- (tp + fp) / n
+
+    bt_overall <- binom.test(tp + tn, n)
+    acc_lower  <- unname(bt_overall$conf.int[1])
+    acc_upper  <- unname(bt_overall$conf.int[2])
+
+    bt_nir <- binom.test(tp + tn, n, p = nir, alternative = "greater")
+    acc_p  <- unname(bt_nir$p.value)
+
+    mcnemar_p <- tryCatch(
+      stats::mcnemar.test(matrix(c(tn, fp, fn, tp), nrow = 2))$p.value,
+      error = function(e) NA_real_
+    )
+
+    updatedModelOutputDataframe <- data.frame(
+      Statistic = c(
+        "Accuracy", "Kappa",
+        "Accuracy (lower)", "Accuracy (upper)",
+        "Accuracy (null)", "Accuracy P Value",
+        "Mcnemar P value",
+        "Sensitivity", "Specificity",
+        "Pos Pred Value", "Neg Pred Value",
+        "Precision", "Recall", "F1",
+        "Prevalence", "Detection Rate",
+        "Detection Prevalence", "Balanced Accuracy"
+      ),
+      Value = c(
+        acc, kappa_val,
+        acc_lower, acc_upper,
+        nir, acc_p, mcnemar_p,
+        sens, spec, ppv, npv,
+        prec, rec, f1,
+        p_pos, det_rate, det_prev, bal_acc
+      ),
+      stringsAsFactors = FALSE
+    )
+
+    saveDatasheet(
+      myScenario,
+      data = updatedModelOutputDataframe,
+      name = "ecoClassify_ModelStatistics"
+    )
+
+    tryCatch({
+      updatedMetricsRow <- buildMetricsRow(
+        statsDataframe   = updatedModelOutputDataframe,
+        targetClassValue = targetClassValue,
+        targetClassLabel = targetClassLabel,
+        auc              = NA_real_
+      )
+      saveDatasheet(
+        myScenario,
+        data = updatedMetricsRow,
+        name = "ecoClassify_ModelMetricsByClass"
+      )
+    }, error = function(e) {
+      updateRunLog(
+        paste0("Could not build model metrics row: ", conditionMessage(e)),
+        type = "warning"
+      )
+    })
+  } else {
+    updateRunLog(
+      "No valid pixel pairs found for training rasters; model statistics and metrics will not be updated.",
+      type = "warning"
+    )
+  }
 }

@@ -230,7 +230,9 @@
         <dataSheet name="InputTrainingRasters" type="Input"/>
         <dataSheet name="InputPredictingRasters" type="Input"/>
         <dataSheet name="core_SpatialMultiprocessing" type="Input"/>
-        <dataSheet name="SummaryOutput" type="Output"/>
+        <dataSheet name="SummaryOutput" type="Both"/>
+        <dataSheet name="ModelStatistics" type="Both"/>
+        <dataSheet name="ModelMetricsByClass" type="Both"/>
     </transformer>
 
     <!--Export transformers-->
