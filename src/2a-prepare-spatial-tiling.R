@@ -44,6 +44,21 @@ tilingOptionsDataframe <- datasheet(
 
 multiprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
 
+mpEnabled <- nrow(multiprocessingSheet) > 0 &&
+  !is.null(multiprocessingSheet$EnableMultiprocessing) &&
+  isTRUE(multiprocessingSheet$EnableMultiprocessing[1])
+
+if (!mpEnabled) {
+  updateRunLog(
+    paste0(
+      "Tiling was selected but multiprocessing is not enabled. ",
+      "The tile grid will be generated but tiling will not be applied during prediction. ",
+      "Enable multiprocessing in the scenario run settings to use spatial tiling."
+    ),
+    type = "warning"
+  )
+}
+
 
 # Resolve tiling parameters ----------------------------------------------------
 
