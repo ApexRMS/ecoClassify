@@ -221,7 +221,7 @@
     </transformer>
 
     <!--Transformer 3: filtering-->
-    <transformer name="PostProcessing" displayName="3-Post-Process" programName="Rscript" programArguments="3-postprocess.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.5">
+    <transformer name="PostProcessing" displayName="3-Post-Process" programName="Rscript" programArguments="3-postprocess.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.5" isMultiprocessing="False">
         <dataSheet name="RasterOutput" type="Both"/>
         <dataSheet name="ClassifiedRasterOutput" type="Both"/>
         <dataSheet name="PostProcessingFilter" type="Input"/>
