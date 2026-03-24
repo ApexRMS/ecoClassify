@@ -771,7 +771,7 @@ if (length(trainTimestepList) > 0) {
         "Accuracy (null)", "Accuracy P Value",
         "Mcnemar P value",
         "Sensitivity", "Specificity",
-        "Pos Pred Value", "Neg Pred Value",
+        "Positive Predictive Value", "Negative Predictive Value",
         "Precision", "Recall", "F1",
         "Prevalence", "Detection Rate",
         "Detection Prevalence", "Balanced Accuracy"
