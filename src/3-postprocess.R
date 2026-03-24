@@ -107,6 +107,17 @@ predictingOutputDataframe <- datasheet(
 ### Existing summary output (to be preserved and overwritten) -----
 
 existingSummaryOutput <- datasheet(myScenario, name = "ecoClassify_SummaryOutput")
+# Keep only the schema-defined columns to avoid internal rsyncosim columns causing rbind failures
+summaryOutputSchemaCols <- c(
+  "Timestep", "TargetClassValue", "TargetClassLabel", "PredictionType",
+  "PredictedPixels", "PredictedArea", "MeanProbability", "MedianProbability",
+  "MinProbability", "MaxProbability"
+)
+if (nrow(existingSummaryOutput) > 0) {
+  existingSummaryOutput <- existingSummaryOutput[,
+    intersect(names(existingSummaryOutput), summaryOutputSchemaCols), drop = FALSE
+  ]
+}
 postProcessingTypes <- c("filtered", "restricted", "filtered_restricted")
 if (nrow(existingSummaryOutput) > 0 && "PredictionType" %in% names(existingSummaryOutput)) {
   existingSummaryOutput <- existingSummaryOutput[
@@ -145,10 +156,10 @@ summaryRows <- list()
 ### Training step -------------------------------------------------
 
 for (t in trainTimestepList) {
-  # Get file paths
+  # Get file paths (take first match in case of duplicate timestep rows)
   predictedPresenceFilepath <- trainingOutputDataframe$PredictedUnfiltered[
     trainingOutputDataframe$Timestep == t
-  ]
+  ][1]
 
   if (!is.na(predictedPresenceFilepath)) {
     # Load raster
@@ -191,10 +202,10 @@ for (t in trainTimestepList) {
 ### Predicting step -----------------------------------------------
 
 for (t in predTimestepList) {
-  # Get file paths
+  # Get file paths (take first match in case of duplicate timestep rows)
   classifiedPresenceFilepath <- predictingOutputDataframe$ClassifiedUnfiltered[
     predictingOutputDataframe$Timestep == t
-  ]
+  ][1]
 
   if (!is.na(classifiedPresenceFilepath) && file.exists(classifiedPresenceFilepath)) {
     # Load raster
@@ -639,7 +650,7 @@ if (dim(predictingOutputDataframe)[1] != 0) {
 if (length(summaryRows) > 0) {
   newSummaryRows <- do.call(rbind, summaryRows)
   combinedSummary <- if (nrow(existingSummaryOutput) > 0) {
-    rbind(existingSummaryOutput, newSummaryRows)
+    dplyr::bind_rows(existingSummaryOutput, newSummaryRows)
   } else {
     newSummaryRows
   }
@@ -657,46 +668,68 @@ if (nrow(combinedSummary) > 0) {
 
 # Recalculate model statistics and metrics from post-processed rasters ----------
 if (length(trainTimestepList) > 0) {
-  allPredVals  <- integer(0)
-  allTruthVals <- integer(0)
+  allTp <- 0; allTn <- 0; allFp <- 0; allFn <- 0
+
+  # Helper: first non-NA, non-empty path from a possibly multi-row subset
+  first_valid_path <- function(paths) {
+    paths <- paths[!is.na(paths) & nzchar(paths)]
+    if (length(paths) == 0) NA_character_ else paths[1]
+  }
 
   for (t in trainTimestepList) {
     row_idx <- trainingOutputDataframe$Timestep == t
 
-    frc_path <- trainingOutputDataframe$PredictedFilteredRestricted[row_idx]
-    urc_path <- trainingOutputDataframe$PredictedUnfilteredRestricted[row_idx]
-    flt_path <- trainingOutputDataframe$PredictedFiltered[row_idx]
-    unf_path <- trainingOutputDataframe$PredictedUnfiltered[row_idx]
+    frc_path  <- first_valid_path(trainingOutputDataframe$PredictedFilteredRestricted[row_idx])
+    urc_path  <- first_valid_path(trainingOutputDataframe$PredictedUnfilteredRestricted[row_idx])
+    flt_path  <- first_valid_path(trainingOutputDataframe$PredictedFiltered[row_idx])
+    unf_path  <- first_valid_path(trainingOutputDataframe$PredictedUnfiltered[row_idx])
+    truthPath <- first_valid_path(trainingOutputDataframe$GroundTruth[row_idx])
 
     predPath <- NA_character_
-    if (length(frc_path) > 0 && !is.na(frc_path) && file.exists(frc_path)) {
+    if (!is.na(frc_path) && file.exists(frc_path)) {
       predPath <- frc_path
-    } else if (length(urc_path) > 0 && !is.na(urc_path) && file.exists(urc_path)) {
+    } else if (!is.na(urc_path) && file.exists(urc_path)) {
       predPath <- urc_path
-    } else if (length(flt_path) > 0 && !is.na(flt_path) && file.exists(flt_path)) {
+    } else if (!is.na(flt_path) && file.exists(flt_path)) {
       predPath <- flt_path
-    } else if (length(unf_path) > 0 && !is.na(unf_path) && file.exists(unf_path)) {
+    } else if (!is.na(unf_path) && file.exists(unf_path)) {
       predPath <- unf_path
     }
 
-    truthPath <- trainingOutputDataframe$GroundTruth[row_idx]
+    if (is.na(predPath) || is.na(truthPath) || !file.exists(truthPath)) next
 
-    if (is.na(predPath) || length(truthPath) == 0 || is.na(truthPath) || !file.exists(truthPath)) next
+    # Use terra::crosstab (long=TRUE) for disk-backed confusion matrix counts.
+    # long=TRUE always returns a data.frame regardless of how many class
+    # combinations are present, avoiding the 1-D table issue when a class
+    # is absent from one of the rasters.
+    ct <- tryCatch(
+      terra::crosstab(c(terra::rast(truthPath), terra::rast(predPath)), long = TRUE),
+      error = function(e) {
+        updateRunLog(paste0("crosstab failed for timestep ", t, ": ", conditionMessage(e)), type = "warning")
+        NULL
+      }
+    )
+    if (is.null(ct)) next
 
-    predVals  <- terra::values(terra::rast(predPath),  mat = FALSE)
-    truthVals <- terra::values(terra::rast(truthPath), mat = FALSE)
+    # Normalise column names: layer names may vary; always rename to truth/pred/Freq
+    names(ct) <- c("truth", "pred", "Freq")
+    ct$truth  <- as.numeric(as.character(ct$truth))
+    ct$pred   <- as.numeric(as.character(ct$pred))
 
-    valid <- !is.na(predVals) & !is.na(truthVals) & truthVals %in% c(0L, 1L)
-    allPredVals  <- c(allPredVals,  as.integer(predVals[valid]))
-    allTruthVals <- c(allTruthVals, as.integer(truthVals[valid]))
+    get_ct <- function(truth_val, pred_val) {
+      val <- ct$Freq[ct$truth == truth_val & ct$pred == pred_val]
+      if (length(val) == 0 || is.na(val)) 0 else as.numeric(val)
+    }
+    allTp <- allTp + get_ct(1, 1)
+    allTn <- allTn + get_ct(0, 0)
+    allFp <- allFp + get_ct(0, 1)
+    allFn <- allFn + get_ct(1, 0)
   }
 
-  if (length(allPredVals) > 0) {
-    tp <- sum(allTruthVals == 1L & allPredVals == 1L)
-    tn <- sum(allTruthVals == 0L & allPredVals == 0L)
-    fp <- sum(allTruthVals == 0L & allPredVals == 1L)
-    fn <- sum(allTruthVals == 1L & allPredVals == 0L)
-    n  <- tp + tn + fp + fn
+  tp <- allTp; tn <- allTn; fp <- allFp; fn <- allFn
+  n  <- tp + tn + fp + fn
+
+  if (n > 0) {
 
     acc      <- (tp + tn) / n
     sens     <- if ((tp + fn) > 0) tp / (tp + fn) else NA_real_
@@ -714,12 +747,17 @@ if (length(trainTimestepList) > 0) {
     det_rate <- tp / n
     det_prev <- (tp + fp) / n
 
-    bt_overall <- binom.test(tp + tn, n)
-    acc_lower  <- unname(bt_overall$conf.int[1])
-    acc_upper  <- unname(bt_overall$conf.int[2])
+    # Wilson score CI — works correctly at raster-scale n where binom.test is
+    # unreliable (requires integer inputs and is slow for very large counts)
+    z95      <- qnorm(0.975)
+    centre   <- acc + z95^2 / (2 * n)
+    margin   <- z95 * sqrt(acc * (1 - acc) / n + z95^2 / (4 * n^2))
+    denom    <- 1 + z95^2 / n
+    acc_lower <- (centre - margin) / denom
+    acc_upper <- (centre + margin) / denom
 
-    bt_nir <- binom.test(tp + tn, n, p = nir, alternative = "greater")
-    acc_p  <- unname(bt_nir$p.value)
+    # One-sided z-test: accuracy vs no-information rate
+    acc_p <- pnorm((acc - nir) / sqrt(nir * (1 - nir) / n), lower.tail = FALSE)
 
     mcnemar_p <- tryCatch(
       stats::mcnemar.test(matrix(c(tn, fp, fn, tp), nrow = 2))$p.value,
@@ -775,7 +813,7 @@ if (length(trainTimestepList) > 0) {
     })
   } else {
     updateRunLog(
-      "No valid pixel pairs found for training rasters; model statistics and metrics will not be updated.",
+      "No valid confusion matrix counts found for training rasters; model statistics and metrics will not be updated.",
       type = "warning"
     )
   }
