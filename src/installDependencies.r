@@ -40,12 +40,15 @@ if (!.RUN_INSTALLER) {
 if (.RUN_INSTALLER) {
   # --- LIB GUARD: force installs into the active conda env library ---
   fix_lib_paths <- function() {
-    cp <- Sys.getenv("CONDA_PREFIX", unset = "")
-    env_lib <- if (nzchar(cp)) file.path(cp, "Lib", "R", "library") else .libPaths()[1]
+    # Strip rogue quotes before using in file.path to avoid embedding them mid-path
+    strip_quotes <- function(p) gsub('^["\' ]+|["\' ]+$', "", p)
+    cp <- strip_quotes(Sys.getenv("CONDA_PREFIX", unset = ""))
+    env_lib <- if (nzchar(cp)) file.path(cp, "Lib", "R", "library") else strip_quotes(.libPaths()[1])
 
-    # Strip rogue quotes and normalize
-    clean <- function(p) normalizePath(gsub('^"+|"+$|^\\\'+|\\\'+$', "", p),
-                                      winslash = "/", mustWork = FALSE)
+    # Normalize (suppress warnings: mustWork=FALSE already handles non-existent paths)
+    clean <- function(p) suppressWarnings(
+      normalizePath(strip_quotes(p), winslash = "/", mustWork = FALSE)
+    )
     env_lib <- clean(env_lib)
 
     # Ensure it exists
