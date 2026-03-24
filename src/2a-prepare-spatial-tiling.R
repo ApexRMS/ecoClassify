@@ -258,6 +258,96 @@ terra::writeRaster(
 updateRunLog(paste0("Tile grid raster saved to: ", gridPath))
 
 
+# Pre-crop predicting rasters per tile and save manifest -----------------------
+
+progressBar(type = "message", message = "Pre-cropping rasters per tile")
+
+# Collect unique, valid predicting raster file paths
+allRasterFiles <- predictingRasterDataframe$predictingRasterFile
+allRasterFiles <- unique(allRasterFiles[
+  !is.na(allRasterFiles) & nzchar(allRasterFiles) & file.exists(allRasterFiles)
+])
+
+if (length(allRasterFiles) > 0) {
+  # Determine persistent tile storage directory in library data folder
+  # Use e$LibraryFilePath (already available) rather than ssim_library env var,
+  # which can contain surrounding quotes on Windows causing dir.create to fail.
+  sid_match   <- regmatches(transferDir, regexpr("Scenario-\\d+", transferDir))
+  scenario_id <- as.integer(sub("Scenario-", "", sid_match))
+
+  tilesDataDir <- file.path(
+    paste0(e$LibraryFilePath, ".data"),
+    paste0("Scenario-", scenario_id),
+    "ecoClassifyTiles"
+  )
+  dir.create(tilesDataDir, recursive = TRUE, showWarnings = FALSE)
+
+  fullExt <- as.vector(terra::ext(templateRast))  # c(xmin, xmax, ymin, ymax)
+
+  manifestData <- list(
+    version    = "1.0",
+    tile_count = as.integer(numTilesX * numTilesY),
+    full_extent = list(
+      xmin  = fullExt["xmin"],
+      xmax  = fullExt["xmax"],
+      ymin  = fullExt["ymin"],
+      ymax  = fullExt["ymax"],
+      nrows = terra::nrow(templateRast),
+      ncols = terra::ncol(templateRast),
+      crs   = terra::crs(templateRast)
+    ),
+    tiles = vector("list", numTilesX * numTilesY)
+  )
+
+  for (tid in seq_len(numTilesX * numTilesY)) {
+    tileExt     <- terra::ext(terra::trim(tileRast == tid, value = FALSE))
+    tileExt_vec <- as.vector(tileExt)  # c(xmin, xmax, ymin, ymax)
+
+    tileDirPath <- file.path(tilesDataDir, paste0("tile_", tid))
+    dir.create(tileDirPath, recursive = TRUE, showWarnings = FALSE)
+
+    rasterMap <- list()
+    for (j in seq_along(allRasterFiles)) {
+      rPath   <- allRasterFiles[j]
+      outName <- paste0("tile_", tid, "_r", j, "_", basename(rPath))
+      outPath <- file.path(tileDirPath, outName)
+      terra::writeRaster(
+        terra::crop(terra::rast(rPath), tileExt),
+        filename  = outPath,
+        overwrite = TRUE,
+        gdal      = c("COMPRESS=LZW")
+      )
+      rasterMap[[rPath]] <- outPath
+    }
+
+    manifestData$tiles[[tid]] <- list(
+      tile_id = tid,
+      tile_extent = list(
+        xmin = tileExt_vec["xmin"],
+        xmax = tileExt_vec["xmax"],
+        ymin = tileExt_vec["ymin"],
+        ymax = tileExt_vec["ymax"]
+      ),
+      raster_map = rasterMap
+    )
+
+    updateRunLog(sprintf(
+      "Tile %d: pre-cropped %d predicting raster(s).",
+      tid, length(allRasterFiles)
+    ))
+  }
+
+  manifestPath <- file.path(tilesDataDir, "tile_manifest.json")
+  jsonlite::write_json(manifestData, manifestPath, auto_unbox = TRUE, pretty = TRUE)
+  updateRunLog(paste0("Tile manifest saved to: ", manifestPath))
+} else {
+  updateRunLog(
+    "No valid predicting rasters found; skipping per-tile pre-cropping.",
+    type = "warning"
+  )
+}
+
+
 # Save path to core_SpatialMultiprocessing -------------------------------------
 
 saveDatasheet(

@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "Bash(grep -r \"ssimEnvironment\\\\|ISpatialJob\\\\|JobID\" /mnt/c/Users/HannahAdams/Documents/GitHub/ecoClassify --include=*.R --include=*.r -n)",
+      "Bash(grep:*)"
     ]
   }
 }

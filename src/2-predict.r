@@ -30,6 +30,56 @@ myProject <- project(myScenario)
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
+# --- Tile job detection -------------------------------------------------------
+# SyncroSim names each spatial MP job library "Job-N.ssim". Detect that here
+# and load the tile manifest written by the prep transformer.
+tileJobId     <- NULL
+tileRasterMap <- NULL
+tileExtent    <- NULL
+fullExtent    <- NULL
+
+# Use e$LibraryFilePath rather than the ssim_library env var, which can contain
+# surrounding quotes on Windows causing path construction to fail.
+.lib_path <- e$LibraryFilePath
+.lib_name <- basename(.lib_path)
+
+if (grepl("^Job-\\d+\\.ssim$", .lib_name)) {
+  tileJobId <- as.integer(sub("^Job-(\\d+)\\.ssim$", "\\1", .lib_name))
+
+  # Reconstruct parent library's .ssim.data directory
+  .parent_lib_base <- sub("\\.ssim\\.temp.*$", "", .lib_path)
+  .parent_data_dir <- paste0(.parent_lib_base, ".ssim.data")
+
+  # Parse scenario ID from the transfer directory path
+  .sid_match   <- regmatches(transferDir, regexpr("Scenario-\\d+", transferDir))
+  .scenario_id <- as.integer(sub("Scenario-", "", .sid_match))
+
+  .tilesDataDir <- file.path(.parent_data_dir,
+                             paste0("Scenario-", .scenario_id),
+                             "ecoClassifyTiles")
+  .manifestPath <- file.path(.tilesDataDir, "tile_manifest.json")
+
+  if (file.exists(.manifestPath)) {
+    .manifest  <- jsonlite::read_json(.manifestPath, simplifyVector = FALSE)
+    .tileInfo  <- .manifest$tiles[[tileJobId]]
+
+    tileRasterMap <- .tileInfo$raster_map   # named list: orig_path -> cropped_path
+    .te <- .tileInfo$tile_extent
+    tileExtent <- terra::ext(.te$xmin, .te$xmax, .te$ymin, .te$ymax)
+    .fe <- .manifest$full_extent
+    fullExtent <- terra::ext(.fe$xmin, .fe$xmax, .fe$ymin, .fe$ymax)
+
+    updateRunLog(sprintf("Running as spatial tile job %d.", tileJobId), type = "info")
+  } else {
+    updateRunLog(
+      paste0("Tile manifest not found at: ", .manifestPath,
+             ". Running prediction on full raster."),
+      type = "warning"
+    )
+    tileJobId <- NULL
+  }
+}
+
 
 # Load project-level datasheets ------------------------------------------------
 terminologyDataframe <- datasheet(myProject, name = "ecoClassify_Terminology")
@@ -132,6 +182,20 @@ if (setManualThreshold == FALSE) {
 
 # Extract list of testing rasters ----------------------------------------------
 
+# For tile jobs, substitute pre-cropped raster paths before loading
+if (!is.null(tileJobId) && !is.null(tileRasterMap)) {
+  for (.i in seq_len(nrow(predictingRasterDataframe))) {
+    .orig <- predictingRasterDataframe$predictingRasterFile[.i]
+    if (!is.null(.orig) && !is.na(.orig) && nzchar(.orig)) {
+      .cropped <- tileRasterMap[[.orig]]
+      if (!is.null(.cropped) && nzchar(.cropped) && file.exists(.cropped)) {
+        predictingRasterDataframe$predictingRasterFile[.i] <- .cropped
+      }
+    }
+  }
+  updateRunLog(sprintf("Tile %d: loaded pre-cropped raster paths.", tileJobId), type = "info")
+}
+
 predictRasterList <- extractRasters(predictingRasterDataframe, column = 2)
 
 # Override band names if selected
@@ -192,6 +256,11 @@ predictingCovariateRaster <- processCovariates(
   predictingCovariateDataframe,
   modelType
 )
+
+# Crop covariate raster to tile extent so it aligns with the pre-cropped predicting rasters
+if (!is.null(tileJobId) && !is.null(tileExtent) && !is.null(predictingCovariateRaster)) {
+  predictingCovariateRaster <- terra::crop(predictingCovariateRaster, tileExtent)
+}
 
 # Add covariate data to predicting rasters
 predictRasterList <- addCovariates(predictRasterList, predictingCovariateRaster)
@@ -267,7 +336,7 @@ for (t in seq_along(predictRasterList)) {
     rgbBands = rgbBands
   )
 
-  # Accumulate summary row for this timestep
+  # Accumulate summary row for this timestep (before extending, so counts reflect tile only)
   tryCatch({
     summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
       predictionRaster  = terra::rast(classifiedPresencePath),
@@ -280,6 +349,19 @@ for (t in seq_along(predictRasterList)) {
   }, error = function(e) {
     updateRunLog(paste0("Could not build summary row for timestep ", timestep, ": ", conditionMessage(e)), type = "warning")
   })
+
+  # Extend tile outputs to full raster extent so SyncroSim can mosaic tiles
+  if (!is.null(tileJobId) && !is.null(fullExtent)) {
+    for (.outPath in c(classifiedPresencePath, classifiedProbabilityPath)) {
+      .r_extended <- terra::extend(terra::rast(.outPath), fullExtent)
+      terra::writeRaster(.r_extended, .outPath, overwrite = TRUE, gdal = c("COMPRESS=LZW"))
+    }
+    updateRunLog(
+      sprintf("Tile %d: extended prediction outputs to full extent (timestep %s).",
+              tileJobId, timestep),
+      type = "info"
+    )
+  }
 }
 
 # Save dataframes back to SyncroSim library's output datasheets ----------------
