@@ -187,7 +187,7 @@
     </transformer>
 
     <!--Transformer 1: training classifier-->
-    <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.5">
+    <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.5" isMultiprocessing="False">
         <dataSheet name="InputTrainingRasters" type="Input"/>
         <dataSheet name="InputTrainingCovariates" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Both"/>
