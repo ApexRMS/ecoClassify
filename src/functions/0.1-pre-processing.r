@@ -318,6 +318,15 @@ processCovariates <- function(trainingCovariateDataframe, modelType) {
         } else {
           stop("Data type not recognized")
         }
+
+        # as.factor() and as.numeric() can produce in-memory rasters. Write to a
+        # temp file so the raster is file-backed before it is combined with the
+        # training rasters in addCovariates; writeRaster cannot read from in-memory
+        # sources if those sources were freed by a gc() call earlier in the session.
+        tmpFile <- tempfile(fileext = ".tif")
+        terra::writeRaster(covariateRaster, tmpFile, overwrite = TRUE)
+        covariateRaster <- terra::rast(tmpFile)
+
         covariateRasterList <- c(covariateRasterList, covariateRaster)
       }
 
@@ -339,10 +348,25 @@ processCovariates <- function(trainingCovariateDataframe, modelType) {
 #' @return Updated list of SpatRasters.
 #'
 #' @noRd
-addCovariates <- function(rasterList, covariateRaster) {
-  # Merge covariateFiles with each raster in trainingRasterList
+addCovariates <- function(rasterList, covariateRaster, outDir = NULL) {
+  if (is.null(covariateRaster)) return(rasterList)
+
+  # Merge covariateFiles with each raster in trainingRasterList.
+  # Write each combined raster to a file to ensure it is file-backed.
+  # outDir should be the SyncroSim transferDir rather than R's tempdir() so
+  # that the files survive for the lifetime of the transformer run.  On
+  # Windows, doParallel PSOCK worker processes can scan and remove orphaned
+  # Rtmp* directories from tempdir(), which would delete these files and
+  # trigger [readValues] errors when they are read later in the session.
   for (i in seq_along(rasterList)) {
-    rasterList[[i]] <- c(rasterList[[i]], covariateRaster)
+    combined <- c(rasterList[[i]], covariateRaster)
+    outFile <- if (!is.null(outDir)) {
+      file.path(outDir, paste0("covCombined_", i, ".tif"))
+    } else {
+      tempfile(fileext = ".tif")
+    }
+    terra::writeRaster(combined, outFile, overwrite = TRUE)
+    rasterList[[i]] <- terra::rast(outFile)
   }
 
   return(rasterList)

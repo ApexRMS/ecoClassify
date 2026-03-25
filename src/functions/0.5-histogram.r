@@ -250,10 +250,13 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
     })
 
     # Build output
+    # preds is normally a 2-col matrix (col 2 = presence probability), but the
+    # tryCatch error handler above returns a plain vector of NAs on failure.
+    response_vals <- if (is.matrix(preds) || is.data.frame(preds)) preds[, 2] else preds
     tibble::tibble(
       layer = layerName,
       predictor = predictLayerTemp[[layerName]],
-      response = preds[, 2]
+      response = response_vals
     )
   })
 

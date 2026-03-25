@@ -215,8 +215,10 @@ if (length(trainingRasterList) == 0) {
 }
 
 
-# Add covariate data to training rasters
-trainingRasterList <- addCovariates(trainingRasterList, trainingCovariateRaster)
+# Add covariate data to training rasters.
+# Pass transferDir so combined files are written there rather than R's
+# tempdir(), which doParallel PSOCK workers can clean up on Windows.
+trainingRasterList <- addCovariates(trainingRasterList, trainingCovariateRaster, transferDir)
 
 # Check for NA values in training rasters
 # NOTE: Masking is not applied, but a message is returned if there are an uneven
@@ -363,10 +365,6 @@ varImportanceOutputDataframe <- as.data.frame(variableImportance) %>%
   tibble::rownames_to_column("Variable") %>%
   rename(Importance = "variableImportance")
 
-# Free training data and redundant copies before prediction to reduce memory pressure
-rm(allTrainData, model, variableImportance)
-gc()
-
 # Predict presence for training rasters in each timestep group -----------------
 
 progressBar(type = "message", message = "Predict training rasters")
@@ -437,6 +435,15 @@ for (t in seq_along(trainingRasterList)) {
     updateRunLog(paste0("Could not build summary row for timestep ", timestep, ": ", conditionMessage(e)), type = "warning")
   })
 }
+
+# Free training data now that all raster reads are complete.
+# gc() is deferred to here so it does not run while trainingRasterList is still
+# being read (getRastLayerHistogram and the prediction loop above). Calling gc()
+# earlier — including inside getRandomForestModel — can invalidate terra's
+# internal raster state when covariate rasters are present, causing
+# [readValues] errors.
+rm(allTrainData, model, variableImportance, trainingRasterList, trainingCovariateRaster)
+gc()
 
 progressBar(type = "message", message = "Calculating summary statistics")
 

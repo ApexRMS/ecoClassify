@@ -69,6 +69,8 @@ predictRanger <- function(raster, model, filename = "", nThreads = 2L) {
   out <- terra::rast(raster, nlyr = 1, names = "present")
   nAdditional <- terra::nlyr(raster) + 2
   bs <- terra::blocks(out, n = nAdditional)
+  terra::readStart(raster)
+  on.exit(terra::readStop(raster), add = TRUE)
   terra::writeStart(out, filename, overwrite = TRUE, n = nAdditional)
   on.exit(terra::writeStop(out), add = TRUE)
 
@@ -326,7 +328,6 @@ getRandomForestModel <- function(allTrainData, nCores, isTuningOn) {
   bestModel$predictions <- NULL
   bestModel$inbag.counts <- NULL
   bestModel$variable.importance <- NULL
-  gc()
 
   list(
     model = bestModel,

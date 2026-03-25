@@ -262,8 +262,9 @@ if (!is.null(tileJobId) && !is.null(tileExtent) && !is.null(predictingCovariateR
   predictingCovariateRaster <- terra::crop(predictingCovariateRaster, tileExtent)
 }
 
-# Add covariate data to predicting rasters
-predictRasterList <- addCovariates(predictRasterList, predictingCovariateRaster)
+# Add covariate data to predicting rasters.
+# Pass transferDir so combined files are written there rather than R's tempdir().
+predictRasterList <- addCovariates(predictRasterList, predictingCovariateRaster, transferDir)
 
 # Check and mask NA values in predicting rasters
 checkNA(predictRasterList)
