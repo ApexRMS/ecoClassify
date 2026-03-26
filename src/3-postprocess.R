@@ -125,6 +125,44 @@ if (nrow(existingSummaryOutput) > 0 && "PredictionType" %in% names(existingSumma
   ]
 }
 
+# Aggregate per-tile "predicting" rows into one row per timestep.
+# When spatial tiling is used, 2-predict.r writes one summary row per tile to
+# SummaryOutput. Collapse those into a single row: PredictedPixels and
+# PredictedArea are summed; all probability columns are averaged across tiles.
+# This is a safety net — tile job 1 already attempts this in 2-predict.r, but
+# running post-processing guarantees a clean aggregated result.
+if (nrow(existingSummaryOutput) > 0 &&
+    "PredictionType" %in% names(existingSummaryOutput) &&
+    any(existingSummaryOutput$PredictionType == "predicting", na.rm = TRUE)) {
+
+  .predRows    <- existingSummaryOutput[existingSummaryOutput$PredictionType == "predicting", , drop = FALSE]
+  .nonPredRows <- existingSummaryOutput[existingSummaryOutput$PredictionType != "predicting", , drop = FALSE]
+
+  .sum_na  <- function(x) if (all(is.na(x))) NA_real_ else sum(x,  na.rm = TRUE)
+  .mean_na <- function(x) if (all(is.na(x))) NA_real_ else mean(x, na.rm = TRUE)
+
+  .aggregated <- do.call(rbind, lapply(
+    split(.predRows, .predRows$Timestep),
+    function(grp) {
+      data.frame(
+        Timestep          = grp$Timestep[1],
+        TargetClassValue  = if ("TargetClassValue"  %in% names(grp)) grp$TargetClassValue[1]  else NA,
+        TargetClassLabel  = if ("TargetClassLabel"  %in% names(grp)) grp$TargetClassLabel[1]  else NA,
+        PredictionType    = "predicting",
+        PredictedPixels   = if ("PredictedPixels"   %in% names(grp)) .sum_na(grp$PredictedPixels)    else NA_real_,
+        PredictedArea     = if ("PredictedArea"     %in% names(grp)) .sum_na(grp$PredictedArea)      else NA_real_,
+        MeanProbability   = if ("MeanProbability"   %in% names(grp)) .mean_na(grp$MeanProbability)   else NA_real_,
+        MedianProbability = if ("MedianProbability" %in% names(grp)) .mean_na(grp$MedianProbability) else NA_real_,
+        MinProbability    = if ("MinProbability"    %in% names(grp)) .mean_na(grp$MinProbability)    else NA_real_,
+        MaxProbability    = if ("MaxProbability"    %in% names(grp)) .mean_na(grp$MaxProbability)    else NA_real_,
+        stringsAsFactors  = FALSE
+      )
+    }
+  ))
+  rownames(.aggregated) <- NULL
+  existingSummaryOutput <- rbind(.nonPredRows, .aggregated)
+}
+
 
 ### Unique timesteps ----------------------------------------------
 

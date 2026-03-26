@@ -38,6 +38,8 @@ tileRasterMap <- NULL
 tileExtent    <- NULL
 fullExtent    <- NULL
 buffer_px     <- 0L
+tilesDataDir  <- NULL
+tileCount     <- NULL
 
 # Use e$LibraryFilePath rather than the ssim_library env var, which can contain
 # surrounding quotes on Windows causing path construction to fail.
@@ -69,7 +71,9 @@ if (grepl("^Job-\\d+\\.ssim$", .lib_name)) {
     tileExtent <- terra::ext(.te$xmin, .te$xmax, .te$ymin, .te$ymax)
     .fe <- .manifest$full_extent
     fullExtent <- terra::ext(.fe$xmin, .fe$xmax, .fe$ymin, .fe$ymax)
-    buffer_px  <- if (!is.null(.manifest$buffer_px)) as.integer(.manifest$buffer_px) else 0L
+    buffer_px    <- if (!is.null(.manifest$buffer_px)) as.integer(.manifest$buffer_px) else 0L
+    tilesDataDir <- .tilesDataDir
+    tileCount    <- as.integer(.manifest$tile_count)
 
     updateRunLog(sprintf("Running as spatial tile job %d.", tileJobId), type = "info")
   } else {
@@ -446,9 +450,93 @@ if (is.null(tileJobId) || tileJobId == 1L) {
 }
 
 if (length(summaryRows) > 0) {
-  saveDatasheet(
-    myScenario,
-    data = do.call(rbind, summaryRows),
-    name = "ecoClassify_SummaryOutput"
-  )
+  if (!is.null(tileJobId) && !is.null(tilesDataDir) && !is.null(tileCount)) {
+    # --- Tiling: save intermediate per-tile stats and aggregate in tile job 1 ---
+
+    # Write this tile's summary rows to an intermediate RDS file in tilesDataDir
+    # so that tile job 1 can read and aggregate all tiles' stats.
+    .tileStatsPath <- file.path(
+      tilesDataDir, paste0("tile_", tileJobId),
+      "summary_predicting.rds"
+    )
+    dir.create(dirname(.tileStatsPath), recursive = TRUE, showWarnings = FALSE)
+    saveRDS(do.call(rbind, summaryRows), .tileStatsPath)
+    updateRunLog(
+      sprintf("Tile %d: saved per-tile summary stats.", tileJobId),
+      type = "info"
+    )
+
+    if (tileJobId == 1L) {
+      # Tile job 1 waits for all other tiles to write their intermediate files,
+      # then aggregates and saves the combined result to SummaryOutput.
+      # Poll every 2 seconds up to 120 seconds.
+      .maxWait <- 120L
+      .waited  <- 0L
+      .allFiles <- character(0)
+      repeat {
+        .allFiles <- list.files(
+          tilesDataDir,
+          pattern    = "^summary_predicting\\.rds$",
+          recursive  = TRUE,
+          full.names = TRUE
+        )
+        if (length(.allFiles) >= tileCount || .waited >= .maxWait) break
+        Sys.sleep(2)
+        .waited <- .waited + 2L
+      }
+
+      if (length(.allFiles) < tileCount) {
+        updateRunLog(
+          sprintf(
+            "Tile 1: only %d of %d tile summary file(s) found after %ds; saving available stats.",
+            length(.allFiles), tileCount, .maxWait
+          ),
+          type = "warning"
+        )
+      }
+
+      .allStats <- do.call(rbind, lapply(.allFiles, readRDS))
+
+      .sum_na  <- function(x) if (all(is.na(x))) NA_real_ else sum(x,  na.rm = TRUE)
+      .mean_na <- function(x) if (all(is.na(x))) NA_real_ else mean(x, na.rm = TRUE)
+
+      .aggregated <- do.call(rbind, lapply(
+        split(.allStats, list(.allStats$Timestep, .allStats$PredictionType), drop = TRUE),
+        function(grp) {
+          data.frame(
+            Timestep          = grp$Timestep[1],
+            TargetClassValue  = if ("TargetClassValue"  %in% names(grp)) grp$TargetClassValue[1]  else NA,
+            TargetClassLabel  = if ("TargetClassLabel"  %in% names(grp)) grp$TargetClassLabel[1]  else NA,
+            PredictionType    = grp$PredictionType[1],
+            PredictedPixels   = if ("PredictedPixels"   %in% names(grp)) .sum_na(grp$PredictedPixels)    else NA_real_,
+            PredictedArea     = if ("PredictedArea"     %in% names(grp)) .sum_na(grp$PredictedArea)      else NA_real_,
+            MeanProbability   = if ("MeanProbability"   %in% names(grp)) .mean_na(grp$MeanProbability)   else NA_real_,
+            MedianProbability = if ("MedianProbability" %in% names(grp)) .mean_na(grp$MedianProbability) else NA_real_,
+            MinProbability    = if ("MinProbability"    %in% names(grp)) .mean_na(grp$MinProbability)    else NA_real_,
+            MaxProbability    = if ("MaxProbability"    %in% names(grp)) .mean_na(grp$MaxProbability)    else NA_real_,
+            stringsAsFactors  = FALSE
+          )
+        }
+      ))
+      rownames(.aggregated) <- NULL
+
+      saveDatasheet(myScenario, data = .aggregated, name = "ecoClassify_SummaryOutput")
+      updateRunLog(
+        sprintf(
+          "Tile 1: aggregated summary from %d tile(s) and saved to SummaryOutput.",
+          length(.allFiles)
+        ),
+        type = "info"
+      )
+    }
+    # Tiles 2-N do not write to SummaryOutput; tile 1 handles the combined result.
+
+  } else {
+    # Non-tiling: save directly as before
+    saveDatasheet(
+      myScenario,
+      data = do.call(rbind, summaryRows),
+      name = "ecoClassify_SummaryOutput"
+    )
+  }
 }
