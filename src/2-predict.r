@@ -37,6 +37,7 @@ tileJobId     <- NULL
 tileRasterMap <- NULL
 tileExtent    <- NULL
 fullExtent    <- NULL
+buffer_px     <- 0L
 
 # Use e$LibraryFilePath rather than the ssim_library env var, which can contain
 # surrounding quotes on Windows causing path construction to fail.
@@ -68,6 +69,7 @@ if (grepl("^Job-\\d+\\.ssim$", .lib_name)) {
     tileExtent <- terra::ext(.te$xmin, .te$xmax, .te$ymin, .te$ymax)
     .fe <- .manifest$full_extent
     fullExtent <- terra::ext(.fe$xmin, .fe$xmax, .fe$ymin, .fe$ymax)
+    buffer_px  <- if (!is.null(.manifest$buffer_px)) as.integer(.manifest$buffer_px) else 0L
 
     updateRunLog(sprintf("Running as spatial tile job %d.", tileJobId), type = "info")
   } else {
@@ -249,6 +251,19 @@ if (isTRUE(normalizeRasters)) {
 # Apply contextualization to prediction rasters, if selected
 if (isTRUE(applyContextualization)) {
   predictRasterList <- contextualizeRaster(predictRasterList)
+}
+
+# Strip overlap buffer from tile rasters after contextualization.
+# The buffer was added in 2a so the focal window has valid neighbours at tile
+# edges; now we crop back to the original tile extent before prediction so the
+# output aligns with the mosaic grid.
+if (!is.null(tileJobId) && buffer_px > 0L && !is.null(tileExtent)) {
+  predictRasterList <- lapply(predictRasterList, function(r) terra::crop(r, tileExtent))
+  updateRunLog(
+    sprintf("Tile %d: stripped %d-pixel overlap buffer; rasters cropped to tile extent.",
+            tileJobId, buffer_px),
+    type = "info"
+  )
 }
 
 # Extract covariate rasters and convert to correct data type

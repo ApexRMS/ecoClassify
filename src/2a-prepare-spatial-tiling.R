@@ -42,7 +42,8 @@ tilingOptionsDataframe <- datasheet(
   name = "ecoClassify_TilingOptions"
 )
 
-multiprocessingSheet <- datasheet(myScenario, "core_Multiprocessing")
+multiprocessingSheet        <- datasheet(myScenario, "core_Multiprocessing")
+advancedOptionsDataframe    <- datasheet(myScenario, "ecoClassify_AdvancedClassifierOptions")
 
 mpEnabled <- nrow(multiprocessingSheet) > 0 &&
   !is.null(multiprocessingSheet$EnableMultiprocessing) &&
@@ -127,6 +128,32 @@ if (autoTiling) {
       "To run all tiles simultaneously, set Maximum Jobs to ", numTilesX * numTilesY, " or more."
     ), type = "info")
   }
+}
+
+
+# Compute per-tile buffer for contextualization edge correction ----------------
+# Tiles are pre-cropped with an extra border of floor(window/2) pixels so the
+# focal neighbourhood step in 2-predict.r sees valid values at tile edges.
+# The buffer is stripped back to the original tile extent after contextualization.
+
+buffer_px <- 0L
+if (nrow(advancedOptionsDataframe) > 0 &&
+    !is.null(advancedOptionsDataframe$applyContextualization) &&
+    isTRUE(advancedOptionsDataframe$applyContextualization[1])) {
+  .windowSize <- if (
+    !is.null(advancedOptionsDataframe$contextualizationWindowSize) &&
+    !is.na(advancedOptionsDataframe$contextualizationWindowSize[1])
+  ) {
+    as.integer(advancedOptionsDataframe$contextualizationWindowSize[1])
+  } else {
+    3L  # matches assignVariables() default
+  }
+  buffer_px <- floor(.windowSize / 2L)
+  updateRunLog(paste0(
+    "Contextualization enabled (window size ", .windowSize, "): ",
+    "tiles will include a ", buffer_px, "-pixel overlap buffer per side ",
+    "to eliminate edge artifacts."
+  ))
 }
 
 
@@ -227,7 +254,7 @@ tileRast <- terra::rast(
   ymax  = terra::ymax(templateRast),
   crs   = terra::crs(templateRast)
 )
-terra::values(tileRast) <- as.integer(tileMatrix)
+terra::values(tileRast) <- as.integer(t(tileMatrix))
 names(tileRast) <- "TileID"
 
 updateRunLog(paste0(
@@ -287,6 +314,7 @@ if (length(allRasterFiles) > 0) {
   manifestData <- list(
     version    = "1.0",
     tile_count = as.integer(numTilesX * numTilesY),
+    buffer_px  = buffer_px,
     full_extent = list(
       xmin  = fullExt["xmin"],
       xmax  = fullExt["xmax"],
@@ -299,9 +327,25 @@ if (length(allRasterFiles) > 0) {
     tiles = vector("list", numTilesX * numTilesY)
   )
 
+  # Pixel resolution needed for buffer extent expansion
+  .resX <- terra::xres(templateRast)
+  .resY <- terra::yres(templateRast)
+
   for (tid in seq_len(numTilesX * numTilesY)) {
     tileExt     <- terra::ext(terra::trim(tileRast == tid, value = FALSE))
     tileExt_vec <- as.vector(tileExt)  # c(xmin, xmax, ymin, ymax)
+
+    # Expand tile extent by buffer (clamped to full raster bounds)
+    cropExt <- if (buffer_px > 0L) {
+      terra::ext(
+        max(tileExt_vec["xmin"] - buffer_px * .resX, fullExt["xmin"]),
+        min(tileExt_vec["xmax"] + buffer_px * .resX, fullExt["xmax"]),
+        max(tileExt_vec["ymin"] - buffer_px * .resY, fullExt["ymin"]),
+        min(tileExt_vec["ymax"] + buffer_px * .resY, fullExt["ymax"])
+      )
+    } else {
+      tileExt
+    }
 
     tileDirPath <- file.path(tilesDataDir, paste0("tile_", tid))
     dir.create(tileDirPath, recursive = TRUE, showWarnings = FALSE)
@@ -312,7 +356,7 @@ if (length(allRasterFiles) > 0) {
       outName <- paste0("tile_", tid, "_r", j, "_", basename(rPath))
       outPath <- file.path(tileDirPath, outName)
       terra::writeRaster(
-        terra::crop(terra::rast(rPath), tileExt),
+        terra::crop(terra::rast(rPath), cropExt),
         filename  = outPath,
         overwrite = TRUE,
         gdal      = c("COMPRESS=LZW")
