@@ -184,6 +184,10 @@ if (setManualThreshold == FALSE) {
 
 # Extract list of testing rasters ----------------------------------------------
 
+# Preserve original raster paths (before tile substitution) so tile job 1 can
+# generate the full-extent RGB from the un-cropped source rasters.
+originalPredictingRasterDataframe <- predictingRasterDataframe
+
 # For tile jobs, substitute pre-cropped raster paths before loading
 if (!is.null(tileJobId) && !is.null(tileRasterMap)) {
   for (.i in seq_len(nrow(predictingRasterDataframe))) {
@@ -332,25 +336,30 @@ for (t in seq_along(predictRasterList)) {
     hasGroundTruth = FALSE
   )
 
-  # Define RGB data frame
-  classifiedRgbOutputDataframe <- getRgbDataframe(
-    classifiedRgbOutputDataframe,
-    category = "predicting",
-    timestep,
-    transferDir
-  )
+  # Define RGB data frame (skipped for tile jobs; merged PNG is created in post-processing)
+  if (is.null(tileJobId)) {
+    classifiedRgbOutputDataframe <- getRgbDataframe(
+      classifiedRgbOutputDataframe,
+      category = "predicting",
+      timestep,
+      transferDir
+    )
+  }
 
   # Save files (ground truth and RGB only - predictions already saved)
-  saveFiles(
-    classifiedPresencePath,
-    classifiedProbabilityPath,
-    predictRasterList[[t]],
-    groundTruth = NULL,
-    category = "predicting",
-    timestep,
-    transferDir,
-    rgbBands = rgbBands
-  )
+  # Tile jobs skip RGB here; tile job 1 generates the full-extent RGB below.
+  if (is.null(tileJobId)) {
+    saveFiles(
+      classifiedPresencePath,
+      classifiedProbabilityPath,
+      predictRasterList[[t]],
+      groundTruth = NULL,
+      category = "predicting",
+      timestep,
+      transferDir,
+      rgbBands = rgbBands
+    )
+  }
 
   # Accumulate summary row for this timestep (before extending, so counts reflect tile only)
   tryCatch({
@@ -380,6 +389,46 @@ for (t in seq_along(predictRasterList)) {
   }
 }
 
+# Tile job 1: generate full-extent RGB from original (un-cropped) rasters -----
+# All other tile jobs skip RGB; only tile 1 produces the RGB so the output
+# covers the full spatial extent without needing a separate post-processing run.
+if (!is.null(tileJobId) && tileJobId == 1L) {
+  tryCatch({
+    origRasterList <- extractRasters(originalPredictingRasterDataframe, column = 2)
+    if (isTRUE(overrideBandnames) && !is.null(bandLabelFile)) {
+      origRasterList <- overrideBandNames(origRasterList, bandLabelFile)
+    }
+    for (.t in seq_along(origRasterList)) {
+      .ts <- timestepList[.t]
+      classifiedRgbOutputDataframe <- getRgbDataframe(
+        classifiedRgbOutputDataframe,
+        category = "predicting",
+        timestep = .ts,
+        transferDir
+      )
+      saveFiles(
+        classifiedPresencePath,
+        classifiedProbabilityPath,
+        origRasterList[[.t]],
+        groundTruth = NULL,
+        category = "predicting",
+        timestep = .ts,
+        transferDir,
+        rgbBands = rgbBands
+      )
+    }
+    updateRunLog(
+      "Tile 1: generated full-extent RGB image from original predicting rasters.",
+      type = "info"
+    )
+  }, error = function(e) {
+    updateRunLog(
+      paste0("Tile 1: could not generate full-extent RGB image: ", conditionMessage(e)),
+      type = "warning"
+    )
+  })
+}
+
 # Save dataframes back to SyncroSim library's output datasheets ----------------
 
 saveDatasheet(
@@ -388,11 +437,13 @@ saveDatasheet(
   name = "ecoClassify_ClassifiedRasterOutput"
 )
 
-saveDatasheet(
-  myScenario,
-  data = classifiedRgbOutputDataframe,
-  name = "ecoClassify_ClassifiedRgbOutput"
-)
+if (is.null(tileJobId) || tileJobId == 1L) {
+  saveDatasheet(
+    myScenario,
+    data = classifiedRgbOutputDataframe,
+    name = "ecoClassify_ClassifiedRgbOutput"
+  )
+}
 
 if (length(summaryRows) > 0) {
   saveDatasheet(
