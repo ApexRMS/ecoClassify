@@ -40,6 +40,7 @@ wopt_int <- list(
   NAflag = -32768,
   gdal = c("COMPRESS=LZW", "TILED=YES", "BIGTIFF=YES")
 )
+
 # Load post-processing settings ------------------------------------------------
 
 ### Filtering -----------------------------------------------------
@@ -118,7 +119,11 @@ if (nrow(existingSummaryOutput) > 0) {
     intersect(names(existingSummaryOutput), summaryOutputSchemaCols), drop = FALSE
   ]
 }
-postProcessingTypes <- c("filtered", "restricted", "filtered_restricted")
+postProcessingTypes <- c(
+  "filtered - training", "filtered - predicting",
+  "reclassified - training", "reclassified - predicting",
+  "filtered_reclassified - training", "filtered_reclassified - predicting"
+)
 if (nrow(existingSummaryOutput) > 0 && "PredictionType" %in% names(existingSummaryOutput)) {
   existingSummaryOutput <- existingSummaryOutput[
     !existingSummaryOutput$PredictionType %in% postProcessingTypes, , drop = FALSE
@@ -160,7 +165,7 @@ if (nrow(existingSummaryOutput) > 0 &&
     }
   ))
   rownames(.aggregated) <- NULL
-  existingSummaryOutput <- rbind(.nonPredRows, .aggregated)
+  existingSummaryOutput <- dplyr::bind_rows(.nonPredRows, .aggregated)
 }
 
 
@@ -228,7 +233,7 @@ for (t in trainTimestepList) {
           predictionRaster  = terra::rast(filteredTraining$PredictedFiltered),
           probabilityRaster = terra::rast(probPath),
           timestep          = t,
-          predictionType    = "filtered",
+          predictionType    = "filtered - training",
           targetClassValue  = targetClassValue,
           targetClassLabel  = targetClassLabel
         )
@@ -274,7 +279,7 @@ for (t in predTimestepList) {
           predictionRaster  = terra::rast(filteredPredicting$PredictedFiltered),
           probabilityRaster = terra::rast(probPath),
           timestep          = t,
-          predictionType    = "filtered",
+          predictionType    = "filtered - predicting",
           targetClassValue  = targetClassValue,
           targetClassLabel  = targetClassLabel
         )
@@ -416,14 +421,14 @@ if (nrow(ruleReclassDataframe) != 0) {
         trainingOutputDataframe$Timestep == t
       ] <- reclassedPathTrain
 
-      # Accumulate restricted summary row
+      # Accumulate reclassified summary row
       probPath <- trainingOutputDataframe$Probability[trainingOutputDataframe$Timestep == t]
       if (!is.na(probPath) && file.exists(probPath)) {
         summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
           predictionRaster  = terra::rast(reclassedPathTrain),
           probabilityRaster = terra::rast(probPath),
           timestep          = t,
-          predictionType    = "restricted",
+          predictionType    = "reclassified - training",
           targetClassValue  = targetClassValue,
           targetClassLabel  = targetClassLabel
         )
@@ -457,13 +462,13 @@ if (nrow(ruleReclassDataframe) != 0) {
           trainingOutputDataframe$Timestep == t
         ] <- reclassedFilteredPathTrain
 
-        # Accumulate filtered_restricted summary row
+        # Accumulate filtered_reclassified summary row
         if (!is.na(probPath) && file.exists(probPath)) {
           summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
             predictionRaster  = terra::rast(reclassedFilteredPathTrain),
             probabilityRaster = terra::rast(probPath),
             timestep          = t,
-            predictionType    = "filtered_restricted",
+            predictionType    = "filtered_reclassified - training",
             targetClassValue  = targetClassValue,
             targetClassLabel  = targetClassLabel
           )
@@ -506,7 +511,7 @@ if (nrow(ruleReclassDataframe) != 0) {
         old_todisk <- terraOptions()$todisk
         terraOptions(todisk = FALSE)
 
-          # Load rule raster
+          # Load rule raster; crop to tile extent when running as a spatial tile job
           rulePath <- ruleReclassDataframe$ruleRasterFile[i]
           if (length(rulePath) == 0 || is.na(rulePath) || !file.exists(rulePath)) {
             updateRunLog(
@@ -600,14 +605,14 @@ if (nrow(ruleReclassDataframe) != 0) {
         predictingOutputDataframe$Timestep == t
       ] <- reclassedPathPred
 
-      # Accumulate restricted summary row
+      # Accumulate reclassified summary row
       predProbPath <- predictingOutputDataframe$ClassifiedProbability[predictingOutputDataframe$Timestep == t]
       if (!is.na(predProbPath) && file.exists(predProbPath)) {
         summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
           predictionRaster  = terra::rast(reclassedPathPred),
           probabilityRaster = terra::rast(predProbPath),
           timestep          = t,
-          predictionType    = "restricted",
+          predictionType    = "reclassified - predicting",
           targetClassValue  = targetClassValue,
           targetClassLabel  = targetClassLabel
         )
@@ -641,13 +646,13 @@ if (nrow(ruleReclassDataframe) != 0) {
           predictingOutputDataframe$Timestep == t
         ] <- reclassedFilteredPathPred
 
-        # Accumulate filtered_restricted summary row
+        # Accumulate filtered_reclassified summary row
         if (!is.na(predProbPath) && file.exists(predProbPath)) {
           summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
             predictionRaster  = terra::rast(reclassedFilteredPathPred),
             probabilityRaster = terra::rast(predProbPath),
             timestep          = t,
-            predictionType    = "filtered_restricted",
+            predictionType    = "filtered_reclassified - predicting",
             targetClassValue  = targetClassValue,
             targetClassLabel  = targetClassLabel
           )
@@ -686,7 +691,7 @@ if (dim(predictingOutputDataframe)[1] != 0) {
 
 # Combine post-processing summary rows with preserved existing rows and overwrite
 if (length(summaryRows) > 0) {
-  newSummaryRows <- do.call(rbind, summaryRows)
+  newSummaryRows <- dplyr::bind_rows(summaryRows)
   combinedSummary <- if (nrow(existingSummaryOutput) > 0) {
     dplyr::bind_rows(existingSummaryOutput, newSummaryRows)
   } else {
