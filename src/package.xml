@@ -304,9 +304,9 @@
             <item name="metricsAUC"         displayName="AUC"         dataSheet="ModelMetricsByClass" column="AUC"/>
         </group>
         <group name="predictionSummaryChart" displayName="Prediction Summary">
-            <item name="summaryPredictedPixels"   displayName="Predicted Pixels" dataSheet="SummaryOutput" column="PredictedPixels"/>
-            <item name="summaryPredictedArea"     displayName="Predicted Area"   dataSheet="SummaryOutput" column="PredictedArea"/>
-            <item name="summaryMeanProbability"   displayName="Mean Probability" dataSheet="SummaryOutput" column="MeanProbability" yMinColumn="MinProbability" yMaxColumn="MaxProbability"/>
+            <item name="summaryPredictedPixels"   displayName="Predicted Pixels"   dataSheet="SummaryOutput" column="PredictedPixels"/>
+            <item name="summaryPredictedArea"     displayName="Predicted Area"     dataSheet="SummaryOutput" column="PredictedArea"/>
+            <item name="summaryMeanProbability"   displayName="Mean Probability"   dataSheet="SummaryOutput" column="MeanProbability" yMinColumn="MinProbability" yMaxColumn="MaxProbability"/>
             <item name="summaryMedianProbability" displayName="Median Probability" dataSheet="SummaryOutput" column="MedianProbability"/>
         </group>
     </layout>
