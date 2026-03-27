@@ -521,6 +521,7 @@ if (length(summaryRows) > 0) {
       rownames(.aggregated) <- NULL
 
       saveDatasheet(myScenario, data = .aggregated, name = "ecoClassify_SummaryOutput")
+      saveDatasheet(myScenario, data = .aggregated, name = "ecoClassify_SummaryOutputChart")
       updateRunLog(
         sprintf(
           "Tile 1: aggregated summary from %d tile(s) and saved to SummaryOutput.",
@@ -533,10 +534,8 @@ if (length(summaryRows) > 0) {
 
   } else {
     # Non-tiling: save directly as before
-    saveDatasheet(
-      myScenario,
-      data = do.call(rbind, summaryRows),
-      name = "ecoClassify_SummaryOutput"
-    )
+    summaryDf <- do.call(rbind, summaryRows)
+    saveDatasheet(myScenario, data = summaryDf, name = "ecoClassify_SummaryOutput")
+    saveDatasheet(myScenario, data = summaryDf, name = "ecoClassify_SummaryOutputChart")
   }
 }

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <package
-    name="ecoClassify" displayName="ecoClassify" version="2.5.0"
+    name="ecoClassify" displayName="ecoClassify" version="2.4.0"
     description="Image classifier using semantic image segmentation" 
     url="https://apexrms.github.io/ecoClassify/" 
     minSyncroSimVersion="3.1.0">
@@ -73,10 +73,10 @@
         <column name="applyFiltering" dataType="Boolean" displayName="Apply filtering"/>
         <column name="filterValue" dataType="Integer" displayName="Min neighbors to keep"/>
         <column name="fillValue" dataType="Integer" displayName="Min neighbors to fill"/>
+        <record columns="applyFiltering" values="-1"/>
     </dataSheet>
 
     <dataSheet name="PostProcessingRule" displayName="Rule-Based Restrictions">
-        <column name="ruleClass" dataType="Integer" displayName="Class"/>
         <column name="ruleRasterFile" dataType="String" displayName="Condition Raster" isExternalFile="True"/>
         <column name="ruleMinValue" dataType="Double" displayName="Minimum Value"/>
         <column name="ruleMaxValue" dataType="Double" displayName="Maximum Value"/>
@@ -92,6 +92,18 @@
 
     <!--Output-->
     <dataSheet name="SummaryOutput" displayName="Prediction Summary" isSingleRow="False" hasTimestep="True">
+        <column name="TargetClassValue" dataType="Integer" displayName="Target class value" isOptional="True"/>
+        <column name="TargetClassLabel" dataType="String" displayName="Target class label" isOptional="True"/>
+        <column name="PredictionType" dataType="String" displayName="Prediction type" isOptional="True"/>
+        <column name="PredictedPixels" dataType="Integer" displayName="Predicted pixels" isOptional="True"/>
+        <column name="PredictedArea" dataType="Double" displayName="Predicted area (map units²)" isOptional="True"/>
+        <column name="MeanProbability" dataType="Double" displayName="Mean probability" isOptional="True"/>
+        <column name="MedianProbability" dataType="Double" displayName="Median probability" isOptional="True"/>
+        <column name="MinProbability" dataType="Double" displayName="Min probability" isOptional="True"/>
+        <column name="MaxProbability" dataType="Double" displayName="Max probability" isOptional="True"/>
+    </dataSheet>
+
+    <dataSheet name="SummaryOutputChart" displayName="Prediction Summary (Chart)" isSingleRow="False" hasTimestep="True">
         <column name="TargetClassValue" dataType="Integer" displayName="Target class value" isOptional="True"/>
         <column name="TargetClassLabel" dataType="String" displayName="Target class label" isOptional="True"/>
         <column name="PredictionType" dataType="String" displayName="Prediction type" isOptional="True"/>
@@ -202,6 +214,7 @@
         <dataSheet name="RgbOutput" type="Output"/>
         <dataSheet name="ModelObject" type="Output"/>
         <dataSheet name="SummaryOutput" type="Output"/>
+        <dataSheet name="SummaryOutputChart" type="Output"/>
         <dataSheet name="ModelMetricsByClass" type="Output"/>
     </transformer>
 
@@ -218,6 +231,7 @@
         <dataSheet name="ClassifiedRasterOutput" type="Output" spatialMultiProcessing="True"/>
         <dataSheet name="ClassifiedRgbOutput" type="Output"/>
         <dataSheet name="SummaryOutput" type="Output"/>
+        <dataSheet name="SummaryOutputChart" type="Output"/>
     </transformer>
 
     <!--Transformer 3: filtering-->
@@ -231,6 +245,7 @@
         <dataSheet name="InputPredictingRasters" type="Input"/>
         <dataSheet name="core_SpatialMultiprocessing" type="Input"/>
         <dataSheet name="SummaryOutput" type="Both"/>
+        <dataSheet name="SummaryOutputChart" type="Output"/>
         <dataSheet name="ModelStatistics" type="Both"/>
         <dataSheet name="ModelMetricsByClass" type="Both"/>
     </transformer>
@@ -304,10 +319,10 @@
             <item name="metricsAUC"         displayName="AUC"         dataSheet="ModelMetricsByClass" column="AUC"/>
         </group>
         <group name="predictionSummaryChart" displayName="Prediction Summary">
-            <item name="summaryPredictedPixels"   displayName="Predicted Pixels"   dataSheet="SummaryOutput" column="PredictedPixels"/>
-            <item name="summaryPredictedArea"     displayName="Predicted Area"     dataSheet="SummaryOutput" column="PredictedArea"/>
-            <item name="summaryMeanProbability"   displayName="Mean Probability"   dataSheet="SummaryOutput" column="MeanProbability" yMinColumn="MinProbability" yMaxColumn="MaxProbability"/>
-            <item name="summaryMedianProbability" displayName="Median Probability" dataSheet="SummaryOutput" column="MedianProbability"/>
+            <item name="summaryPredictedPixels"   displayName="Predicted Pixels"   dataSheet="SummaryOutputChart" column="PredictedPixels"/>
+            <item name="summaryPredictedArea"     displayName="Predicted Area"     dataSheet="SummaryOutputChart" column="PredictedArea"/>
+            <item name="summaryMeanProbability"   displayName="Mean Probability"   dataSheet="SummaryOutputChart" column="MeanProbability" yMinColumn="MinProbability" yMaxColumn="MaxProbability"/>
+            <item name="summaryMedianProbability" displayName="Median Probability" dataSheet="SummaryOutputChart" column="MedianProbability"/>
         </group>
     </layout>
 

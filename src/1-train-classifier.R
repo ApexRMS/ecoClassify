@@ -614,11 +614,9 @@ saveDatasheet(
 )
 
 if (length(summaryRows) > 0) {
-  saveDatasheet(
-    myScenario,
-    data = do.call(rbind, summaryRows),
-    name = "ecoClassify_SummaryOutput"
-  )
+  summaryDf <- do.call(rbind, summaryRows)
+  saveDatasheet(myScenario, data = summaryDf, name = "ecoClassify_SummaryOutput")
+  saveDatasheet(myScenario, data = summaryDf, name = "ecoClassify_SummaryOutputChart")
 }
 
 if (length(metricsRows) > 0) {

@@ -629,11 +629,35 @@ if (dim(predictingOutputDataframe)[1] != 0) {
 
 # Save post-processing summary rows (overwrites any previous post-processing output)
 if (length(summaryRows) > 0) {
-  saveDatasheet(
-    myScenario,
-    data = dplyr::bind_rows(summaryRows),
-    name = "ecoClassify_SummaryOutput"
-  )
+  allSummaryDf <- dplyr::bind_rows(summaryRows)
+  saveDatasheet(myScenario, data = allSummaryDf, name = "ecoClassify_SummaryOutput")
+
+  # For the chart, keep only the best post-processing type per context:
+  # filtered_reclassified > reclassified > filtered
+  bestRowsList <- lapply(c("training", "predicting"), function(ctx) {
+    ctxDf <- allSummaryDf[grepl(paste0(" - ", ctx, "$"), allSummaryDf$PredictionType), ]
+    if (nrow(ctxDf) == 0) return(NULL)
+
+    types <- ctxDf$PredictionType
+    bestType <- if (any(grepl("^filtered_reclassified", types))) {
+      paste0("filtered_reclassified - ", ctx)
+    } else if (any(grepl("^reclassified", types))) {
+      paste0("reclassified - ", ctx)
+    } else {
+      paste0("filtered - ", ctx)
+    }
+
+    updateRunLog(
+      paste0("Prediction summary chart: using '", bestType, "' rows for SummaryOutputChart"),
+      type = "info"
+    )
+    ctxDf[ctxDf$PredictionType == bestType, ]
+  })
+
+  bestSummaryDf <- dplyr::bind_rows(Filter(Negate(is.null), bestRowsList))
+  if (nrow(bestSummaryDf) > 0) {
+    saveDatasheet(myScenario, data = bestSummaryDf, name = "ecoClassify_SummaryOutputChart")
+  }
 }
 
 # Recalculate model statistics and metrics from post-processed rasters ----------
@@ -656,17 +680,27 @@ if (length(trainTimestepList) > 0) {
     truthPath <- first_valid_path(trainingOutputDataframe$GroundTruth[row_idx])
 
     predPath <- NA_character_
+    predPathType <- NA_character_
     if (!is.na(frc_path) && file.exists(frc_path)) {
       predPath <- frc_path
+      predPathType <- "filtered + reclassified"
     } else if (!is.na(urc_path) && file.exists(urc_path)) {
       predPath <- urc_path
+      predPathType <- "reclassified"
     } else if (!is.na(flt_path) && file.exists(flt_path)) {
       predPath <- flt_path
+      predPathType <- "filtered"
     } else if (!is.na(unf_path) && file.exists(unf_path)) {
       predPath <- unf_path
+      predPathType <- "unfiltered"
     }
 
     if (is.na(predPath) || is.na(truthPath) || !file.exists(truthPath)) next
+
+    updateRunLog(
+      paste0("Timestep ", t, ": using ", predPathType, " training raster for model evaluation metrics"),
+      type = "info"
+    )
 
     # Use terra::crosstab (long=TRUE) for disk-backed confusion matrix counts.
     # long=TRUE always returns a data.frame regardless of how many class
