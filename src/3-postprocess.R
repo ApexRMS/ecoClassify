@@ -98,11 +98,17 @@ trainingOutputDataframe <- datasheet(
   myScenario,
   name = "ecoClassify_RasterOutput"
 )
+# Clear restricted columns so metrics only use paths written in the current run
+trainingOutputDataframe$PredictedUnfilteredRestricted <- NA_character_
+trainingOutputDataframe$PredictedFilteredRestricted   <- NA_character_
 
 predictingOutputDataframe <- datasheet(
   myScenario,
   name = "ecoClassify_ClassifiedRasterOutput"
 )
+# Clear restricted columns so metrics only use paths written in the current run
+predictingOutputDataframe$ClassifiedUnfilteredRestricted <- NA_character_
+predictingOutputDataframe$ClassifiedFilteredRestricted   <- NA_character_
 
 
 
@@ -706,13 +712,21 @@ if (length(trainTimestepList) > 0) {
     # long=TRUE always returns a data.frame regardless of how many class
     # combinations are present, avoiding the 1-D table issue when a class
     # is absent from one of the rasters.
+    truth_r <- terra::rast(truthPath)
+    if (!is.na(targetClassValue)) {
+      old_todisk <- terraOptions()$todisk
+      terraOptions(todisk = FALSE)
+      truth_r <- terra::ifel(truth_r == targetClassValue, 1L, 0L)
+      terraOptions(todisk = old_todisk)
+    }
     ct <- tryCatch(
-      terra::crosstab(c(terra::rast(truthPath), terra::rast(predPath)), long = TRUE),
+      terra::crosstab(c(truth_r, terra::rast(predPath)), long = TRUE),
       error = function(e) {
         updateRunLog(paste0("crosstab failed for timestep ", t, ": ", conditionMessage(e)), type = "warning")
         NULL
       }
     )
+    rm(truth_r); gc()
     if (is.null(ct)) next
 
     # Normalise column names: layer names may vary; always rename to truth/pred/Freq
