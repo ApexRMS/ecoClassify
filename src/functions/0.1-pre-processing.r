@@ -256,6 +256,18 @@ reclassifyGroundTruth <- function(groundTruthRasterList,
       result[] <- NA
       vals <- terra::values(raster)
 
+      if (!any(vals == targetClassValue, na.rm = TRUE)) {
+        updateRunLog(
+          paste0(
+            "Target class value (", targetClassValue, ") was not found in this ground truth raster. ",
+            "No pixels will be mapped to presence (1). ",
+            "Unique values in raster: ",
+            paste(sort(unique(vals[!is.na(vals)])), collapse = ", "), "."
+          ),
+          type = "warning"
+        )
+      }
+
       # target class → 1
       result[vals == targetClassValue] <- 1
 
