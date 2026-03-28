@@ -183,6 +183,7 @@ for (t in trainTimestepList) {
         )
       }
     }
+    rm(predictedPresence, filteredTraining); gc()
   }
 }
 
@@ -229,6 +230,7 @@ for (t in predTimestepList) {
         )
       }
     }
+    rm(predictedPresence, filteredPredicting); gc()
   }
 }
 
@@ -836,3 +838,5 @@ if (length(trainTimestepList) > 0) {
     )
   }
 }
+
+terra::tmpFiles(remove = TRUE)

@@ -255,6 +255,7 @@ tileRast <- terra::rast(
   crs   = terra::crs(templateRast)
 )
 terra::values(tileRast) <- as.integer(t(tileMatrix))
+rm(tileMatrix)
 names(tileRast) <- "TileID"
 
 updateRunLog(paste0(
@@ -330,6 +331,7 @@ if (length(allRasterFiles) > 0) {
   # Pixel resolution needed for buffer extent expansion
   .resX <- terra::xres(templateRast)
   .resY <- terra::yres(templateRast)
+  rm(templateRast)
 
   for (tid in seq_len(numTilesX * numTilesY)) {
     tileExt     <- terra::ext(terra::trim(tileRast == tid, value = FALSE))
@@ -384,6 +386,7 @@ if (length(allRasterFiles) > 0) {
   manifestPath <- file.path(tilesDataDir, "tile_manifest.json")
   jsonlite::write_json(manifestData, manifestPath, auto_unbox = TRUE, pretty = TRUE)
   updateRunLog(paste0("Tile manifest saved to: ", manifestPath))
+  rm(tileRast, manifestData)
 } else {
   updateRunLog(
     "No valid predicting rasters found; skipping per-tile pre-cropping.",
@@ -411,5 +414,7 @@ saveDatasheet(
 )
 
 updateRunLog(paste0("core_Multiprocessing set to ", totalTiles, " job(s) to match tile count."))
+
+terra::tmpFiles(remove = TRUE)
 
 progressBar(type = "message", message = "Spatial tiling preparation complete")

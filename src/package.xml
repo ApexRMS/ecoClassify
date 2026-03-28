@@ -67,6 +67,7 @@
         <column name="backgroundValues" dataType="String" displayName="Background values (comma-separated)" isOptional="True"/>
         <column name="ignoreValues" dataType="String" displayName="Ignore values (comma-separated)" isOptional="True"/>
         <column name="targetClassLabel" dataType="String" displayName="Target class label" isOptional="True"/>
+        <record columns="useTargetClass" values="0"/>
     </dataSheet>
 
     <dataSheet name="PostProcessingFilter" displayName="Filtering" isSingleRow="True">

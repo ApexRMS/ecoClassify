@@ -384,6 +384,7 @@ for (t in seq_along(predictRasterList)) {
     for (.outPath in c(classifiedPresencePath, classifiedProbabilityPath)) {
       .r_extended <- terra::extend(terra::rast(.outPath), fullExtent)
       terra::writeRaster(.r_extended, .outPath, overwrite = TRUE, gdal = c("COMPRESS=LZW"))
+      rm(.r_extended)
     }
     updateRunLog(
       sprintf("Tile %d: extended prediction outputs to full extent (timestep %s).",
@@ -391,6 +392,7 @@ for (t in seq_along(predictRasterList)) {
       type = "info"
     )
   }
+  predictRasterList[t] <- list(NULL)
 }
 
 # Tile job 1: generate full-extent RGB from original (un-cropped) rasters -----
@@ -420,7 +422,9 @@ if (!is.null(tileJobId) && tileJobId == 1L) {
         transferDir,
         rgbBands = rgbBands
       )
+      origRasterList[.t] <- list(NULL)
     }
+    rm(origRasterList)
     updateRunLog(
       "Tile 1: generated full-extent RGB image from original predicting rasters.",
       type = "info"
@@ -539,3 +543,5 @@ if (length(summaryRows) > 0) {
     saveDatasheet(myScenario, data = summaryDf, name = "ecoClassify_SummaryOutputChart")
   }
 }
+
+terra::tmpFiles(remove = TRUE)

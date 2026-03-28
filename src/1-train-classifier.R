@@ -154,6 +154,32 @@ groundTruthRasterList <- validateAndAlignRasters(
   groundTruthRasterList
 )
 
+# Validate target class value is present in ground truth rasters ---------------
+
+if (isTRUE(useTargetClass) && !is.na(targetClassValue)) {
+  timestepsWithTarget <- vapply(groundTruthRasterList, function(r) {
+    vals <- terra::values(terra::rast(r))
+    any(vals == targetClassValue, na.rm = TRUE)
+  }, logical(1))
+
+  if (!any(timestepsWithTarget)) {
+    stop(
+      "Target class value (", targetClassValue, ") was not found in any user classified raster. ",
+      "Check that 'Target Class Value' matches the values in your user classified rasters."
+    )
+  } else if (!all(timestepsWithTarget)) {
+    missingIdx <- which(!timestepsWithTarget)
+    updateRunLog(
+      paste0(
+        "Target class value (", targetClassValue, ") was not found in user classified raster(s) for timestep(s): ",
+        paste(timestepList[missingIdx], collapse = ", "), ". ",
+        "These timesteps will have no presence pixels and may be dropped."
+      ),
+      type = "warning"
+    )
+  }
+}
+
 # Pre-processing ---------------------------------------------------------------
 
 progressBar(type = "message", message = "Pre-processing input data")
@@ -434,6 +460,7 @@ for (t in seq_along(trainingRasterList)) {
   }, error = function(e) {
     updateRunLog(paste0("Could not build summary row for timestep ", timestep, ": ", conditionMessage(e)), type = "warning")
   })
+  groundTruthRasterList[t] <- list(NULL)
 }
 
 # Free training data now that all raster reads are complete.
@@ -626,3 +653,5 @@ if (length(metricsRows) > 0) {
     name = "ecoClassify_ModelMetricsByClass"
   )
 }
+
+terra::tmpFiles(remove = TRUE)
