@@ -4,7 +4,11 @@
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(curl:*)",
       "Bash(grep -r \"ssimEnvironment\\\\|ISpatialJob\\\\|JobID\" /mnt/c/Users/HannahAdams/Documents/GitHub/ecoClassify --include=*.R --include=*.r -n)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "WebFetch(domain:geocompx.org)",
+      "WebFetch(domain:cran.r-project.org)"
     ]
   }
 }

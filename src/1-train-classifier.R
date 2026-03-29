@@ -87,6 +87,9 @@ tuningObjective <- inputVariables[[11]]
 overrideBandnames <- inputVariables[[12]]
 setSeed <- inputVariables[[13]]
 
+# Load model-type specific packages
+loadModelPackages(modelType)
+
 # Set the random seed if provided
 if (!is.null(setSeed) && !is.na(setSeed)) {
   set.seed(setSeed)

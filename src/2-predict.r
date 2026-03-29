@@ -152,6 +152,10 @@ nObs <- inputVariables[[2]]
 applyContextualization <- inputVariables[[3]]
 contextualizationWindowSize <- inputVariables[[4]]
 modelType <- inputVariables[[5]]
+
+# Load model-type specific packages
+loadModelPackages(modelType)
+
 modelTuning <- inputVariables[[6]]
 setManualThreshold <- inputVariables[[7]]
 manualThreshold <- inputVariables[[8]]
