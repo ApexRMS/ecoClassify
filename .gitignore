@@ -4,5 +4,8 @@ packages/
 scratch/
 testing/snow
 example-library/
-# Dockerfile
-# .dockerignore
+Dockerfile
+.dockerignore
+*.sif
+*.sh
+*.ssimpkg

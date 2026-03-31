@@ -212,7 +212,7 @@ if (length(allRasterPaths) > 1) {
 }
 
 
-# Build tile mask raster -------------------------------------------------------
+# Load template raster and compute grid parameters ----------------------------
 
 progressBar(type = "message", message = "Generating tile mask raster")
 
@@ -229,48 +229,164 @@ updateRunLog(paste0(
 tileRowBreaks <- round(seq(0, nRows, length.out = numTilesY + 1L))
 tileColBreaks <- round(seq(0, nCols, length.out = numTilesX + 1L))
 
-# Build integer matrix where each cell value = tile ID (row-major, 1-based)
+.resX       <- terra::xres(templateRast)
+.resY       <- terra::yres(templateRast)
+fullExt     <- as.vector(terra::ext(templateRast))  # named: xmin, xmax, ymin, ymax
+.crs        <- terra::crs(templateRast)
+nTotalTiles <- as.integer(numTilesX * numTilesY)
+
+# Initialise tile assignment matrix (NA = empty/skipped tile)
 tileMatrix <- matrix(NA_integer_, nrow = nRows, ncol = nCols)
 
-tileId <- 1L
-for (iy in seq_len(numTilesY)) {
-  rowStart <- tileRowBreaks[iy] + 1L
-  rowEnd   <- tileRowBreaks[iy + 1L]
-  for (ix in seq_len(numTilesX)) {
-    colStart <- tileColBreaks[ix] + 1L
-    colEnd   <- tileColBreaks[ix + 1L]
-    tileMatrix[rowStart:rowEnd, colStart:colEnd] <- tileId
-    tileId <- tileId + 1L
+
+# Pre-crop predicting rasters per tile, skipping tiles with no valid pixels ----
+
+progressBar(type = "message", message = "Pre-cropping rasters per tile")
+
+allRasterFiles <- predictingRasterDataframe$predictingRasterFile
+allRasterFiles <- unique(allRasterFiles[
+  !is.na(allRasterFiles) & nzchar(allRasterFiles) & file.exists(allRasterFiles)
+])
+
+newId         <- 1L   # contiguous job ID assigned to each non-empty tile
+manifestTiles <- list()
+tilesDataDir  <- NULL
+
+if (length(allRasterFiles) > 0) {
+  # Use e$LibraryFilePath rather than ssim_library env var, which can contain
+  # surrounding quotes on Windows causing path construction to fail.
+  sid_match   <- regmatches(transferDir, regexpr("Scenario-\\d+", transferDir))
+  scenario_id <- as.integer(sub("Scenario-", "", sid_match))
+
+  tilesDataDir <- file.path(
+    paste0(e$LibraryFilePath, ".data"),
+    paste0("Scenario-", scenario_id),
+    "ecoClassifyTiles"
+  )
+  dir.create(tilesDataDir, recursive = TRUE, showWarnings = FALSE)
+
+  for (iy in seq_len(numTilesY)) {
+    rowStart <- tileRowBreaks[iy] + 1L
+    rowEnd   <- tileRowBreaks[iy + 1L]
+    for (ix in seq_len(numTilesX)) {
+      colStart <- tileColBreaks[ix] + 1L
+      colEnd   <- tileColBreaks[ix + 1L]
+      origId   <- (iy - 1L) * numTilesX + ix
+
+      # Derive tile spatial extent directly from row/col breaks
+      tileXmin <- fullExt["xmin"] + (colStart - 1L) * .resX
+      tileXmax <- fullExt["xmin"] +  colEnd         * .resX
+      tileYmax <- fullExt["ymax"] - (rowStart - 1L) * .resY
+      tileYmin <- fullExt["ymax"] -  rowEnd         * .resY
+      tileExt  <- terra::ext(tileXmin, tileXmax, tileYmin, tileYmax)
+
+      # Skip tiles with no valid pixels (e.g. corners outside the mosaic boundary)
+      tileSample <- terra::crop(templateRast[[1]], tileExt)
+      validCount <- terra::global(tileSample, "notNA")[[1]]
+      rm(tileSample)
+
+      if (validCount == 0L) {
+        updateRunLog(sprintf(
+          "Tile at grid position (row %d, col %d): skipped — no valid pixels.",
+          iy, ix
+        ), type = "info")
+        next
+      }
+
+      # Expand tile extent by contextualization buffer (clamped to full raster bounds)
+      cropExt <- if (buffer_px > 0L) {
+        terra::ext(
+          max(tileXmin - buffer_px * .resX, fullExt["xmin"]),
+          min(tileXmax + buffer_px * .resX, fullExt["xmax"]),
+          max(tileYmin - buffer_px * .resY, fullExt["ymin"]),
+          min(tileYmax + buffer_px * .resY, fullExt["ymax"])
+        )
+      } else {
+        tileExt
+      }
+
+      # Assign this grid cell the next contiguous job ID
+      tileMatrix[rowStart:rowEnd, colStart:colEnd] <- newId
+
+      tileDirPath <- file.path(tilesDataDir, paste0("tile_", newId))
+      dir.create(tileDirPath, recursive = TRUE, showWarnings = FALSE)
+
+      rasterMap <- list()
+      for (j in seq_along(allRasterFiles)) {
+        rPath   <- allRasterFiles[j]
+        outName <- paste0("tile_", newId, "_r", j, "_", basename(rPath))
+        outPath <- file.path(tileDirPath, outName)
+        terra::writeRaster(
+          terra::crop(terra::rast(rPath), cropExt),
+          filename  = outPath,
+          overwrite = TRUE,
+          gdal      = c("COMPRESS=LZW")
+        )
+        rasterMap[[rPath]] <- outPath
+      }
+
+      manifestTiles[[newId]] <- list(
+        tile_id     = newId,
+        tile_extent = list(
+          xmin = tileXmin,
+          xmax = tileXmax,
+          ymin = tileYmin,
+          ymax = tileYmax
+        ),
+        raster_map  = rasterMap
+      )
+
+      updateRunLog(sprintf(
+        "Tile %d: pre-cropped %d predicting raster(s).",
+        newId, length(allRasterFiles)
+      ))
+
+      newId <- newId + 1L
+    }
   }
+} else {
+  updateRunLog(
+    "No valid predicting rasters found; skipping per-tile pre-cropping.",
+    type = "warning"
+  )
 }
 
-# Create SpatRaster from matrix, copying spatial metadata from template
+nValidTiles <- newId - 1L
+rm(templateRast)
+
+if (nTotalTiles > nValidTiles) {
+  updateRunLog(sprintf(
+    "%d of %d tile(s) contained no valid pixels and were skipped; %d tile(s) will be processed.",
+    nTotalTiles - nValidTiles, nTotalTiles, nValidTiles
+  ), type = "info")
+}
+
+
+# Build and write tile mask raster ---------------------------------------------
+
+progressBar(type = "message", message = "Writing tile mask raster")
+
 tileRast <- terra::rast(
   nrows = nRows,
   ncols = nCols,
-  xmin  = terra::xmin(templateRast),
-  xmax  = terra::xmax(templateRast),
-  ymin  = terra::ymin(templateRast),
-  ymax  = terra::ymax(templateRast),
-  crs   = terra::crs(templateRast)
+  xmin  = fullExt["xmin"],
+  xmax  = fullExt["xmax"],
+  ymin  = fullExt["ymin"],
+  ymax  = fullExt["ymax"],
+  crs   = .crs
 )
 terra::values(tileRast) <- as.integer(t(tileMatrix))
 rm(tileMatrix)
 names(tileRast) <- "TileID"
 
 updateRunLog(paste0(
-  "Tile mask created with ", numTilesX * numTilesY, " tile(s) ",
-  "(values 1 to ", numTilesX * numTilesY, ")."
+  "Tile mask created with ", nValidTiles, " tile(s) ",
+  "(values 1 to ", nValidTiles, ")."
 ))
-
-
-# Write tile mask raster to disk -----------------------------------------------
-
-progressBar(type = "message", message = "Writing tile mask raster")
 
 gridFilename <- paste0(
   "smpGrid-", numTilesX, "x", numTilesY,
-  "-", numTilesX * numTilesY, "tiles.tif"
+  "-", nValidTiles, "tiles.tif"
 )
 gridPath <- file.path(transferDir, gridFilename)
 
@@ -284,114 +400,32 @@ terra::writeRaster(
 )
 
 updateRunLog(paste0("Tile grid raster saved to: ", gridPath))
+rm(tileRast)
 
 
-# Pre-crop predicting rasters per tile and save manifest -----------------------
+# Write tile manifest ----------------------------------------------------------
 
-progressBar(type = "message", message = "Pre-cropping rasters per tile")
-
-# Collect unique, valid predicting raster file paths
-allRasterFiles <- predictingRasterDataframe$predictingRasterFile
-allRasterFiles <- unique(allRasterFiles[
-  !is.na(allRasterFiles) & nzchar(allRasterFiles) & file.exists(allRasterFiles)
-])
-
-if (length(allRasterFiles) > 0) {
-  # Determine persistent tile storage directory in library data folder
-  # Use e$LibraryFilePath (already available) rather than ssim_library env var,
-  # which can contain surrounding quotes on Windows causing dir.create to fail.
-  sid_match   <- regmatches(transferDir, regexpr("Scenario-\\d+", transferDir))
-  scenario_id <- as.integer(sub("Scenario-", "", sid_match))
-
-  tilesDataDir <- file.path(
-    paste0(e$LibraryFilePath, ".data"),
-    paste0("Scenario-", scenario_id),
-    "ecoClassifyTiles"
-  )
-  dir.create(tilesDataDir, recursive = TRUE, showWarnings = FALSE)
-
-  fullExt <- as.vector(terra::ext(templateRast))  # c(xmin, xmax, ymin, ymax)
-
+if (!is.null(tilesDataDir) && length(manifestTiles) > 0) {
   manifestData <- list(
     version    = "1.0",
-    tile_count = as.integer(numTilesX * numTilesY),
+    tile_count = as.integer(nValidTiles),
     buffer_px  = buffer_px,
     full_extent = list(
       xmin  = fullExt["xmin"],
       xmax  = fullExt["xmax"],
       ymin  = fullExt["ymin"],
       ymax  = fullExt["ymax"],
-      nrows = terra::nrow(templateRast),
-      ncols = terra::ncol(templateRast),
-      crs   = terra::crs(templateRast)
+      nrows = nRows,
+      ncols = nCols,
+      crs   = .crs
     ),
-    tiles = vector("list", numTilesX * numTilesY)
+    tiles = manifestTiles
   )
-
-  # Pixel resolution needed for buffer extent expansion
-  .resX <- terra::xres(templateRast)
-  .resY <- terra::yres(templateRast)
-  rm(templateRast)
-
-  for (tid in seq_len(numTilesX * numTilesY)) {
-    tileExt     <- terra::ext(terra::trim(tileRast == tid, value = FALSE))
-    tileExt_vec <- as.vector(tileExt)  # c(xmin, xmax, ymin, ymax)
-
-    # Expand tile extent by buffer (clamped to full raster bounds)
-    cropExt <- if (buffer_px > 0L) {
-      terra::ext(
-        max(tileExt_vec["xmin"] - buffer_px * .resX, fullExt["xmin"]),
-        min(tileExt_vec["xmax"] + buffer_px * .resX, fullExt["xmax"]),
-        max(tileExt_vec["ymin"] - buffer_px * .resY, fullExt["ymin"]),
-        min(tileExt_vec["ymax"] + buffer_px * .resY, fullExt["ymax"])
-      )
-    } else {
-      tileExt
-    }
-
-    tileDirPath <- file.path(tilesDataDir, paste0("tile_", tid))
-    dir.create(tileDirPath, recursive = TRUE, showWarnings = FALSE)
-
-    rasterMap <- list()
-    for (j in seq_along(allRasterFiles)) {
-      rPath   <- allRasterFiles[j]
-      outName <- paste0("tile_", tid, "_r", j, "_", basename(rPath))
-      outPath <- file.path(tileDirPath, outName)
-      terra::writeRaster(
-        terra::crop(terra::rast(rPath), cropExt),
-        filename  = outPath,
-        overwrite = TRUE,
-        gdal      = c("COMPRESS=LZW")
-      )
-      rasterMap[[rPath]] <- outPath
-    }
-
-    manifestData$tiles[[tid]] <- list(
-      tile_id = tid,
-      tile_extent = list(
-        xmin = tileExt_vec["xmin"],
-        xmax = tileExt_vec["xmax"],
-        ymin = tileExt_vec["ymin"],
-        ymax = tileExt_vec["ymax"]
-      ),
-      raster_map = rasterMap
-    )
-
-    updateRunLog(sprintf(
-      "Tile %d: pre-cropped %d predicting raster(s).",
-      tid, length(allRasterFiles)
-    ))
-  }
 
   manifestPath <- file.path(tilesDataDir, "tile_manifest.json")
   jsonlite::write_json(manifestData, manifestPath, auto_unbox = TRUE, pretty = TRUE)
   updateRunLog(paste0("Tile manifest saved to: ", manifestPath))
-  rm(tileRast, manifestData)
-} else {
-  updateRunLog(
-    "No valid predicting rasters found; skipping per-tile pre-cropping.",
-    type = "warning"
-  )
+  rm(manifestData)
 }
 
 
@@ -405,15 +439,14 @@ saveDatasheet(
 
 updateRunLog("core_SpatialMultiprocessing datasheet updated.")
 
-totalTiles <- as.integer(numTilesX * numTilesY)
 saveDatasheet(
   myScenario,
-  data = data.frame(EnableMultiprocessing = TRUE, MaximumJobs = totalTiles,
+  data = data.frame(EnableMultiprocessing = TRUE, MaximumJobs = nValidTiles,
                     stringsAsFactors = FALSE),
   name = "core_Multiprocessing"
 )
 
-updateRunLog(paste0("core_Multiprocessing set to ", totalTiles, " job(s) to match tile count."))
+updateRunLog(paste0("core_Multiprocessing set to ", nValidTiles, " job(s) to match tile count."))
 
 terra::tmpFiles(remove = TRUE)
 
