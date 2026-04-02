@@ -1,9 +1,43 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <update comment="Update ecoClassify to version 2.4">
 
+  <!-- Drop removed ModelChartData datasheet (replaced by SummaryOutput/ModelMetricsByClass) -->
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_ModelChartData">
+    <item>DROP TABLE ecoClassify_ModelChartData</item>
+  </action>
+
   <!-- Add new TilingOptions datasheet for spatial tiling support -->
   <action code="Exec" condition="TableNotExists" criteria="ecoClassify_TilingOptions">
-    <item>CREATE TABLE ecoClassify_TilingOptions(TilingOptionsId INTEGER PRIMARY KEY, AutoTiling BOOLEAN, NumTilesX INTEGER, NumTilesY INTEGER)</item>
+    <item>CREATE TABLE ecoClassify_TilingOptions(TilingOptionsId INTEGER PRIMARY KEY, ScenarioId INTEGER, AutoTiling BOOLEAN, NumTilesX INTEGER, NumTilesY INTEGER)</item>
+  </action>
+
+  <!-- Add new TargetClassOptions datasheet -->
+  <action code="Exec" condition="TableNotExists" criteria="ecoClassify_TargetClassOptions">
+    <item>CREATE TABLE ecoClassify_TargetClassOptions(TargetClassOptionsId INTEGER PRIMARY KEY, ScenarioId INTEGER, useTargetClass BOOLEAN, targetClassValue INTEGER, backgroundValues TEXT, ignoreValues TEXT, targetClassLabel TEXT)</item>
+  </action>
+
+  <!-- Add new SummaryOutput datasheet -->
+  <action code="Exec" condition="TableNotExists" criteria="ecoClassify_SummaryOutput">
+    <item>CREATE TABLE ecoClassify_SummaryOutput(SummaryOutputId INTEGER PRIMARY KEY, ScenarioId INTEGER, Timestep INTEGER, TargetClassValue INTEGER, TargetClassLabel TEXT, PredictionType TEXT, PredictedPixels INTEGER, PredictedArea DOUBLE, MeanProbability DOUBLE, MedianProbability DOUBLE, MinProbability DOUBLE, MaxProbability DOUBLE)</item>
+  </action>
+
+  <!-- Add new SummaryOutputChart datasheet -->
+  <action code="Exec" condition="TableNotExists" criteria="ecoClassify_SummaryOutputChart">
+    <item>CREATE TABLE ecoClassify_SummaryOutputChart(SummaryOutputChartId INTEGER PRIMARY KEY, ScenarioId INTEGER, Timestep INTEGER, TargetClassValue INTEGER, TargetClassLabel TEXT, PredictionType TEXT, PredictedPixels INTEGER, PredictedArea DOUBLE, MeanProbability DOUBLE, MedianProbability DOUBLE, MinProbability DOUBLE, MaxProbability DOUBLE)</item>
+  </action>
+
+  <!-- Add new ModelMetricsByClass datasheet -->
+  <action code="Exec" condition="TableNotExists" criteria="ecoClassify_ModelMetricsByClass">
+    <item>CREATE TABLE ecoClassify_ModelMetricsByClass(ModelMetricsByClassId INTEGER PRIMARY KEY, ScenarioId INTEGER, TargetClassValue INTEGER, TargetClassLabel TEXT, Accuracy DOUBLE, Precision DOUBLE, Recall DOUBLE, Specificity DOUBLE, F1 DOUBLE, AUC DOUBLE)</item>
+  </action>
+
+  <!-- Add new band name columns to Terminology -->
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_Terminology">
+    <item>ALTER TABLE ecoClassify_Terminology ADD COLUMN redBand TEXT</item>
+    <item>ALTER TABLE ecoClassify_Terminology ADD COLUMN greenBand TEXT</item>
+    <item>ALTER TABLE ecoClassify_Terminology ADD COLUMN blueBand TEXT</item>
+    <item>ALTER TABLE ecoClassify_Terminology ADD COLUMN nirBand TEXT</item>
+    <item>ALTER TABLE ecoClassify_Terminology ADD COLUMN swirBand TEXT</item>
   </action>
 
 </update>
