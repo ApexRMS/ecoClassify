@@ -526,8 +526,8 @@ if (length(summaryRows) > 0) {
             PredictedArea     = if ("PredictedArea"     %in% names(grp)) .sum_na(grp$PredictedArea) else NA_real_,
             MeanProbability   = .weightedMean,
             MedianProbability = NA_real_,
-            MinProbability    = if ("MinProbability"    %in% names(grp)) min(grp$MinProbability, na.rm = TRUE) else NA_real_,
-            MaxProbability    = if ("MaxProbability"    %in% names(grp)) max(grp$MaxProbability, na.rm = TRUE) else NA_real_,
+            MinProbability    = if ("MinProbability"    %in% names(grp)) { if (all(is.na(grp$MinProbability))) NA_real_ else min(grp$MinProbability, na.rm = TRUE) } else NA_real_,
+            MaxProbability    = if ("MaxProbability"    %in% names(grp)) { if (all(is.na(grp$MaxProbability))) NA_real_ else max(grp$MaxProbability, na.rm = TRUE) } else NA_real_,
             stringsAsFactors  = FALSE
           )
         }
