@@ -43,7 +43,8 @@ if (.RUN_INSTALLER) {
     # Strip rogue quotes before using in file.path to avoid embedding them mid-path
     strip_quotes <- function(p) gsub('^["\' ]+|["\' ]+$', "", p)
     cp <- strip_quotes(Sys.getenv("CONDA_PREFIX", unset = ""))
-    env_lib <- if (nzchar(cp)) file.path(cp, "Lib", "R", "library") else strip_quotes(.libPaths()[1])
+    conda_lib_folder <- if (.Platform$OS.type == "windows") "Lib" else "lib"
+    env_lib <- if (nzchar(cp)) file.path(cp, conda_lib_folder, "R", "library") else strip_quotes(.libPaths()[1])
 
     # Normalize (suppress warnings: mustWork=FALSE already handles non-existent paths)
     clean <- function(p) suppressWarnings(
