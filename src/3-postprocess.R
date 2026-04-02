@@ -552,7 +552,8 @@ if (nrow(ruleReclassDataframe) != 0) {
       ] <- reclassedPathPred
 
       # Accumulate reclassified summary row
-      predProbPath <- predictingOutputDataframe$ClassifiedProbability[predictingOutputDataframe$Timestep == t]
+      predProbPath <- na.omit(unique(predictingOutputDataframe$ClassifiedProbability[predictingOutputDataframe$Timestep == t]))[1]
+      predProbPath <- if (length(predProbPath) == 1L && is.character(predProbPath) && !is.na(predProbPath)) predProbPath else NA_character_
       if (!is.na(predProbPath) && file.exists(predProbPath)) {
         summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
           predictionRaster  = terra::rast(reclassedPathPred),
@@ -593,6 +594,8 @@ if (nrow(ruleReclassDataframe) != 0) {
         ] <- reclassedFilteredPathPred
 
         # Accumulate filtered_reclassified summary row
+        predProbPath <- na.omit(unique(predictingOutputDataframe$ClassifiedProbability[predictingOutputDataframe$Timestep == t]))[1]
+        predProbPath <- if (length(predProbPath) == 1L && is.character(predProbPath) && !is.na(predProbPath)) predProbPath else NA_character_
         if (!is.na(predProbPath) && file.exists(predProbPath)) {
           summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
             predictionRaster  = terra::rast(reclassedFilteredPathPred),
