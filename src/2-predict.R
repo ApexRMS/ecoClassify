@@ -511,17 +511,23 @@ if (length(summaryRows) > 0) {
       .aggregated <- do.call(rbind, lapply(
         split(.allStats, list(.allStats$Timestep, .allStats$PredictionType), drop = TRUE),
         function(grp) {
+          .pixels <- if ("PredictedPixels" %in% names(grp)) grp$PredictedPixels else NULL
+          .totalPixels <- if (!is.null(.pixels)) .sum_na(.pixels) else NA_real_
+          .weightedMean <- if (!is.null(.pixels) && "MeanProbability" %in% names(grp) &&
+                                !is.na(.totalPixels) && .totalPixels > 0)
+            .sum_na(.pixels * grp$MeanProbability) / .totalPixels
+          else NA_real_
           data.frame(
             Timestep          = grp$Timestep[1],
             TargetClassValue  = if ("TargetClassValue"  %in% names(grp)) grp$TargetClassValue[1]  else NA,
             TargetClassLabel  = if ("TargetClassLabel"  %in% names(grp)) grp$TargetClassLabel[1]  else NA,
             PredictionType    = grp$PredictionType[1],
-            PredictedPixels   = if ("PredictedPixels"   %in% names(grp)) .sum_na(grp$PredictedPixels)    else NA_real_,
-            PredictedArea     = if ("PredictedArea"     %in% names(grp)) .sum_na(grp$PredictedArea)      else NA_real_,
-            MeanProbability   = if ("MeanProbability"   %in% names(grp)) .mean_na(grp$MeanProbability)   else NA_real_,
-            MedianProbability = if ("MedianProbability" %in% names(grp)) .mean_na(grp$MedianProbability) else NA_real_,
-            MinProbability    = if ("MinProbability"    %in% names(grp)) .mean_na(grp$MinProbability)    else NA_real_,
-            MaxProbability    = if ("MaxProbability"    %in% names(grp)) .mean_na(grp$MaxProbability)    else NA_real_,
+            PredictedPixels   = .totalPixels,
+            PredictedArea     = if ("PredictedArea"     %in% names(grp)) .sum_na(grp$PredictedArea) else NA_real_,
+            MeanProbability   = .weightedMean,
+            MedianProbability = NA_real_,
+            MinProbability    = if ("MinProbability"    %in% names(grp)) min(grp$MinProbability, na.rm = TRUE) else NA_real_,
+            MaxProbability    = if ("MaxProbability"    %in% names(grp)) max(grp$MaxProbability, na.rm = TRUE) else NA_real_,
             stringsAsFactors  = FALSE
           )
         }
