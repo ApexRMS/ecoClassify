@@ -8,12 +8,12 @@
 
   <!-- Add new TilingOptions datasheet for spatial tiling support -->
   <action code="Exec" condition="TableNotExists" criteria="ecoClassify_TilingOptions">
-    <item>CREATE TABLE ecoClassify_TilingOptions(TilingOptionsId INTEGER PRIMARY KEY, ScenarioId INTEGER, AutoTiling BOOLEAN, NumTilesX INTEGER, NumTilesY INTEGER)</item>
+    <item>CREATE TABLE ecoClassify_TilingOptions(TilingOptionsId INTEGER PRIMARY KEY, ScenarioId INTEGER, AutoTiling INTEGER, NumTilesX INTEGER, NumTilesY INTEGER)</item>
   </action>
 
   <!-- Add new TargetClassOptions datasheet -->
   <action code="Exec" condition="TableNotExists" criteria="ecoClassify_TargetClassOptions">
-    <item>CREATE TABLE ecoClassify_TargetClassOptions(TargetClassOptionsId INTEGER PRIMARY KEY, ScenarioId INTEGER, useTargetClass BOOLEAN, targetClassValue INTEGER, backgroundValues TEXT, ignoreValues TEXT, targetClassLabel TEXT)</item>
+    <item>CREATE TABLE ecoClassify_TargetClassOptions(TargetClassOptionsId INTEGER PRIMARY KEY, ScenarioId INTEGER, useTargetClass INTEGER, targetClassValue INTEGER, backgroundValues TEXT, ignoreValues TEXT, targetClassLabel TEXT)</item>
   </action>
 
   <!-- Add new SummaryOutput datasheet -->

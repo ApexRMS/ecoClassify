@@ -28,7 +28,7 @@
 
   <!-- Create new datasheet for advanced classifier options -->
   <action code="Exec" condition="TableNotExists" criteria="ecoClassify_AdvancedClassifierOptions">
-    <item>CREATE TABLE ecoClassify_AdvancedClassifierOptions(AdvancedClassifierOptionsId INTEGER PRIMARY KEY, ScenarioId INTEGER, normalizeRasters BOOLEAN, rasterDecimalPlaces INTEGER, modelTuning BOOLEAN, setManualThreshold BOOLEAN, manualThreshold DOUBLE, applyContextualization BOOLEAN, contextualizationWindowSize INTEGER, setSeed INTEGER)</item>
+    <item>CREATE TABLE ecoClassify_AdvancedClassifierOptions(AdvancedClassifierOptionsId INTEGER PRIMARY KEY, ScenarioId INTEGER, normalizeRasters INTEGER, rasterDecimalPlaces INTEGER, modelTuning INTEGER, setManualThreshold INTEGER, manualThreshold DOUBLE, applyContextualization INTEGER, contextualizationWindowSize INTEGER, setSeed INTEGER)</item>
     <item>UPDATE ecoClassify_AdvancedClassifierOptions
             SET normalizeRasters=0,
                 modelTuning=0,
