@@ -171,7 +171,7 @@ for (t in trainTimestepList) {
 
     # Accumulate filtered summary row
     if (isTRUE(applyFiltering) && !is.na(filteredTraining$PredictedFiltered)) {
-      probPath <- trainingOutputDataframe$Probability[trainingOutputDataframe$Timestep == t]
+      probPath <- trainingOutputDataframe$Probability[trainingOutputDataframe$Timestep == t][1]
       if (!is.na(probPath) && file.exists(probPath)) {
         summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
           predictionRaster  = terra::rast(filteredTraining$PredictedFiltered),
@@ -218,7 +218,7 @@ for (t in predTimestepList) {
 
     # Accumulate filtered summary row
     if (isTRUE(applyFiltering) && !is.na(filteredPredicting$PredictedFiltered)) {
-      probPath <- predictingOutputDataframe$ClassifiedProbability[predictingOutputDataframe$Timestep == t]
+      probPath <- predictingOutputDataframe$ClassifiedProbability[predictingOutputDataframe$Timestep == t][1]
       if (!is.na(probPath) && file.exists(probPath)) {
         summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
           predictionRaster  = terra::rast(filteredPredicting$PredictedFiltered),
@@ -368,7 +368,7 @@ if (nrow(ruleReclassDataframe) != 0) {
       ] <- reclassedPathTrain
 
       # Accumulate reclassified summary row
-      probPath <- trainingOutputDataframe$Probability[trainingOutputDataframe$Timestep == t]
+      probPath <- trainingOutputDataframe$Probability[trainingOutputDataframe$Timestep == t][1]
       if (!is.na(probPath) && file.exists(probPath)) {
         summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
           predictionRaster  = terra::rast(reclassedPathTrain),

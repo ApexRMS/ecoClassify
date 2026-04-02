@@ -23,6 +23,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libxt-dev \
         libnetcdf-dev \
         libsqlite3-dev \
+        wget \
+        unzip \
+        mono-complete \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -76,6 +79,44 @@ RUN Rscript -e " \
 # Set type='gpu' and use a CUDA base image if GPU support is needed.
 ENV TORCH_INSTALL=1
 RUN Rscript -e "torch::install_torch(type = 'cpu')"
+
+# --- SyncroSim ----------------------------------------------------------------
+RUN mkdir -p /tmp/syncrosim && \
+    cd /tmp/syncrosim && \
+    wget -O syncrosim.zip https://downloads.syncrosim.com/3-1-24/syncrosim-linux-3-1-24.zip && \
+    unzip syncrosim.zip && \
+    mkdir -p /opt/syncrosim && \
+    cp -r * /opt/syncrosim/ && \
+    find /opt/syncrosim -name "*.exe" -exec chmod +x {} \; && \
+    rm -rf /tmp/syncrosim
+
+ENV PATH="/opt/syncrosim:${PATH}"
+ENV LD_LIBRARY_PATH="/opt/syncrosim"
+ENV GDAL_DATA=/usr/share/gdal
+ENV PROJ_LIB=/usr/share/proj
+
+# --- GDAL C# bindings for SyncroSim spatial multiprocessing -------------------
+# SyncroSim's Linux package includes managed gdal_csharp.dll but omits the
+# native libgdal_wrap.so that it P/Invokes into.  The conda-forge gdal-csharp
+# package ships a matched set of managed DLLs + native SWIG wrappers.
+# We also copy libspatialite.so.7 because SyncroSim's bundled libgdal.so.30
+# has a DT_NEEDED entry for it and the system provides only .so.8.
+# Miniconda is used only at build time and removed afterwards.
+RUN wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
+        -O /tmp/miniconda.sh && \
+    bash /tmp/miniconda.sh -b -p /tmp/miniconda3 && \
+    /tmp/miniconda3/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
+    /tmp/miniconda3/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r && \
+    /tmp/miniconda3/bin/conda config --add channels conda-forge && \
+    /tmp/miniconda3/bin/conda config --set channel_priority strict && \
+    /tmp/miniconda3/bin/conda create -y --name gdal-mono gdal-csharp=1.1.1 && \
+    cp /tmp/miniconda3/envs/gdal-mono/lib/*.so* /opt/syncrosim/ && \
+    rm -f /opt/syncrosim/libsqlite3.so* \
+          /opt/syncrosim/libproj.so* \
+          /opt/syncrosim/libgeos_c.so* \
+          /opt/syncrosim/libgeos.so* \
+          /opt/syncrosim/libcurl.so* && \
+    rm -rf /tmp/miniconda.sh /tmp/miniconda3
 
 # --- Package source -----------------------------------------------------------
 COPY src/ /opt/ecoClassify/src/
