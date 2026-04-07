@@ -98,6 +98,9 @@ trainingOutputDataframe <- datasheet(
   myScenario,
   name = "ecoClassify_RasterOutput"
 )
+# Deduplicate: spatial tiling causes RasterOutput rows to be replicated once
+# per tile job when SyncroSim merges job libraries back into the parent
+trainingOutputDataframe <- dplyr::distinct(trainingOutputDataframe)
 # Clear restricted columns so metrics only use paths written in the current run
 trainingOutputDataframe$PredictedUnfilteredRestricted <- NA_character_
 trainingOutputDataframe$PredictedFilteredRestricted   <- NA_character_

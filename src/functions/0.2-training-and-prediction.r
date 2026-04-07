@@ -236,35 +236,33 @@ splitTrainTest <- function(
 
     updateRunLog(
       sprintf(
-        "    Estimating class proportions: sampling from %d total cells (target: %d valid samples)...",
+        "    Estimating class proportions: sampling from non-NA cells in %d total cells (target: %d valid samples)...",
         nTotal,
         targetValid
       ),
       type = "info"
     )
 
-    oversampleFactor <- 3L
-    sampleSize <- min(nTotal, targetValid * oversampleFactor)
+    # Get non-NA cell indices directly to avoid sampling mostly NA cells
+    # when ground truth is sparse relative to the raster extent
+    validCells <- which(!is.na(terra::values(rGt, mat = FALSE)))
 
-    cellIds <- sample.int(nTotal, size = sampleSize, replace = FALSE)
-    vals <- extractValsAtCells(rGt, cellIds)
-
-    valsClean <- vals[!is.na(vals)]
-
-    if (length(valsClean) < 100) {
+    if (length(validCells) < 100) {
       stop(
         sprintf(
           "Insufficient valid ground truth samples: only %d valid cells found from %d sampled. ",
-          length(valsClean),
-          sampleSize
+          length(validCells),
+          nTotal
         ),
         "The raster may have too many NA values."
       )
     }
 
-    if (length(valsClean) > targetValid) {
-      valsClean <- sample(valsClean, targetValid)
-    }
+    sampleSize <- min(length(validCells), targetValid)
+    cellIds <- sample(validCells, size = sampleSize, replace = FALSE)
+    vals <- extractValsAtCells(rGt, cellIds)
+
+    valsClean <- vals[!is.na(vals)]
 
     updateRunLog(
       sprintf("    Successfully obtained %d valid samples", length(valsClean)),
