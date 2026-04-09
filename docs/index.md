@@ -45,9 +45,7 @@ Report a bug or contribute an idea at
 
 ## Developers
 
-Hannah Faith Adams (Author) <a href="https://orcid.org/0000-0003-2647-8021" target="_blank" rel="noopener noreferrer"><img align="middle" style="padding: 0.5px" width="17" src="assets/images/ORCID.png"></a>
-<br>
-Alex Filazzola (Author) <a href="https://orcid.org/0000-0001-6544-2035" target="_blank" rel="noopener noreferrer"><img align="middle" style="padding: 0.5px" width="17" src="assets/images/ORCID.png"></a>
+ApexRMS (Author, maintainer)
 
 <br>
 
