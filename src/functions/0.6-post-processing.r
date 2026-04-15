@@ -128,7 +128,7 @@ calculateStatistics <- function(
   class_stats <- tibble::tibble(
     Statistic = c(
       "Sensitivity", "Specificity",
-      "Pos Pred Value", "Neg Pred Value",
+      "Positive Predictive Value", "Negative Predictive Value",
       "Precision", "Recall", "F1",
       "Prevalence", "Detection Rate",
       "Detection Prevalence", "Balanced Accuracy"

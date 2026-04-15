@@ -4,3 +4,7 @@ packages/
 scratch/
 testing/snow
 example-library/
+*.sif
+*.sh
+*.ssimpkg
+.claude/

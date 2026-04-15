@@ -28,7 +28,7 @@
 
   <!-- Create new datasheet for advanced classifier options -->
   <action code="Exec" condition="TableNotExists" criteria="ecoClassify_AdvancedClassifierOptions">
-    <item>CREATE TABLE ecoClassify_AdvancedClassifierOptions(AdvancedClassifierOptionsId INTEGER PRIMARY KEY, normalizeRasters BOOLEAN, rasterDecimalPlaces INTEGER, modelTuning BOOLEAN, setManualThreshold BOOLEAN, manualThreshold DOUBLE, applyContextualization BOOLEAN, contextualizationWindowSize INTEGER, setSeed INTEGER)</item>
+    <item>CREATE TABLE ecoClassify_AdvancedClassifierOptions(AdvancedClassifierOptionsId INTEGER PRIMARY KEY, ScenarioId INTEGER, normalizeRasters INTEGER, rasterDecimalPlaces INTEGER, modelTuning INTEGER, setManualThreshold INTEGER, manualThreshold DOUBLE, applyContextualization INTEGER, contextualizationWindowSize INTEGER, setSeed INTEGER)</item>
     <item>UPDATE ecoClassify_AdvancedClassifierOptions
             SET normalizeRasters=0,
                 modelTuning=0,
@@ -39,13 +39,13 @@
 
   <!-- Create new datasheet for post processing rule options -->
   <action code="Exec" condition="TableNotExists" criteria="ecoClassify_PostProcessingRule">
-    <item>CREATE TABLE ecoClassify_PostProcessingRule(PostProcessingRuleId INTEGER PRIMARY KEY, ruleClass INTEGER, ruleRasterFile TEXT, ruleMinValue DOUBLE, ruleMaxValue DOUBLE, ruleReclassValue INTEGER)</item>
+    <item>CREATE TABLE ecoClassify_PostProcessingRule(PostProcessingRuleId INTEGER PRIMARY KEY, ScenarioId INTEGER, ruleClass INTEGER, ruleRasterFile TEXT, ruleMinValue DOUBLE, ruleMaxValue DOUBLE, ruleReclassValue INTEGER)</item>
   </action>
 
   <!-- Modify ClassifiedRasterOutput datasheet -->
   <action code="Exec" condition="TableExists" criteria="ecoClassify_ClassifiedRasterOutput">
     <!-- Add new column -->
-    <item>ALTER TABLE ecoClassify_PostProcessingFilter ADD COLUMN ClassifiedUnfilteredRestricted TEXT</item>
+    <item>ALTER TABLE ecoClassify_ClassifiedRasterOutput ADD COLUMN ClassifiedUnfilteredRestricted TEXT</item>
   </action>
 
 </update>

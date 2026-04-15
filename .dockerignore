@@ -1,0 +1,8 @@
+example-library/
+dev/
+packages/
+.git/
+.vscode/
+.claude/
+*.ssimpkg
+*.md

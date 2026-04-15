@@ -40,6 +40,7 @@ wopt_int <- list(
   NAflag = -32768,
   gdal = c("COMPRESS=LZW", "TILED=YES", "BIGTIFF=YES")
 )
+
 # Load post-processing settings ------------------------------------------------
 
 ### Filtering -----------------------------------------------------
@@ -97,11 +98,22 @@ trainingOutputDataframe <- datasheet(
   myScenario,
   name = "ecoClassify_RasterOutput"
 )
+# Deduplicate: spatial tiling causes RasterOutput rows to be replicated once
+# per tile job when SyncroSim merges job libraries back into the parent
+trainingOutputDataframe <- dplyr::distinct(trainingOutputDataframe)
+# Clear restricted columns so metrics only use paths written in the current run
+trainingOutputDataframe$PredictedUnfilteredRestricted <- NA_character_
+trainingOutputDataframe$PredictedFilteredRestricted   <- NA_character_
 
 predictingOutputDataframe <- datasheet(
   myScenario,
   name = "ecoClassify_ClassifiedRasterOutput"
 )
+# Clear restricted columns so metrics only use paths written in the current run
+predictingOutputDataframe$ClassifiedUnfilteredRestricted <- NA_character_
+predictingOutputDataframe$ClassifiedFilteredRestricted   <- NA_character_
+
+
 
 
 ### Unique timesteps ----------------------------------------------
@@ -134,10 +146,10 @@ summaryRows <- list()
 ### Training step -------------------------------------------------
 
 for (t in trainTimestepList) {
-  # Get file paths
+  # Get file paths (take first match in case of duplicate timestep rows)
   predictedPresenceFilepath <- trainingOutputDataframe$PredictedUnfiltered[
     trainingOutputDataframe$Timestep == t
-  ]
+  ][1]
 
   if (!is.na(predictedPresenceFilepath)) {
     # Load raster
@@ -162,28 +174,29 @@ for (t in trainTimestepList) {
 
     # Accumulate filtered summary row
     if (isTRUE(applyFiltering) && !is.na(filteredTraining$PredictedFiltered)) {
-      probPath <- trainingOutputDataframe$Probability[trainingOutputDataframe$Timestep == t]
+      probPath <- trainingOutputDataframe$Probability[trainingOutputDataframe$Timestep == t][1]
       if (!is.na(probPath) && file.exists(probPath)) {
         summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
           predictionRaster  = terra::rast(filteredTraining$PredictedFiltered),
           probabilityRaster = terra::rast(probPath),
           timestep          = t,
-          predictionType    = "filtered",
+          predictionType    = "filtered - training",
           targetClassValue  = targetClassValue,
           targetClassLabel  = targetClassLabel
         )
       }
     }
+    rm(predictedPresence, filteredTraining); gc()
   }
 }
 
 ### Predicting step -----------------------------------------------
 
 for (t in predTimestepList) {
-  # Get file paths
+  # Get file paths (take first match in case of duplicate timestep rows)
   classifiedPresenceFilepath <- predictingOutputDataframe$ClassifiedUnfiltered[
     predictingOutputDataframe$Timestep == t
-  ]
+  ][1]
 
   if (!is.na(classifiedPresenceFilepath) && file.exists(classifiedPresenceFilepath)) {
     # Load raster
@@ -208,18 +221,19 @@ for (t in predTimestepList) {
 
     # Accumulate filtered summary row
     if (isTRUE(applyFiltering) && !is.na(filteredPredicting$PredictedFiltered)) {
-      probPath <- predictingOutputDataframe$ClassifiedProbability[predictingOutputDataframe$Timestep == t]
+      probPath <- predictingOutputDataframe$ClassifiedProbability[predictingOutputDataframe$Timestep == t][1]
       if (!is.na(probPath) && file.exists(probPath)) {
         summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
           predictionRaster  = terra::rast(filteredPredicting$PredictedFiltered),
           probabilityRaster = terra::rast(probPath),
           timestep          = t,
-          predictionType    = "filtered",
+          predictionType    = "filtered - predicting",
           targetClassValue  = targetClassValue,
           targetClassLabel  = targetClassLabel
         )
       }
     }
+    rm(predictedPresence, filteredPredicting); gc()
   }
 }
 
@@ -356,14 +370,14 @@ if (nrow(ruleReclassDataframe) != 0) {
         trainingOutputDataframe$Timestep == t
       ] <- reclassedPathTrain
 
-      # Accumulate restricted summary row
-      probPath <- trainingOutputDataframe$Probability[trainingOutputDataframe$Timestep == t]
+      # Accumulate reclassified summary row
+      probPath <- trainingOutputDataframe$Probability[trainingOutputDataframe$Timestep == t][1]
       if (!is.na(probPath) && file.exists(probPath)) {
         summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
           predictionRaster  = terra::rast(reclassedPathTrain),
           probabilityRaster = terra::rast(probPath),
           timestep          = t,
-          predictionType    = "restricted",
+          predictionType    = "reclassified - training",
           targetClassValue  = targetClassValue,
           targetClassLabel  = targetClassLabel
         )
@@ -397,13 +411,13 @@ if (nrow(ruleReclassDataframe) != 0) {
           trainingOutputDataframe$Timestep == t
         ] <- reclassedFilteredPathTrain
 
-        # Accumulate filtered_restricted summary row
+        # Accumulate filtered_reclassified summary row
         if (!is.na(probPath) && file.exists(probPath)) {
           summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
             predictionRaster  = terra::rast(reclassedFilteredPathTrain),
             probabilityRaster = terra::rast(probPath),
             timestep          = t,
-            predictionType    = "filtered_restricted",
+            predictionType    = "filtered_reclassified - training",
             targetClassValue  = targetClassValue,
             targetClassLabel  = targetClassLabel
           )
@@ -446,7 +460,7 @@ if (nrow(ruleReclassDataframe) != 0) {
         old_todisk <- terraOptions()$todisk
         terraOptions(todisk = FALSE)
 
-          # Load rule raster
+          # Load rule raster; crop to tile extent when running as a spatial tile job
           rulePath <- ruleReclassDataframe$ruleRasterFile[i]
           if (length(rulePath) == 0 || is.na(rulePath) || !file.exists(rulePath)) {
             updateRunLog(
@@ -540,14 +554,15 @@ if (nrow(ruleReclassDataframe) != 0) {
         predictingOutputDataframe$Timestep == t
       ] <- reclassedPathPred
 
-      # Accumulate restricted summary row
-      predProbPath <- predictingOutputDataframe$ClassifiedProbability[predictingOutputDataframe$Timestep == t]
+      # Accumulate reclassified summary row
+      predProbPath <- na.omit(unique(predictingOutputDataframe$ClassifiedProbability[predictingOutputDataframe$Timestep == t]))[1]
+      predProbPath <- if (length(predProbPath) == 1L && is.character(predProbPath) && !is.na(predProbPath)) predProbPath else NA_character_
       if (!is.na(predProbPath) && file.exists(predProbPath)) {
         summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
           predictionRaster  = terra::rast(reclassedPathPred),
           probabilityRaster = terra::rast(predProbPath),
           timestep          = t,
-          predictionType    = "restricted",
+          predictionType    = "reclassified - predicting",
           targetClassValue  = targetClassValue,
           targetClassLabel  = targetClassLabel
         )
@@ -581,13 +596,15 @@ if (nrow(ruleReclassDataframe) != 0) {
           predictingOutputDataframe$Timestep == t
         ] <- reclassedFilteredPathPred
 
-        # Accumulate filtered_restricted summary row
+        # Accumulate filtered_reclassified summary row
+        predProbPath <- na.omit(unique(predictingOutputDataframe$ClassifiedProbability[predictingOutputDataframe$Timestep == t]))[1]
+        predProbPath <- if (length(predProbPath) == 1L && is.character(predProbPath) && !is.na(predProbPath)) predProbPath else NA_character_
         if (!is.na(predProbPath) && file.exists(predProbPath)) {
           summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
             predictionRaster  = terra::rast(reclassedFilteredPathPred),
             probabilityRaster = terra::rast(predProbPath),
             timestep          = t,
-            predictionType    = "filtered_restricted",
+            predictionType    = "filtered_reclassified - predicting",
             targetClassValue  = targetClassValue,
             targetClassLabel  = targetClassLabel
           )
@@ -624,10 +641,208 @@ if (dim(predictingOutputDataframe)[1] != 0) {
   )
 }
 
+# Save post-processing summary rows (overwrites any previous post-processing output)
 if (length(summaryRows) > 0) {
-  saveDatasheet(
-    myScenario,
-    data = do.call(rbind, summaryRows),
-    name = "ecoClassify_SummaryOutput"
-  )
+  allSummaryDf <- dplyr::bind_rows(summaryRows)
+  saveDatasheet(myScenario, data = allSummaryDf, name = "ecoClassify_SummaryOutput")
+
+  # For the chart, keep only the best post-processing type per context:
+  # filtered_reclassified > reclassified > filtered
+  bestRowsList <- lapply(c("training", "predicting"), function(ctx) {
+    ctxDf <- allSummaryDf[grepl(paste0(" - ", ctx, "$"), allSummaryDf$PredictionType), ]
+    if (nrow(ctxDf) == 0) return(NULL)
+
+    types <- ctxDf$PredictionType
+    bestType <- if (any(grepl("^filtered_reclassified", types))) {
+      paste0("filtered_reclassified - ", ctx)
+    } else if (any(grepl("^reclassified", types))) {
+      paste0("reclassified - ", ctx)
+    } else {
+      paste0("filtered - ", ctx)
+    }
+
+    updateRunLog(
+      paste0("Prediction summary chart: using '", bestType, "' rows for SummaryOutputChart"),
+      type = "info"
+    )
+    ctxDf[ctxDf$PredictionType == bestType, ]
+  })
+
+  bestSummaryDf <- dplyr::bind_rows(Filter(Negate(is.null), bestRowsList))
+  if (nrow(bestSummaryDf) > 0) {
+    saveDatasheet(myScenario, data = bestSummaryDf, name = "ecoClassify_SummaryOutputChart")
+  }
 }
+
+# Recalculate model statistics and metrics from post-processed rasters ----------
+if (length(trainTimestepList) > 0) {
+  allTp <- 0; allTn <- 0; allFp <- 0; allFn <- 0
+
+  # Helper: first non-NA, non-empty path from a possibly multi-row subset
+  first_valid_path <- function(paths) {
+    paths <- paths[!is.na(paths) & nzchar(paths)]
+    if (length(paths) == 0) NA_character_ else paths[1]
+  }
+
+  for (t in trainTimestepList) {
+    row_idx <- trainingOutputDataframe$Timestep == t
+
+    frc_path  <- first_valid_path(trainingOutputDataframe$PredictedFilteredRestricted[row_idx])
+    urc_path  <- first_valid_path(trainingOutputDataframe$PredictedUnfilteredRestricted[row_idx])
+    flt_path  <- first_valid_path(trainingOutputDataframe$PredictedFiltered[row_idx])
+    unf_path  <- first_valid_path(trainingOutputDataframe$PredictedUnfiltered[row_idx])
+    truthPath <- first_valid_path(trainingOutputDataframe$GroundTruth[row_idx])
+
+    predPath <- NA_character_
+    predPathType <- NA_character_
+    if (!is.na(frc_path) && file.exists(frc_path)) {
+      predPath <- frc_path
+      predPathType <- "filtered + reclassified"
+    } else if (!is.na(urc_path) && file.exists(urc_path)) {
+      predPath <- urc_path
+      predPathType <- "reclassified"
+    } else if (!is.na(flt_path) && file.exists(flt_path)) {
+      predPath <- flt_path
+      predPathType <- "filtered"
+    } else if (!is.na(unf_path) && file.exists(unf_path)) {
+      predPath <- unf_path
+      predPathType <- "unfiltered"
+    }
+
+    if (is.na(predPath) || is.na(truthPath) || !file.exists(truthPath)) next
+
+    updateRunLog(
+      paste0("Timestep ", t, ": using ", predPathType, " training raster for model evaluation metrics"),
+      type = "info"
+    )
+
+    # Use terra::crosstab (long=TRUE) for disk-backed confusion matrix counts.
+    # long=TRUE always returns a data.frame regardless of how many class
+    # combinations are present, avoiding the 1-D table issue when a class
+    # is absent from one of the rasters.
+    truth_r <- terra::rast(truthPath)
+    if (!is.na(targetClassValue)) {
+      old_todisk <- terraOptions()$todisk
+      terraOptions(todisk = FALSE)
+      truth_r <- terra::ifel(truth_r == targetClassValue, 1L, 0L)
+      terraOptions(todisk = old_todisk)
+    }
+    ct <- tryCatch(
+      terra::crosstab(c(truth_r, terra::rast(predPath)), long = TRUE),
+      error = function(e) {
+        updateRunLog(paste0("crosstab failed for timestep ", t, ": ", conditionMessage(e)), type = "warning")
+        NULL
+      }
+    )
+    rm(truth_r); gc()
+    if (is.null(ct)) next
+
+    # Normalise column names: layer names may vary; always rename to truth/pred/Freq
+    names(ct) <- c("truth", "pred", "Freq")
+    ct$truth  <- as.numeric(as.character(ct$truth))
+    ct$pred   <- as.numeric(as.character(ct$pred))
+
+    get_ct <- function(truth_val, pred_val) {
+      val <- ct$Freq[ct$truth == truth_val & ct$pred == pred_val]
+      if (length(val) == 0 || is.na(val)) 0 else as.numeric(val)
+    }
+    allTp <- allTp + get_ct(1, 1)
+    allTn <- allTn + get_ct(0, 0)
+    allFp <- allFp + get_ct(0, 1)
+    allFn <- allFn + get_ct(1, 0)
+  }
+
+  tp <- allTp; tn <- allTn; fp <- allFp; fn <- allFn
+  n  <- tp + tn + fp + fn
+
+  if (n > 0) {
+
+    acc      <- (tp + tn) / n
+    sens     <- if ((tp + fn) > 0) tp / (tp + fn) else NA_real_
+    spec     <- if ((tn + fp) > 0) tn / (tn + fp) else NA_real_
+    ppv      <- if ((tp + fp) > 0) tp / (tp + fp) else NA_real_
+    npv      <- if ((tn + fn) > 0) tn / (tn + fn) else NA_real_
+    prec     <- ppv
+    rec      <- sens
+    f1       <- if (!is.na(prec) && !is.na(rec) && (prec + rec) > 0) 2 * prec * rec / (prec + rec) else NA_real_
+    p_pos    <- (tp + fn) / n
+    nir      <- max(p_pos, 1 - p_pos)
+    pe       <- (((tp + fn) * (tp + fp)) + ((fp + tn) * (fn + tn))) / (n ^ 2)
+    kappa_val <- if ((1 - pe) > 0) (acc - pe) / (1 - pe) else NA_real_
+    bal_acc  <- if (!is.na(sens) && !is.na(spec)) (sens + spec) / 2 else NA_real_
+    det_rate <- tp / n
+    det_prev <- (tp + fp) / n
+
+    # Wilson score CI — works correctly at raster-scale n where binom.test is
+    # unreliable (requires integer inputs and is slow for very large counts)
+    z95      <- qnorm(0.975)
+    centre   <- acc + z95^2 / (2 * n)
+    margin   <- z95 * sqrt(acc * (1 - acc) / n + z95^2 / (4 * n^2))
+    denom    <- 1 + z95^2 / n
+    acc_lower <- (centre - margin) / denom
+    acc_upper <- (centre + margin) / denom
+
+    # One-sided z-test: accuracy vs no-information rate
+    acc_p <- pnorm((acc - nir) / sqrt(nir * (1 - nir) / n), lower.tail = FALSE)
+
+    mcnemar_p <- tryCatch(
+      stats::mcnemar.test(matrix(c(tn, fp, fn, tp), nrow = 2))$p.value,
+      error = function(e) NA_real_
+    )
+
+    updatedModelOutputDataframe <- data.frame(
+      Statistic = c(
+        "Accuracy", "Kappa",
+        "Accuracy (lower)", "Accuracy (upper)",
+        "Accuracy (null)", "Accuracy P Value",
+        "Mcnemar P value",
+        "Sensitivity", "Specificity",
+        "Positive Predictive Value", "Negative Predictive Value",
+        "Precision", "Recall", "F1",
+        "Prevalence", "Detection Rate",
+        "Detection Prevalence", "Balanced Accuracy"
+      ),
+      Value = c(
+        acc, kappa_val,
+        acc_lower, acc_upper,
+        nir, acc_p, mcnemar_p,
+        sens, spec, ppv, npv,
+        prec, rec, f1,
+        p_pos, det_rate, det_prev, bal_acc
+      ),
+      stringsAsFactors = FALSE
+    )
+
+    saveDatasheet(
+      myScenario,
+      data = updatedModelOutputDataframe,
+      name = "ecoClassify_ModelStatistics"
+    )
+
+    tryCatch({
+      updatedMetricsRow <- buildMetricsRow(
+        statsDataframe   = updatedModelOutputDataframe,
+        targetClassValue = targetClassValue,
+        targetClassLabel = targetClassLabel,
+        auc              = NA_real_
+      )
+      saveDatasheet(
+        myScenario,
+        data = updatedMetricsRow,
+        name = "ecoClassify_ModelMetricsByClass"
+      )
+    }, error = function(e) {
+      updateRunLog(
+        paste0("Could not build model metrics row: ", conditionMessage(e)),
+        type = "warning"
+      )
+    })
+  } else {
+    updateRunLog(
+      "No valid confusion matrix counts found for training rasters; model statistics and metrics will not be updated.",
+      type = "warning"
+    )
+  }
+}
+
+terra::tmpFiles(remove = TRUE)

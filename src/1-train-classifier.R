@@ -24,10 +24,36 @@ progressBar(
 
 # Get the SyncroSim Scenario that is currently running
 myScenario <- scenario()
+myProject <- project(myScenario)
 
 # Retrieve the transfer directory for storing output rasters
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
+
+# Load project-level datasheets ------------------------------------------------
+terminologyDataframe <- datasheet(myProject, name = "ecoClassify_Terminology")
+
+bandLabelFile <- if (
+  nrow(terminologyDataframe) > 0 &&
+  !is.null(terminologyDataframe$bandNames) &&
+  !is.na(terminologyDataframe$bandNames[1]) &&
+  nchar(terminologyDataframe$bandNames[1]) > 0
+) terminologyDataframe$bandNames[1] else NULL
+
+rgbBands <- if (
+  nrow(terminologyDataframe) > 0 &&
+  !is.null(terminologyDataframe$redBand) && !is.na(terminologyDataframe$redBand[1]) &&
+  !is.null(terminologyDataframe$greenBand) && !is.na(terminologyDataframe$greenBand[1]) &&
+  !is.null(terminologyDataframe$blueBand) && !is.na(terminologyDataframe$blueBand[1])
+) {
+  list(
+    red   = terminologyDataframe$redBand[1],
+    green = terminologyDataframe$greenBand[1],
+    blue  = terminologyDataframe$blueBand[1]
+  )
+} else {
+  NULL
+}
 
 # Load raster input datasheets -------------------------------------------------
 trainingRasterDataframe <- datasheet(
@@ -61,6 +87,9 @@ tuningObjective <- inputVariables[[11]]
 overrideBandnames <- inputVariables[[12]]
 setSeed <- inputVariables[[13]]
 
+# Load model-type specific packages
+loadModelPackages(modelType)
+
 # Set the random seed if provided
 if (!is.null(setSeed) && !is.na(setSeed)) {
   set.seed(setSeed)
@@ -93,8 +122,30 @@ trainingRasterList <- extractRasters(trainingRasterDataframe, column = 2)
 groundTruthRasterList <- extractRasters(trainingRasterDataframe, column = 3)
 
 # Override band names if selected
-if (overrideBandnames == TRUE) {
-  trainingRasterList <- overrideBandNames(trainingRasterList)
+if (isTRUE(overrideBandnames)) {
+  if (!is.null(bandLabelFile)) {
+    updateRunLog("Applying band label override to training rasters.", type = "info")
+    trainingRasterList <- overrideBandNames(trainingRasterList, bandLabelFile)
+  } else {
+    updateRunLog(
+      "Override band names is enabled but no band label file was supplied; band names will not be changed.",
+      type = "warning"
+    )
+  }
+} else {
+  if (!is.null(bandLabelFile)) {
+    updateRunLog(
+      "A band label file was supplied but 'Override band names' is not enabled; band names will not be changed.",
+      type = "info"
+    )
+  }
+  updateRunLog(
+    paste0(
+      "Using original band names: ",
+      paste(names(trainingRasterList[[1]]), collapse = ", ")
+    ),
+    type = "info"
+  )
 }
 
 # Validate and align rasters ---------------------------------------------------
@@ -105,6 +156,32 @@ groundTruthRasterList <- validateAndAlignRasters(
   trainingRasterList,
   groundTruthRasterList
 )
+
+# Validate target class value is present in ground truth rasters ---------------
+
+if (isTRUE(useTargetClass) && !is.na(targetClassValue)) {
+  timestepsWithTarget <- vapply(groundTruthRasterList, function(r) {
+    vals <- terra::values(terra::rast(r))
+    any(vals == targetClassValue, na.rm = TRUE)
+  }, logical(1))
+
+  if (!any(timestepsWithTarget)) {
+    stop(
+      "Target class value (", targetClassValue, ") was not found in any user classified raster. ",
+      "Check that 'Target Class Value' matches the values in your user classified rasters."
+    )
+  } else if (!all(timestepsWithTarget)) {
+    missingIdx <- which(!timestepsWithTarget)
+    updateRunLog(
+      paste0(
+        "Target class value (", targetClassValue, ") was not found in user classified raster(s) for timestep(s): ",
+        paste(timestepList[missingIdx], collapse = ", "), ". ",
+        "These timesteps will have no presence pixels and may be dropped."
+      ),
+      type = "warning"
+    )
+  }
+}
 
 # Pre-processing ---------------------------------------------------------------
 
@@ -167,8 +244,10 @@ if (length(trainingRasterList) == 0) {
 }
 
 
-# Add covariate data to training rasters
-trainingRasterList <- addCovariates(trainingRasterList, trainingCovariateRaster)
+# Add covariate data to training rasters.
+# Pass transferDir so combined files are written there rather than R's
+# tempdir(), which doParallel PSOCK workers can clean up on Windows.
+trainingRasterList <- addCovariates(trainingRasterList, trainingCovariateRaster, transferDir)
 
 # Check for NA values in training rasters
 # NOTE: Masking is not applied, but a message is returned if there are an uneven
@@ -315,10 +394,6 @@ varImportanceOutputDataframe <- as.data.frame(variableImportance) %>%
   tibble::rownames_to_column("Variable") %>%
   rename(Importance = "variableImportance")
 
-# Free training data and redundant copies before prediction to reduce memory pressure
-rm(allTrainData, model, variableImportance)
-gc()
-
 # Predict presence for training rasters in each timestep group -----------------
 
 progressBar(type = "message", message = "Predict training rasters")
@@ -371,7 +446,8 @@ for (t in seq_along(trainingRasterList)) {
     groundTruth,
     category = "training",
     timestep,
-    transferDir
+    transferDir,
+    rgbBands = rgbBands
   )
 
   # Accumulate summary row for this timestep
@@ -387,7 +463,17 @@ for (t in seq_along(trainingRasterList)) {
   }, error = function(e) {
     updateRunLog(paste0("Could not build summary row for timestep ", timestep, ": ", conditionMessage(e)), type = "warning")
   })
+  groundTruthRasterList[t] <- list(NULL)
 }
+
+# Free training data now that all raster reads are complete.
+# gc() is deferred to here so it does not run while trainingRasterList is still
+# being read (getRastLayerHistogram and the prediction loop above). Calling gc()
+# earlier — including inside getRandomForestModel — can invalidate terra's
+# internal raster state when covariate rasters are present, causing
+# [readValues] errors.
+rm(allTrainData, model, variableImportance, trainingRasterList, trainingCovariateRaster)
+gc()
 
 progressBar(type = "message", message = "Calculating summary statistics")
 
@@ -435,23 +521,6 @@ tryCatch({
 }, error = function(e) {
   updateRunLog(paste0("Could not build metrics row: ", conditionMessage(e)), type = "warning")
 })
-
-# Generate model chart dataframe --------------------------------
-
-modelChartDataframe <- data.frame(
-  Accuracy = modelOutputDataframe %>%
-    filter(Statistic == "Accuracy") %>%
-    pull(Value),
-  Precision = modelOutputDataframe %>%
-    filter(Statistic == "Precision") %>%
-    pull(Value),
-  Sensitivity = modelOutputDataframe %>%
-    filter(Statistic == "Sensitivity") %>%
-    pull(Value),
-  Specificity = modelOutputDataframe %>%
-    filter(Statistic == "Specificity") %>%
-    pull(Value)
-)
 
 # Make a confusion matrix output dataframe
 ggsave(
@@ -574,18 +643,10 @@ saveDatasheet(
   name = "ecoClassify_VariableImportanceOutputDataframe"
 )
 
-saveDatasheet(
-  myScenario,
-  data = modelChartDataframe,
-  name = "ecoClassify_ModelChartData"
-)
-
 if (length(summaryRows) > 0) {
-  saveDatasheet(
-    myScenario,
-    data = do.call(rbind, summaryRows),
-    name = "ecoClassify_SummaryOutput"
-  )
+  summaryDf <- do.call(rbind, summaryRows)
+  saveDatasheet(myScenario, data = summaryDf, name = "ecoClassify_SummaryOutput")
+  saveDatasheet(myScenario, data = summaryDf, name = "ecoClassify_SummaryOutputChart")
 }
 
 if (length(metricsRows) > 0) {
@@ -595,3 +656,5 @@ if (length(metricsRows) > 0) {
     name = "ecoClassify_ModelMetricsByClass"
   )
 }
+
+terra::tmpFiles(remove = TRUE)

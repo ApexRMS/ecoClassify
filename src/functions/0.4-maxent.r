@@ -3,55 +3,8 @@
 ## ApexRMS, November 2024
 ## -------------------------------
 
-# Load MaxEnt-specific dependencies - skip MaxEnt if Java not available
+# Default FALSE; set to TRUE by loadModelPackages() when modelType == "MaxEnt"
 MAXENT_AVAILABLE <- FALSE
-
-# Try to load rJava
-rJavaLoaded <- tryCatch(
-  {
-    if (!requireNamespace("rJava", quietly = TRUE)) {
-      warning(
-        "rJava package not available. MaxEnt functionality will be skipped."
-      )
-      FALSE
-    } else {
-      suppressPackageStartupMessages(library("rJava", character.only = TRUE))
-      TRUE
-    }
-  },
-  error = function(e) {
-    warning(
-      "rJava failed to load (Java configuration issue). MaxEnt functionality will be skipped."
-    )
-    FALSE
-  }
-)
-
-# Try to load ENMeval only if rJava loaded successfully
-if (rJavaLoaded) {
-  enmevalLoaded <- tryCatch(
-    {
-      if (!requireNamespace("ENMeval", quietly = TRUE)) {
-        warning(
-          "ENMeval package not available. MaxEnt functionality will be skipped."
-        )
-        FALSE
-      } else {
-        suppressPackageStartupMessages(library(
-          "ENMeval",
-          character.only = TRUE
-        ))
-        TRUE
-      }
-    },
-    error = function(e) {
-      warning("ENMeval failed to load. MaxEnt functionality will be skipped.")
-      FALSE
-    }
-  )
-
-  MAXENT_AVAILABLE <- enmevalLoaded
-}
 
 #' Train a Maxent Model with Hyperparameter Tuning ----
 #'

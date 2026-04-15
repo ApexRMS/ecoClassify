@@ -40,12 +40,16 @@ if (!.RUN_INSTALLER) {
 if (.RUN_INSTALLER) {
   # --- LIB GUARD: force installs into the active conda env library ---
   fix_lib_paths <- function() {
-    cp <- Sys.getenv("CONDA_PREFIX", unset = "")
-    env_lib <- if (nzchar(cp)) file.path(cp, "Lib", "R", "library") else .libPaths()[1]
+    # Strip rogue quotes before using in file.path to avoid embedding them mid-path
+    strip_quotes <- function(p) gsub('^["\' ]+|["\' ]+$', "", p)
+    cp <- strip_quotes(Sys.getenv("CONDA_PREFIX", unset = ""))
+    conda_lib_folder <- if (.Platform$OS.type == "windows") "Lib" else "lib"
+    env_lib <- if (nzchar(cp)) file.path(cp, conda_lib_folder, "R", "library") else strip_quotes(.libPaths()[1])
 
-    # Strip rogue quotes and normalize
-    clean <- function(p) normalizePath(gsub('^"+|"+$|^\\\'+|\\\'+$', "", p),
-                                      winslash = "/", mustWork = FALSE)
+    # Normalize (suppress warnings: mustWork=FALSE already handles non-existent paths)
+    clean <- function(p) suppressWarnings(
+      normalizePath(strip_quotes(p), winslash = "/", mustWork = FALSE)
+    )
     env_lib <- clean(env_lib)
 
     # Ensure it exists
@@ -340,7 +344,27 @@ if (.RUN_INSTALLER) {
 
 # Auto-run if called non-interactively (e.g., via Rscript)
 if (!interactive()) {
-  ok <- tryCatch(installDependencies(), error = function(e) { message("Installation error: ", e$message); FALSE })
+  # Redirect message() output to a temp file so installation progress does not
+  # appear in the SyncroSim run log on transformer errors unrelated to installation.
+  # The captured log is only echoed to stderr if installation itself fails.
+  .msg_file <- tempfile("ecoClassify_install_", fileext = ".log")
+  .msg_con  <- file(.msg_file, open = "wt")
+  sink(.msg_con, type = "message")
+
+  ok <- tryCatch(
+    installDependencies(),
+    error = function(e) {
+      sink(type = "message")
+      close(.msg_con)
+      writeLines(readLines(.msg_file), stderr())
+      message("Installation error: ", e$message)
+      FALSE
+    }
+  )
+
+  sink(type = "message")
+  close(.msg_con)
+
   if (!ok) quit(status = 1)
 } else {
   message("Run installDependencies() to start.")

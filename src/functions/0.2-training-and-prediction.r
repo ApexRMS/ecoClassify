@@ -236,35 +236,33 @@ splitTrainTest <- function(
 
     updateRunLog(
       sprintf(
-        "    Estimating class proportions: sampling from %d total cells (target: %d valid samples)...",
+        "    Estimating class proportions: sampling from non-NA cells in %d total cells (target: %d valid samples)...",
         nTotal,
         targetValid
       ),
       type = "info"
     )
 
-    oversampleFactor <- 3L
-    sampleSize <- min(nTotal, targetValid * oversampleFactor)
+    # Get non-NA cell indices directly to avoid sampling mostly NA cells
+    # when ground truth is sparse relative to the raster extent
+    validCells <- which(!is.na(terra::values(rGt, mat = FALSE)))
 
-    cellIds <- sample.int(nTotal, size = sampleSize, replace = FALSE)
-    vals <- extractValsAtCells(rGt, cellIds)
-
-    valsClean <- vals[!is.na(vals)]
-
-    if (length(valsClean) < 100) {
+    if (length(validCells) < 100) {
       stop(
         sprintf(
           "Insufficient valid ground truth samples: only %d valid cells found from %d sampled. ",
-          length(valsClean),
-          sampleSize
+          length(validCells),
+          nTotal
         ),
         "The raster may have too many NA values."
       )
     }
 
-    if (length(valsClean) > targetValid) {
-      valsClean <- sample(valsClean, targetValid)
-    }
+    sampleSize <- min(length(validCells), targetValid)
+    cellIds <- sample(validCells, size = sampleSize, replace = FALSE)
+    vals <- extractValsAtCells(rGt, cellIds)
+
+    valsClean <- vals[!is.na(vals)]
 
     updateRunLog(
       sprintf("    Successfully obtained %d valid samples", length(valsClean)),
@@ -822,6 +820,14 @@ getOptimalThreshold <- function(
     stop("All testing predictions were dropped due to NA.")
   }
 
+  if (length(testingPredictions) < 10) {
+    warning(paste0(
+      "Testing dataset has only ", length(testingPredictions), " sample(s); ",
+      "threshold optimization requires more data for reliable results. ",
+      "Increase the number of observations or adjust the train/test split."
+    ))
+  }
+
   # --- evaluate metric vectors across the same grid (minimal change) ---
   metrics <- t(sapply(
     thresholds,
@@ -1174,7 +1180,8 @@ saveFiles <- function(
   groundTruth = NULL,
   category,
   timestep,
-  transferDir
+  transferDir,
+  rgbBands = NULL
 ) {
   # Predicted presence and probability rasters are already saved by getPredictionRasters()
   # We only need to save ground truth (if provided) and generate RGB image
@@ -1193,8 +1200,48 @@ saveFiles <- function(
   }
 
   # save RBG Image
-  # prefer B03,B02,B01 if present; otherwise fall back to first three layers
+  # use user-specified band names if provided, otherwise fall back to bands 3, 2, 1
   rgb_idx <- c(3, 2, 1)
+  if (!is.null(rgbBands)) {
+    bandNamesInRaster <- names(trainingRaster)
+    redIdx   <- match(rgbBands$red,   bandNamesInRaster)
+    greenIdx <- match(rgbBands$green, bandNamesInRaster)
+    blueIdx  <- match(rgbBands$blue,  bandNamesInRaster)
+    if (!is.na(redIdx) && !is.na(greenIdx) && !is.na(blueIdx)) {
+      rgb_idx <- c(redIdx, greenIdx, blueIdx)
+      updateRunLog(
+        sprintf(
+          "t=%s: RGB image using specified bands - R: %s (index %d), G: %s (index %d), B: %s (index %d).",
+          timestep,
+          rgbBands$red, redIdx, rgbBands$green, greenIdx, rgbBands$blue, blueIdx
+        ),
+        type = "info"
+      )
+    } else {
+      missingBands <- c(
+        if (is.na(redIdx))   paste0("R='", rgbBands$red,   "'"),
+        if (is.na(greenIdx)) paste0("G='", rgbBands$green, "'"),
+        if (is.na(blueIdx))  paste0("B='", rgbBands$blue,  "'")
+      )
+      updateRunLog(
+        sprintf(
+          "t=%s: RGB band name(s) not found in raster (%s); falling back to bands 3, 2, 1. Available bands: %s.",
+          timestep,
+          paste(missingBands, collapse = ", "),
+          paste(bandNamesInRaster, collapse = ", ")
+        ),
+        type = "warning"
+      )
+    }
+  } else {
+    updateRunLog(
+      sprintf(
+        "t=%s: No RGB band names specified; using bands 3, 2, 1 for RGB image.",
+        timestep
+      ),
+      type = "info"
+    )
+  }
   if (terra::nlyr(trainingRaster) >= 3) {
     rgb_rast <- trainingRaster[[rgb_idx]]
   } else if (terra::nlyr(trainingRaster) == 2) {

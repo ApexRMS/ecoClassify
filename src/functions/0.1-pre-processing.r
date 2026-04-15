@@ -118,17 +118,44 @@ assignVariables <- function(myScenario, trainingRasterDataframe, column) {
     name = "ecoClassify_AdvancedClassifierOptions"
   )
 
-  # Extract model input values
+  # Extract model input values with fallback defaults
   nObs <- classifierOptionsDataframe$nObs
-  applyContextualization <- advClassifierOptionsDataframe$applyContextualization
-  contextualizationWindowSize <- advClassifierOptionsDataframe$contextualizationWindowSize
-  modelType <- as.character(classifierOptionsDataframe$modelType)
-  modelTuning <- advClassifierOptionsDataframe$modelTuning
-  tuningObjective <- as.character(advClassifierOptionsDataframe$tuningObjective)
-  setManualThreshold <- advClassifierOptionsDataframe$setManualThreshold
-  manualThreshold <- advClassifierOptionsDataframe$manualThreshold
+  if (is.null(nObs) || length(nObs) == 0 || is.na(nObs)) nObs <- 10000L
+
+  modelType_raw <- classifierOptionsDataframe$modelType
+  if (is.null(modelType_raw) || length(modelType_raw) == 0 || is.na(modelType_raw)) {
+    modelType <- "Random Forest"
+  } else {
+    modelType <- as.character(modelType_raw)
+  }
+
   normalizeRasters <- advClassifierOptionsDataframe$normalizeRasters
+  if (is.null(normalizeRasters) || length(normalizeRasters) == 0 || is.na(normalizeRasters)) normalizeRasters <- FALSE
+
   rasterDecimalPlaces <- advClassifierOptionsDataframe$rasterDecimalPlaces
+  if (is.null(rasterDecimalPlaces) || length(rasterDecimalPlaces) == 0 || is.na(rasterDecimalPlaces)) rasterDecimalPlaces <- 2L
+
+  modelTuning <- advClassifierOptionsDataframe$modelTuning
+  if (is.null(modelTuning) || length(modelTuning) == 0 || is.na(modelTuning)) modelTuning <- TRUE
+
+  tuningObjective_raw <- advClassifierOptionsDataframe$tuningObjective
+  if (is.null(tuningObjective_raw) || length(tuningObjective_raw) == 0 || is.na(tuningObjective_raw)) {
+    tuningObjective <- "Youden"
+  } else {
+    tuningObjective <- as.character(tuningObjective_raw)
+  }
+
+  setManualThreshold <- advClassifierOptionsDataframe$setManualThreshold
+  if (is.null(setManualThreshold) || length(setManualThreshold) == 0 || is.na(setManualThreshold)) setManualThreshold <- FALSE
+
+  manualThreshold <- advClassifierOptionsDataframe$manualThreshold
+  if (is.null(manualThreshold) || length(manualThreshold) == 0 || is.na(manualThreshold)) manualThreshold <- 0.5
+
+  applyContextualization <- advClassifierOptionsDataframe$applyContextualization
+  if (is.null(applyContextualization) || length(applyContextualization) == 0 || is.na(applyContextualization)) applyContextualization <- FALSE
+
+  contextualizationWindowSize <- advClassifierOptionsDataframe$contextualizationWindowSize
+
   setSeed <- advClassifierOptionsDataframe$setSeed
 
   # assign value of 3 to contextualizationWindowSize if not specified
@@ -291,6 +318,15 @@ processCovariates <- function(trainingCovariateDataframe, modelType) {
         } else {
           stop("Data type not recognized")
         }
+
+        # as.factor() and as.numeric() can produce in-memory rasters. Write to a
+        # temp file so the raster is file-backed before it is combined with the
+        # training rasters in addCovariates; writeRaster cannot read from in-memory
+        # sources if those sources were freed by a gc() call earlier in the session.
+        tmpFile <- tempfile(fileext = ".tif")
+        terra::writeRaster(covariateRaster, tmpFile, overwrite = TRUE)
+        covariateRaster <- terra::rast(tmpFile)
+
         covariateRasterList <- c(covariateRasterList, covariateRaster)
       }
 
@@ -312,10 +348,25 @@ processCovariates <- function(trainingCovariateDataframe, modelType) {
 #' @return Updated list of SpatRasters.
 #'
 #' @noRd
-addCovariates <- function(rasterList, covariateRaster) {
-  # Merge covariateFiles with each raster in trainingRasterList
+addCovariates <- function(rasterList, covariateRaster, outDir = NULL) {
+  if (is.null(covariateRaster)) return(rasterList)
+
+  # Merge covariateFiles with each raster in trainingRasterList.
+  # Write each combined raster to a file to ensure it is file-backed.
+  # outDir should be the SyncroSim transferDir rather than R's tempdir() so
+  # that the files survive for the lifetime of the transformer run.  On
+  # Windows, doParallel PSOCK worker processes can scan and remove orphaned
+  # Rtmp* directories from tempdir(), which would delete these files and
+  # trigger [readValues] errors when they are read later in the session.
   for (i in seq_along(rasterList)) {
-    rasterList[[i]] <- c(rasterList[[i]], covariateRaster)
+    combined <- c(rasterList[[i]], covariateRaster)
+    outFile <- if (!is.null(outDir)) {
+      file.path(outDir, paste0("covCombined_", i, ".tif"))
+    } else {
+      tempfile(fileext = ".tif")
+    }
+    terra::writeRaster(combined, outFile, overwrite = TRUE)
+    rasterList[[i]] <- terra::rast(outFile)
   }
 
   return(rasterList)
@@ -655,32 +706,52 @@ validateAndAlignRasters <- function(trainingRasterList, groundTruthRasterList) {
   return(aligned_groundTruthRasterList)
 }
 
-#' Override Band Names with Standardized Names ----
+#' Override Band Names Using a Label File ----
 #'
 #' @description
-#' Renames all bands in raster stacks to band1, band2, band3, etc.
-#' This prevents errors when using multiple JPEGs or other images with
-#' filename-based band names.
+#' Renames all bands in raster stacks using a user-supplied CSV file that maps
+#' band position to a new label. The file must have one band name per row (in
+#' band order), with an optional header. The number of names in the file must
+#' match the number of bands in the rasters.
 #'
 #' @param rasterList List of SpatRasters.
+#' @param bandLabelFile Path to a CSV file with one column of band names in order.
 #'
-#' @return List of SpatRasters with standardized band names.
+#' @return List of SpatRasters with renamed bands.
 #'
 #' @noRd
-overrideBandNames <- function(rasterList) {
+overrideBandNames <- function(rasterList, bandLabelFile) {
+  # Read band names from file
+  bandLabels <- tryCatch(
+    read.csv(bandLabelFile, header = TRUE, stringsAsFactors = FALSE),
+    error = function(e) stop(paste0(
+      "Could not read band label file '", bandLabelFile, "': ", conditionMessage(e)
+    ))
+  )
+  newNames <- bandLabels[[1]]
+
+  # Validate against first raster
+  nBands <- terra::nlyr(rasterList[[1]])
+  if (length(newNames) != nBands) {
+    stop(paste0(
+      "Band label file has ", length(newNames), " entries but rasters have ",
+      nBands, " bands. The file must have one name per band."
+    ))
+  }
+
+  # Log the renaming using first raster's original names as example
+  oldNames <- names(rasterList[[1]])
+  updateRunLog(
+    paste0(
+      "Renaming ", nBands, " bands using label file: ",
+      paste(oldNames, "->", newNames, collapse = ", ")
+    ),
+    type = "info"
+  )
+
   renamedRasterList <- c()
-
   for (raster in rasterList) {
-    # Get number of bands
-    nBands <- terra::nlyr(raster)
-
-    # Generate standardized band names
-    newNames <- paste0("band", seq_len(nBands))
-
-    # Assign new names
     names(raster) <- newNames
-
-    # Append to list
     renamedRasterList <- c(renamedRasterList, raster)
   }
 

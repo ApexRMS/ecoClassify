@@ -1,15 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 
-<package 
-    name="ecoClassify" displayName="ecoClassify" version="2.4.1"
+<package
+    name="ecoClassify" displayName="ecoClassify" version="2.4.0"
     description="Image classifier using semantic image segmentation" 
     url="https://apexrms.github.io/ecoClassify/" 
     minSyncroSimVersion="3.1.0">
 
     <!--Project Level-->
     <dataSheet name="Terminology" isSingleRow="True" dataScope="Project">
-        <column name="bandNames" dataType="String" displayName="Training raster band names" isExternalFile="True"/>
+        <column name="bandNames" dataType="String" displayName="Band label override file" isExternalFile="True"/>
         <column name="timestepName" dataType="String" displayName="Raster group name"/>
+        <column name="redBand" dataType="String" displayName="Red band" isOptional="True"/>
+        <column name="greenBand" dataType="String" displayName="Green band" isOptional="True"/>
+        <column name="blueBand" dataType="String" displayName="Blue band" isOptional="True"/>
+        <column name="nirBand" dataType="String" displayName="NIR band" isOptional="True"/>
+        <column name="swirBand" dataType="String" displayName="SWIR band" isOptional="True"/>
         <record columns="timestepName" values="Timestep"/>
     </dataSheet>
 
@@ -53,7 +58,7 @@
         <column name="applyContextualization" dataType="Boolean" displayName="Apply contextualization"/>
         <column name="contextualizationWindowSize" dataType="Integer" displayName="Contextualization window size" isOptional="True"/>
         <column name="setSeed" dataType="Integer" displayName="Random seed" isOptional="True"/>
-        <record columns="overrideBandnames|normalizeRasters|rasterDecimalPlaces|modelTuning|tuningObjective|setManualThreshold|manualThreshold|applyContextualization|contextualizationWindowSize|setSeed" values="0|0|2|0|5|0|0.5|0|3|0"/>
+        <record columns="overrideBandnames|normalizeRasters|rasterDecimalPlaces|modelTuning|tuningObjective|setManualThreshold|manualThreshold|applyContextualization|setSeed" values="0|0|2|-1|5|0|0.5|0|0"/>
     </dataSheet>
     
     <dataSheet name="TargetClassOptions" displayName="Target Class Options" isSingleRow="True">
@@ -62,20 +67,28 @@
         <column name="backgroundValues" dataType="String" displayName="Background values (comma-separated)" isOptional="True"/>
         <column name="ignoreValues" dataType="String" displayName="Ignore values (comma-separated)" isOptional="True"/>
         <column name="targetClassLabel" dataType="String" displayName="Target class label" isOptional="True"/>
+        <record columns="useTargetClass" values="0"/>
     </dataSheet>
 
     <dataSheet name="PostProcessingFilter" displayName="Filtering" isSingleRow="True">
         <column name="applyFiltering" dataType="Boolean" displayName="Apply filtering"/>
         <column name="filterValue" dataType="Integer" displayName="Min neighbors to keep"/>
         <column name="fillValue" dataType="Integer" displayName="Min neighbors to fill"/>
+        <record columns="applyFiltering" values="-1"/>
     </dataSheet>
 
     <dataSheet name="PostProcessingRule" displayName="Rule-Based Restrictions">
-        <column name="ruleClass" dataType="Integer" displayName="Class"/>
         <column name="ruleRasterFile" dataType="String" displayName="Condition Raster" isExternalFile="True"/>
         <column name="ruleMinValue" dataType="Double" displayName="Minimum Value"/>
         <column name="ruleMaxValue" dataType="Double" displayName="Maximum Value"/>
         <column name="ruleReclassValue" dataType="Integer" displayName="Reclassify Value" validationType="List" formula1="0:0|1:1"/>
+    </dataSheet>
+
+    <dataSheet name="TilingOptions" displayName="Tiling Options" isSingleRow="True">
+        <column name="AutoTiling" dataType="Boolean" displayName="Auto-calculate tile count from cores" isOptional="True"/>
+        <column name="NumTilesX" dataType="Integer" displayName="Number of Tiles (X axis)" isOptional="True"/>
+        <column name="NumTilesY" dataType="Integer" displayName="Number of Tiles (Y axis)" isOptional="True"/>
+        <record columns="AutoTiling" values="-1"/>
     </dataSheet>
 
     <!--Output-->
@@ -91,7 +104,19 @@
         <column name="MaxProbability" dataType="Double" displayName="Max probability" isOptional="True"/>
     </dataSheet>
 
-    <dataSheet name="ModelMetricsByClass" displayName="Model Metrics by Class" isSingleRow="False">
+    <dataSheet name="SummaryOutputChart" displayName="Prediction Summary (Chart)" isSingleRow="False" hasTimestep="True">
+        <column name="TargetClassValue" dataType="Integer" displayName="Target class value" isOptional="True"/>
+        <column name="TargetClassLabel" dataType="String" displayName="Target class label" isOptional="True"/>
+        <column name="PredictionType" dataType="String" displayName="Prediction type" isOptional="True"/>
+        <column name="PredictedPixels" dataType="Integer" displayName="Predicted pixels" isOptional="True"/>
+        <column name="PredictedArea" dataType="Double" displayName="Predicted area (map units²)" isOptional="True"/>
+        <column name="MeanProbability" dataType="Double" displayName="Mean probability" isOptional="True"/>
+        <column name="MedianProbability" dataType="Double" displayName="Median probability" isOptional="True"/>
+        <column name="MinProbability" dataType="Double" displayName="Min probability" isOptional="True"/>
+        <column name="MaxProbability" dataType="Double" displayName="Max probability" isOptional="True"/>
+    </dataSheet>
+
+    <dataSheet name="ModelMetricsByClass" displayName="Model Evaluation Metrics" isSingleRow="False">
         <column name="TargetClassValue" dataType="Integer" displayName="Target class value" isOptional="True"/>
         <column name="TargetClassLabel" dataType="String" displayName="Target class label" isOptional="True"/>
         <column name="Accuracy" dataType="Double" displayName="Accuracy" isOptional="True"/>
@@ -163,21 +188,24 @@
         <column name="Weights" dataType="String" isExternalFile="True"/>
     </dataSheet>
 
-    <dataSheet name="ModelChartData" displayName="Model Chart Data">
-	    <column name="Accuracy" dataType="Double"/>
-        <column name="Precision" dataType="Double"/>
-        <column name="Sensitivity" dataType="Double"/>
-        <column name="Specificity" dataType="Double"/>
-    </dataSheet>
-
+    <!--Transformer 0: prepare spatial tiling-->
+    <transformer name="PrepareSpatialTiling" displayName="2a-Prepare Spatial Tiling"
+        programName="Rscript" programArguments="2a-prepare-spatial-tiling.R"
+        condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.5"
+        isMultiprocessing="False">
+        <dataSheet name="InputPredictingRasters" type="Input"/>
+        <dataSheet name="InputPredictingCovariates" type="Input"/>
+        <dataSheet name="TilingOptions" type="Input"/>
+        <dataSheet name="core_SpatialMultiprocessing" type="Output"/>
+    </transformer>
 
     <!--Transformer 1: training classifier-->
-    <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.4">
+    <transformer name="TrainClassifier" displayName="1-Train Classifier" programName="Rscript" programArguments="1-train-classifier.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.5" isMultiprocessing="False">
         <dataSheet name="InputTrainingRasters" type="Input"/>
         <dataSheet name="InputTrainingCovariates" type="Input"/>
-        <dataSheet name="ClassifierOptions" type="Input"/>
-        <dataSheet name="AdvancedClassifierOptions" type="Input"/>
-        <dataSheet name="TargetClassOptions" type="Input"/>
+        <dataSheet name="ClassifierOptions" type="Both"/>
+        <dataSheet name="AdvancedClassifierOptions" type="Both"/>
+        <dataSheet name="TargetClassOptions" type="Both"/>
         <dataSheet name="RasterOutput" type="Output"/>
         <dataSheet name="ConfusionMatrix" type="Output"/>
         <dataSheet name="ModelStatistics" type="Output"/>
@@ -186,27 +214,29 @@
         <dataSheet name="LayerHistogramPlotOutput" type="Output"/>
         <dataSheet name="RgbOutput" type="Output"/>
         <dataSheet name="ModelObject" type="Output"/>
-        <dataSheet name="ModelChartData" type="Output"/>
         <dataSheet name="SummaryOutput" type="Output"/>
+        <dataSheet name="SummaryOutputChart" type="Output"/>
         <dataSheet name="ModelMetricsByClass" type="Output"/>
     </transformer>
 
     <!--Transformer 2: predicting-->
-    <transformer name="Predict" displayName="2-Predict" programName="Rscript" programArguments="2-predict.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.4">
+    <transformer name="Predict" displayName="2-Predict" programName="Rscript" programArguments="2-predict.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.5">
         <dataSheet name="InputPredictingRasters" type="Input"/>
         <dataSheet name="InputPredictingCovariates" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Input"/>
         <dataSheet name="AdvancedClassifierOptions" type="Input"/>
         <dataSheet name="TargetClassOptions" type="Input"/>
         <dataSheet name="ModelObject" type="Input"/>
+        <dataSheet name="core_SpatialMultiprocessing" type="Input"/>
         <dataSheet name="RasterOutput" type="Both"/>
-        <dataSheet name="ClassifiedRasterOutput" type="Output"/>
+        <dataSheet name="ClassifiedRasterOutput" type="Output" spatialMultiProcessing="True"/>
         <dataSheet name="ClassifiedRgbOutput" type="Output"/>
         <dataSheet name="SummaryOutput" type="Output"/>
+        <dataSheet name="SummaryOutputChart" type="Output"/>
     </transformer>
 
     <!--Transformer 3: filtering-->
-    <transformer name="PostProcessing" displayName="3-Post-Process" programName="Rscript" programArguments="3-postprocess.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.4">
+    <transformer name="PostProcessing" displayName="3-Post-Process" programName="Rscript" programArguments="3-postprocess.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.5" isMultiprocessing="False">
         <dataSheet name="RasterOutput" type="Both"/>
         <dataSheet name="ClassifiedRasterOutput" type="Both"/>
         <dataSheet name="PostProcessingFilter" type="Input"/>
@@ -214,7 +244,11 @@
         <dataSheet name="TargetClassOptions" type="Input"/>
         <dataSheet name="InputTrainingRasters" type="Input"/>
         <dataSheet name="InputPredictingRasters" type="Input"/>
-        <dataSheet name="SummaryOutput" type="Output"/>
+        <dataSheet name="core_SpatialMultiprocessing" type="Input"/>
+        <dataSheet name="SummaryOutput" type="Both"/>
+        <dataSheet name="SummaryOutputChart" type="Output"/>
+        <dataSheet name="ModelStatistics" type="Both"/>
+        <dataSheet name="ModelMetricsByClass" type="Both"/>
     </transformer>
 
     <!--Export transformers-->
@@ -238,6 +272,11 @@
     <transformer name="ClassifiedFilteredRestrictedExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedFilteredRestricted" isRasterExport="True"/>
     <transformer name="ClassifiedProbabilityExport" dataSheet="ClassifiedRasterOutput" column="ClassifiedProbability" isRasterExport="True"/>
 
+    <!--Project Layout-->
+    <layout type="Project">
+        <item name="Terminology"/>
+    </layout>
+
     <!--Scenario Layout-->
     <layout type="Scenario">
 
@@ -255,6 +294,7 @@
             </group>
             <item name="AdvancedClassifierOptions"/>
             <item name="TargetClassOptions"/>
+            <item name="TilingOptions"/>
             <group name="PostProcessingOptions" displayName="Post-Processing Options">
                 <item name="PostProcessingFilter"/>
                 <item name="PostProcessingRule"/>
@@ -271,13 +311,7 @@
 
     <!--Chart Layout-->
 	<layout type="Chart">
-        <group name="modelFitChart" displayName="Model Fit">
-            <item name="modelAccuracy" displayName="Accuracy" dataSheet="ModelChartData" column="Accuracy"/>
-            <item name="modelPrecision" displayName="Precision" dataSheet="ModelChartData" column="Precision"/>
-            <item name="modelSensitivity" displayName="Sensitivity" dataSheet="ModelChartData" column="Sensitivity"/>
-            <item name="modelSpecificity" displayName="Specificity" dataSheet="ModelChartData" column="Specificity"/>
-        </group>
-        <group name="modelMetricsChart" displayName="Model Metrics by Class">
+        <group name="modelMetricsChart" displayName="Model Evaluation Metrics">
             <item name="metricsAccuracy"    displayName="Accuracy"    dataSheet="ModelMetricsByClass" column="Accuracy"/>
             <item name="metricsPrecision"   displayName="Precision"   dataSheet="ModelMetricsByClass" column="Precision"/>
             <item name="metricsRecall"      displayName="Recall"      dataSheet="ModelMetricsByClass" column="Recall"/>
@@ -286,10 +320,10 @@
             <item name="metricsAUC"         displayName="AUC"         dataSheet="ModelMetricsByClass" column="AUC"/>
         </group>
         <group name="predictionSummaryChart" displayName="Prediction Summary">
-            <item name="summaryPredictedPixels"   displayName="Predicted Pixels" dataSheet="SummaryOutput" column="PredictedPixels"/>
-            <item name="summaryPredictedArea"     displayName="Predicted Area"   dataSheet="SummaryOutput" column="PredictedArea"/>
-            <item name="summaryMeanProbability"   displayName="Mean Probability" dataSheet="SummaryOutput" column="MeanProbability" yMinColumn="MinProbability" yMaxColumn="MaxProbability"/>
-            <item name="summaryMedianProbability" displayName="Median Probability" dataSheet="SummaryOutput" column="MedianProbability"/>
+            <item name="summaryPredictedPixels"   displayName="Predicted Pixels"   dataSheet="SummaryOutputChart" column="PredictedPixels"/>
+            <item name="summaryPredictedArea"     displayName="Predicted Area"     dataSheet="SummaryOutputChart" column="PredictedArea"/>
+            <item name="summaryMeanProbability"   displayName="Mean Probability"   dataSheet="SummaryOutputChart" column="MeanProbability" yMinColumn="MinProbability" yMaxColumn="MaxProbability"/>
+            <item name="summaryMedianProbability" displayName="Median Probability" dataSheet="SummaryOutputChart" column="MedianProbability"/>
         </group>
     </layout>
 
