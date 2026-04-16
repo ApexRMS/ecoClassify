@@ -45,7 +45,7 @@ Report a bug or contribute an idea at
 
 ## Developers
 
-ApexRMS (Author, maintainer)
+[ApexRMS](https://apexrms.com/) (Author, maintainer)
 
 <br>
 
