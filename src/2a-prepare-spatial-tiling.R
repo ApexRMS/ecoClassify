@@ -287,7 +287,7 @@ if (length(allRasterFiles) > 0) {
 
       if (validCount == 0L) {
         updateRunLog(sprintf(
-          "Tile at grid position (row %d, col %d): skipped — no valid pixels.",
+          "Tile at grid position (row %d, col %d): skipped; no valid pixels.",
           iy, ix
         ), type = "info")
         next
