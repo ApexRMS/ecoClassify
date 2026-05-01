@@ -161,8 +161,7 @@ groundTruthRasterList <- validateAndAlignRasters(
 
 if (isTRUE(useTargetClass) && !is.na(targetClassValue)) {
   timestepsWithTarget <- vapply(groundTruthRasterList, function(r) {
-    vals <- terra::values(r)
-    any(vals == targetClassValue, na.rm = TRUE)
+    targetClassValue %in% terra::unique(r)[[1]]
   }, logical(1))
 
   if (!any(timestepsWithTarget)) {
