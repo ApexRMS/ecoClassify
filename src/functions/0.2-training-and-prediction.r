@@ -687,7 +687,7 @@ splitTrainTest <- function(
 
   updateRunLog(
     sprintf(
-      "Final datasets (all timesteps) — Training: %d, Testing: %d",
+      "Final datasets (all timesteps) - Training: %d, Testing: %d",
       nrow(trainDf),
       nrow(testDf)
     ),
