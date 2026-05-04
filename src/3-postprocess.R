@@ -670,7 +670,7 @@ if (length(summaryRows) > 0) {
 
   bestSummaryDf <- dplyr::bind_rows(Filter(Negate(is.null), bestRowsList))
   if (nrow(bestSummaryDf) > 0) {
-    saveDatasheet(myScenario, data = bestSummaryDf, name = "ecoClassify_SummaryOutputChart")
+    saveDatasheet(myScenario, data = bestSummaryDf, name = "ecoClassify_SummaryOutputChart", append = FALSE)
   }
 }
 
