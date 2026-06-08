@@ -38,11 +38,10 @@ addRasterAdjacencyValues <- function(
   # 1) Build the window
   w <- matrix(1, adjacencyWindow, adjacencyWindow)
 
-  # 2) PCA
-  vals <- values(rasterIn, mat = TRUE)
-  keep <- complete.cases(vals)
-  samp <- sample(which(keep), min(pcaSample, sum(keep)))
-  pcaMod <- prcomp(vals[samp, ], scale. = TRUE)
+  # 2) PCA — spatSample avoids loading all pixels into memory (complete.cases
+  # fails on long vectors for large rasters on Linux)
+  sampleVals <- as.matrix(spatSample(rasterIn, size = pcaSample, method = "random", na.rm = TRUE))
+  pcaMod <- prcomp(sampleVals, scale. = TRUE)
   pcs <- predict(rasterIn, pcaMod, index = 1:2)
   names(pcs) <- c("PC1", "PC2")
 

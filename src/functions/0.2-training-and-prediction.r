@@ -244,8 +244,10 @@ splitTrainTest <- function(
     )
 
     # Get non-NA cell indices directly to avoid sampling mostly NA cells
-    # when ground truth is sparse relative to the raster extent
-    validCells <- which(!is.na(terra::values(rGt, mat = FALSE)))
+    # when ground truth is sparse relative to the raster extent.
+    # as.data.frame with na.rm=TRUE lets terra filter NAs in C++ before
+    # returning to R, avoiding long vector failure on large rasters.
+    validCells <- terra::as.data.frame(rGt, cells = TRUE, na.rm = TRUE)$cell
 
     if (length(validCells) < 100) {
       stop(
