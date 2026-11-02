@@ -8,3 +8,5 @@ example-library/
 *.sh
 *.ssimpkg
 .claude/
+*.def
+CLAUDE.md

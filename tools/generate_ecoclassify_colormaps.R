@@ -4,27 +4,39 @@
 # at every 0.1 (0.0–1.0). Binary prediction maps receive a 2-color discrete
 # colormap (background + presence class).
 #
+# IMPORTANT: SyncroSim's publish step matches colormap files case-sensitively on
+# the exact token "ecoClassify". A wrong-case file (e.g. "ecoclassify") is
+# ignored on publish, so that layer falls back to the default legend. This
+# script always writes the "ecoClassify" case and removes wrong-case duplicates.
+#
 # Dependencies: DBI, RSQLite, viridis
 #
 # Usage:
-#   source("generate_ecoclassify_colormaps.R")
+#   source("tools/generate_ecoclassify_colormaps.R")   # defines the function only
 #   generate_ecoclassify_colormaps("my-library.ssim")
 #   generate_ecoclassify_colormaps(
 #     "my-library.ssim",
-#     palette           = "plasma",
-#     reverse           = TRUE,
-#     bg_color          = "#C8C8C8",
-#     presence_color    = "#E65C00",
-#     gt_presence_color = "#21908C"
+#     palette             = "plasma",
+#     reverse             = TRUE,
+#     bg_color            = "#C8C8C8",
+#     presence_color      = "#482878",
+#     gt_presence_color   = "#21908C",
+#     overwriteMapCriteria = TRUE   # opt in to overwriting curated map layers
 #   )
+#
+# By default the script does NOT modify the layer list (Criteria) of maps that
+# already exist — it only creates missing maps and writes colormaps for the
+# variables each map currently displays. Set overwriteMapCriteria = TRUE to
+# force every ecoClassify map back to its full default layer set.
 
 generate_ecoclassify_colormaps <- function(
   library_path,
-  palette           = "viridis",   # palette for continuous probability maps
-  reverse           = FALSE,       # reverse palette direction
-  bg_color          = "#DCDCDC",   # colour for value 0 (absent / background)
-  presence_color    = "#FF4500",   # colour for value 1 (presence) on prediction maps
-  gt_presence_color = "#21908C"    # colour for value 1 on the ground truth map (teal = viridis midpoint)
+  palette              = "viridis",   # palette for continuous probability maps
+  reverse              = FALSE,       # reverse palette direction
+  bg_color             = "#DCDCDC",   # colour for value 0 (absent / background)
+  presence_color       = "#d46d18",   # colour for value 1 (presence) on prediction maps
+  gt_presence_color    = "#21908C",   # colour for value 1 on the ground truth map (teal = viridis midpoint)
+  overwriteMapCriteria = FALSE        # if TRUE, reset existing maps to default layer set
 ) {
   # ── Validate inputs ───────────────────────────────────────────────────────────
   if (!file.exists(library_path)) {
@@ -108,14 +120,35 @@ generate_ecoclassify_colormaps <- function(
 
   tables <- DBI::dbListTables(con)
 
-  # ── Read core_Map (for colormap generation) ───────────────────────────────────
-  # If no maps are defined yet the colormap loop is skipped, but visualization
-  # creation still runs below.
-  maps <- if ("core_Map" %in% tables) {
-    DBI::dbGetQuery(con, "SELECT MapId, Name, Criteria FROM core_Map")
-  } else {
-    data.frame(MapId = integer(0), Name = character(0), Criteria = character(0))
-  }
+  # ── Canonical map criteria ────────────────────────────────────────────────────
+  # The full default layer set for each ecoClassify map. Used when CREATING a
+  # map that doesn't exist yet, and (only if overwriteMapCriteria = TRUE) to
+  # reset existing maps.
+  maps_to_create <- list(
+    list(
+      name     = "Training",
+      criteria = paste(
+        "ECOCLASSIFY_GROUNDTRUTHMAP",
+        "ECOCLASSIFY_PROBABILITYMAP",
+        "ECOCLASSIFY_PREDICTEDUNFILTEREDMAP",
+        "ECOCLASSIFY_PREDICTEDFILTEREDMAP",
+        "ECOCLASSIFY_PREDICTEDUNFILTEREDRESTRICTEDMAP",
+        "ECOCLASSIFY_PREDICTEDFILTEREDRESTRICTEDMAP",
+        sep = "|"
+      )
+    ),
+    list(
+      name     = "Predicting",
+      criteria = paste(
+        "ECOCLASSIFY_CLASSIFIEDPROBABILITYMAP",
+        "ECOCLASSIFY_CLASSIFIEDUNFILTEREDMAP",
+        "ECOCLASSIFY_CLASSIFIEDUNFILTEREDRESTRICTEDMAP",
+        "ECOCLASSIFY_CLASSIFIEDFILTEREDMAP",
+        "ECOCLASSIFY_CLASSIFIEDFILTEREDRESTRICTEDMAP",
+        sep = "|"
+      )
+    )
+  )
 
   # ── Look up target class label (used for binary map row labels) ───────────────
   # Use the most common label across all scenarios; fall back to "Presence".
@@ -132,71 +165,12 @@ generate_ecoclassify_colormaps <- function(
     }
   }
 
-  # ── Process each map ──────────────────────────────────────────────────────────
-  written <- character(0)
-  skipped <- character(0)
-
-  for (i in seq_len(nrow(maps))) {
-    map_id   <- maps$MapId[i]
-    criteria <- maps$Criteria[i]
-
-    if (is.na(criteria) || criteria == "") next
-
-    variables <- strsplit(criteria, "\\|")[[1]]
-    variables <- variables[variables != "-1" & nzchar(variables)]
-
-    for (var_raw in variables) {
-      # Strip any trailing metadata suffix (e.g. "-ITEMID-1-ITEMSRC-...")
-      var_clean <- sub("-ITEMID-.*$", "", var_raw)
-
-      info <- VAR_INFO[[var_clean]]
-      if (is.null(info)) {
-        skipped <- c(skipped, sprintf("map%d: %s (unknown variable)", map_id, var_clean))
-        next
-      }
-
-      fname_component <- info[[1]]
-      display_name    <- info[[2]]
-      is_continuous   <- info[[3]]
-
-      filename <- sprintf("colormap_map%d_ecoclassify_%s.txt", map_id, fname_component)
-      filepath <- file.path(data_dir, filename)
-
-      header <- sprintf(
-        "# Syncrosim Generated %s Color Map (QGIS-compatible),,,,,",
-        display_name
-      )
-
-      if (is_continuous) {
-        lines <- c(header, "INTERPOLATION:DISCRETE")
-        for (j in seq_along(breakpoints)) {
-          val <- breakpoints[j]
-          R   <- rgb_continuous[1, j]
-          G   <- rgb_continuous[2, j]
-          B   <- rgb_continuous[3, j]
-          lines <- c(lines, sprintf("%.4f,%d,%d,%d,255,%.1f", val, R, G, B, val))
-        }
-      } else {
-        rgb_p <- if (var_clean == "ECOCLASSIFY_GROUNDTRUTHMAP") rgb_gt_presence else rgb_presence
-        lines <- c(header, "INTERPOLATION:DISCRETE")
-        lines <- c(lines, sprintf(
-          "0.0000,%d,%d,%d,255,%s",
-          rgb_bg[1], rgb_bg[2], rgb_bg[3], background_label
-        ))
-        lines <- c(lines, sprintf(
-          "1.0000,%d,%d,%d,255,%s",
-          rgb_p[1], rgb_p[2], rgb_p[3], presence_label
-        ))
-      }
-
-      writeLines(lines, filepath)
-      written <- c(written, filename)
-    }
+  # ── Visualization helpers ─────────────────────────────────────────────────────
+  proj_id <- if ("core_Project" %in% tables) {
+    DBI::dbGetQuery(con, "SELECT ProjectId FROM core_Project LIMIT 1")$ProjectId[1]
+  } else {
+    NA_integer_
   }
-
-  # ── Create visualizations if not already present ─────────────────────────────
-
-  proj_id <- DBI::dbGetQuery(con, "SELECT ProjectId FROM core_Project LIMIT 1")$ProjectId[1]
 
   # Returns the next available integer ID for a table
   next_id <- function(tbl, id_col) {
@@ -227,10 +201,12 @@ generate_ecoclassify_colormaps <- function(
   viz_created <- character(0)
   viz_skipped <- character(0)
 
-  # Warn and skip visualization creation if the required core tables are absent.
-  # This can happen with very old or non-standard libraries.
+  # ── Create visualizations (charts, maps, images) if not already present ───────
+  # This runs BEFORE the colormap-writing loop so that a brand-new library is
+  # fully set up (maps created) in a single run, then colormaps are written for
+  # whatever layers each map displays.
   required_viz_tables <- c("core_Chart", "core_Map", "core_MapFacet",
-                            "core_Image", "core_ImageFacet")
+                            "core_Image", "core_ImageFacet", "core_Project")
   missing_tables <- setdiff(required_viz_tables, tables)
   if (length(missing_tables) > 0) {
     message("Skipping visualization creation — required tables not found: ",
@@ -278,38 +254,17 @@ generate_ecoclassify_colormaps <- function(
     }
 
     # ── Maps: Training and Predicting ──────────────────────────────────────────
+    # Create maps that don't exist yet using the full default layer set.
+    # Existing maps are left untouched unless overwriteMapCriteria = TRUE, so a
+    # user's curated layer selection is preserved across runs.
     existing_maps <- DBI::dbGetQuery(
-      con, "SELECT Name FROM core_Map WHERE ProjectId = ?", params = list(proj_id)
-    )$Name
-
-    maps_to_create <- list(
-      list(
-        name     = "Training",
-        criteria = paste(
-          "ECOCLASSIFY_GROUNDTRUTHMAP",
-          "ECOCLASSIFY_PROBABILITYMAP",
-          "ECOCLASSIFY_PREDICTEDUNFILTEREDMAP",
-          "ECOCLASSIFY_PREDICTEDFILTEREDMAP",
-          "ECOCLASSIFY_PREDICTEDUNFILTEREDRESTRICTEDMAP",
-          "ECOCLASSIFY_PREDICTEDFILTEREDRESTRICTEDMAP",
-          sep = "|"
-        )
-      ),
-      list(
-        name     = "Predicting",
-        criteria = paste(
-          "ECOCLASSIFY_CLASSIFIEDPROBABILITYMAP",
-          "ECOCLASSIFY_CLASSIFIEDUNFILTEREDMAP",
-          "ECOCLASSIFY_CLASSIFIEDUNFILTEREDRESTRICTEDMAP",
-          "ECOCLASSIFY_CLASSIFIEDFILTEREDMAP",
-          "ECOCLASSIFY_CLASSIFIEDFILTEREDRESTRICTEDMAP",
-          sep = "|"
-        )
-      )
+      con, "SELECT MapId, Name, Criteria FROM core_Map WHERE ProjectId = ?",
+      params = list(proj_id)
     )
 
     for (m in maps_to_create) {
-      if (!(m$name %in% existing_maps)) {
+      rows <- existing_maps[existing_maps$Name == m$name, ]
+      if (nrow(rows) == 0) {
         mid <- next_id("core_Map", "MapId")
         DBI::dbExecute(con,
           "INSERT INTO core_Map
@@ -322,8 +277,21 @@ generate_ecoclassify_colormaps <- function(
         )
         add_facets("core_MapFacet", "MapFacetId", "MapId", mid)
         viz_created <- c(viz_created, paste("Map:", m$name))
+      } else if (overwriteMapCriteria) {
+        stale <- rows[!vapply(rows$Criteria, identical, logical(1L), m$criteria), ]
+        if (nrow(stale) > 0) {
+          for (j in seq_len(nrow(stale))) {
+            DBI::dbExecute(con,
+              "UPDATE core_Map SET Criteria = ? WHERE MapId = ?",
+              params = list(m$criteria, stale$MapId[j])
+            )
+          }
+          viz_created <- c(viz_created, paste("Map criteria reset:", m$name))
+        } else {
+          viz_skipped <- c(viz_skipped, paste("Map:", m$name))
+        }
       } else {
-        viz_skipped <- c(viz_skipped, paste("Map:", m$name))
+        viz_skipped <- c(viz_skipped, paste("Map (criteria preserved):", m$name))
       }
     }
 
@@ -363,6 +331,107 @@ generate_ecoclassify_colormaps <- function(
 
   } # end if required tables present
 
+  # ── Read core_Map (for colormap generation) ───────────────────────────────────
+  # Read AFTER visualization creation so newly created maps are included and the
+  # colormap loop writes a file for every layer each map currently displays.
+  maps <- if ("core_Map" %in% tables) {
+    DBI::dbGetQuery(con, "SELECT MapId, Name, Criteria FROM core_Map")
+  } else {
+    data.frame(MapId = integer(0), Name = character(0), Criteria = character(0))
+  }
+
+  # ── Process each map ──────────────────────────────────────────────────────────
+  written <- character(0)
+  skipped <- character(0)
+
+  for (i in seq_len(nrow(maps))) {
+    map_id   <- maps$MapId[i]
+    criteria <- maps$Criteria[i]
+
+    if (is.na(criteria) || criteria == "") next
+
+    variables <- strsplit(criteria, "\\|")[[1]]
+    variables <- variables[variables != "-1" & nzchar(variables)]
+
+    for (var_raw in variables) {
+      # Strip any trailing metadata suffix (e.g. "-ITEMID-1-ITEMSRC-...")
+      var_clean <- sub("-ITEMID-.*$", "", var_raw)
+
+      info <- VAR_INFO[[var_clean]]
+      if (is.null(info)) {
+        skipped <- c(skipped, sprintf("map%d: %s (unknown variable)", map_id, var_clean))
+        next
+      }
+
+      fname_component <- info[[1]]
+      display_name    <- info[[2]]
+      is_continuous   <- info[[3]]
+
+      filename <- sprintf("colormap_map%d_ecoClassify_%s.txt", map_id, fname_component)
+      filepath <- file.path(data_dir, filename)
+
+      header <- sprintf(
+        "# Syncrosim Generated %s Color Map (QGIS-compatible),,,,,",
+        display_name
+      )
+
+      if (is_continuous) {
+        lines <- c(header, "INTERPOLATION:DISCRETE")
+        for (j in seq_along(breakpoints)) {
+          val <- breakpoints[j]
+          R   <- rgb_continuous[1, j]
+          G   <- rgb_continuous[2, j]
+          B   <- rgb_continuous[3, j]
+          lines <- c(lines, sprintf("%.4f,%d,%d,%d,255,%.1f", val, R, G, B, val))
+        }
+      } else {
+        rgb_p <- if (var_clean == "ECOCLASSIFY_GROUNDTRUTHMAP") rgb_gt_presence else rgb_presence
+        lines <- c(header, "INTERPOLATION:DISCRETE")
+        lines <- c(lines, sprintf(
+          "0.0000,%d,%d,%d,255,%s",
+          rgb_bg[1], rgb_bg[2], rgb_bg[3], background_label
+        ))
+        lines <- c(lines, sprintf(
+          "1.0000,%d,%d,%d,255,%s",
+          rgb_p[1], rgb_p[2], rgb_p[3], presence_label
+        ))
+      }
+
+      # ── Force correct filename case ─────────────────────────────────────────
+      # SyncroSim's publish matches colormap files case-sensitively on
+      # "ecoClassify"; a wrong-case duplicate (e.g. "ecoclassify") would
+      # suppress this layer's legend. On case-insensitive filesystems (Windows)
+      # a differently-cased name is the same path, so we rename through a temp
+      # name to force the directory entry to the correct case. Any temp leftover
+      # from an interrupted run is cleaned up first; if the rename fails we fall
+      # back to deleting the duplicate (writeLines recreates it below).
+      tmp_path <- file.path(data_dir, paste0("__tmp__rename__", filename))
+      if (file.exists(tmp_path)) unlink(tmp_path)
+
+      existing <- list.files(data_dir, pattern = glob2rx(
+        sprintf("colormap_map%d_*_%s.txt", map_id, fname_component)
+      ), ignore.case = TRUE)
+      for (ex in existing) {
+        if (!identical(ex, filename)) {
+          ex_path <- file.path(data_dir, ex)
+          tryCatch(
+            {
+              file.rename(ex_path, tmp_path)
+              file.rename(tmp_path, filepath)
+            },
+            error = function(e) {
+              unlink(ex_path)
+              if (file.exists(tmp_path)) unlink(tmp_path)
+            }
+          )
+        }
+      }
+
+      writeLines(lines, filepath)
+      written <- c(written, filename)
+    }
+  }
+
   # ── Summary ───────────────────────────────────────────────────────────────────
   cat("\n=== ecoClassify Colormap Generation Complete ===\n")
   cat(sprintf(
@@ -372,6 +441,10 @@ generate_ecoclassify_colormaps <- function(
   cat(sprintf(
     "Binary maps — background: %s  |  presence: %s  |  ground truth presence: %s  |  class label: '%s'\n",
     bg_color, presence_color, gt_presence_color, presence_label
+  ))
+  cat(sprintf(
+    "Existing map layer selections: %s\n",
+    if (overwriteMapCriteria) "RESET to defaults" else "preserved"
   ))
   cat(sprintf("Output directory: %s\n\n", data_dir))
 
@@ -401,10 +474,14 @@ generate_ecoclassify_colormaps <- function(
                  viz_created = viz_created, viz_skipped = viz_skipped))
 }
 
-generate_ecoclassify_colormaps(
-  "C:/Users/HannahAdams/Downloads/ecoclassify-example.ssim",
-  palette           = "viridis",
-  bg_color          = "#DCDCDC",
-  presence_color    = "#FF4500",
-  gt_presence_color = "#21908C"
-)
+# ── Example invocation (commented out so sourcing only defines the function) ────
+# Sourcing this file must NOT run anything automatically — call the function
+# explicitly against your own library:
+#
+# generate_ecoclassify_colormaps(
+#   "C:/path/to/my-library.ssim",
+#   palette           = "viridis",
+#   bg_color          = "#DCDCDC",
+#   presence_color    = "#482878",
+#   gt_presence_color = "#21908C"
+# )
