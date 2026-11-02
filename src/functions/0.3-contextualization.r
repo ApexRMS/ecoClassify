@@ -81,19 +81,23 @@ addRasterAdjacencyValues <- function(
 #' `contextualizeRaster` applies spatial contextualization to a list of raster objects
 #' by computing local statistics and principal components for each raster.
 #'
-#' @param rasterList A list of SpatRaster objects.
+#' @param rasterList A named list of SpatRaster objects (names are timestep
+#'   strings).
 #'
-#' @return A list of contextualized SpatRaster objects.
+#' @return A list of contextualized SpatRaster objects, retaining the timestep
+#'   names of `rasterList`.
+#'
+#' @details
+#' The timestep names are preserved because downstream functions such as
+#' `addCovariates()` match rasters to per-timestep covariates by name.
 #'
 #' @noRd
 contextualizeRaster <- function(rasterList) {
-  contextualizedRasterList <- c()
+  contextualizedRasterList <- vector("list", length(rasterList))
+  names(contextualizedRasterList) <- names(rasterList)
 
   for (r in seq_along(rasterList)) {
-    raster <- rasterList[[r]]
-    combinedRaster <- addRasterAdjacencyValues(raster)
-
-    contextualizedRasterList <- c(contextualizedRasterList, combinedRaster)
+    contextualizedRasterList[[r]] <- addRasterAdjacencyValues(rasterList[[r]])
   }
 
   return(contextualizedRasterList)

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <package
-    name="ecoClassify" displayName="ecoClassify" version="2.4.0"
+    name="ecoClassify" displayName="ecoClassify" version="2.5.0"
     description="Image classifier using semantic image segmentation" 
     url="https://apexrms.github.io/ecoClassify/" 
     minSyncroSimVersion="3.1.0">
@@ -32,11 +32,13 @@
     </dataSheet>
 
     <dataSheet name="InputTrainingCovariates" displayName="Covariates">
+        <column name="Timesteps" dataType="Integer" displayName="Timestep" isOptional="True"/>
         <column name="trainingCovariateRasterFile" dataType="String" displayName="Covariate Raster" isExternalFile="True"/>
         <column name="trainingCovariateType" displayName="Data Type" dataType="Integer" validationType="List" formula1="0:Categorical|1:Continuous"/>
     </dataSheet>
 
     <dataSheet name="InputPredictingCovariates" displayName="Covariates">
+        <column name="Timesteps" dataType="Integer" displayName="Timestep" isOptional="True"/>
         <column name="predictingCovariateRasterFile" dataType="String" displayName="Covariate Raster" isExternalFile="True"/>
         <column name="predictingCovariateType" displayName="Data Type" dataType="Integer" validationType="List" formula1="0:Categorical|1:Continuous"/>
     </dataSheet>

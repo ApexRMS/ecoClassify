@@ -81,6 +81,72 @@ extractRasters <- function(dataframe, column) {
   return(rasterList)
 }
 
+#' Align a Timestep List with a Loaded Raster List ----
+#'
+#' @description
+#' `extractRasters()` drops dataframe rows whose raster file path is NA, so the
+#' timesteps it loads can be a subset of those returned by `assignVariables()`.
+#' Downstream code labels outputs positionally (`timestepList[t]` against
+#' `rasterList[[t]]`), so a dropped timestep would shift the labels of every
+#' output after it. This reorders and filters `timestepList` to correspond
+#' element-for-element with `rasterList`, and warns about any dropped timesteps.
+#'
+#' @param timestepList Vector of timesteps from `assignVariables()`.
+#' @param rasterList Named list of SpatRasters from `extractRasters()`.
+#' @param context Character label describing the rasters, used in messages.
+#'
+#' @return `timestepList` filtered and ordered to match `names(rasterList)`,
+#'   preserving the original vector's type.
+#'
+#' @noRd
+alignTimestepList <- function(timestepList, rasterList, context = "rasters") {
+  loadedKeys <- names(rasterList)
+
+  if (is.null(loadedKeys)) {
+    updateRunLog(
+      paste0(
+        "Could not align timesteps with the loaded ", context,
+        ": the raster list has no timestep names. Output timestep labels may be ",
+        "incorrect if any rows were missing a raster file."
+      ),
+      type = "warning"
+    )
+    return(timestepList)
+  }
+
+  matchIdx <- match(loadedKeys, as.character(timestepList))
+
+  # Defensive: every loaded key originates from the same Timesteps column as
+  # timestepList, so this should be unreachable. Leave timestepList untouched
+  # rather than introducing NA labels.
+  if (anyNA(matchIdx)) {
+    updateRunLog(
+      paste0(
+        "Loaded ", context, " include timestep(s) ",
+        paste(loadedKeys[is.na(matchIdx)], collapse = ", "),
+        " that are absent from the scenario timestep list; timestep labels were ",
+        "left unchanged."
+      ),
+      type = "warning"
+    )
+    return(timestepList)
+  }
+
+  droppedIdx <- setdiff(seq_along(timestepList), matchIdx)
+  if (length(droppedIdx) > 0) {
+    updateRunLog(
+      paste0(
+        "No ", context, " were loaded for timestep(s) ",
+        paste(timestepList[droppedIdx], collapse = ", "),
+        " (missing raster file path); these timesteps were dropped."
+      ),
+      type = "warning"
+    )
+  }
+
+  return(timestepList[matchIdx])
+}
+
 #' Assign objects froma a datasheet of input variables ----
 #'
 #' @description
@@ -283,83 +349,146 @@ reclassifyGroundTruth <- function(groundTruthRasterList,
 #'
 #' @description
 #' Reads raster covariates and converts them to factor or numeric types.
+#' Returns a named list of SpatRasters keyed by timestep (as character) or
+#' "global" for rows with no timestep. Returns NULL if no covariates are
+#' provided. Rows with NA Timesteps are treated as global covariates applied
+#' to any timestep that has no specific covariate entry.
 #'
-#' @param trainingCovariateDataframe Dataframe with paths and data types.
+#' @param trainingCovariateDataframe Dataframe with optional Timesteps column,
+#'   raster file paths, and data types.
 #' @param modelType Character, used for conditional processing.
 #'
-#' @return A SpatRaster with all covariates merged.
+#' @return Named list of SpatRasters, or NULL if no covariates are provided.
 #'
 #' @noRd
 processCovariates <- function(trainingCovariateDataframe, modelType) {
-  # filter for NA values
-  trainingCovariateDataframe <- trainingCovariateDataframe %>%
-    filter(!is.na(trainingCovariateDataframe[, 1]))
-
-  covariateRasterList <- c()
-
-  if (nrow(trainingCovariateDataframe) > 0) {
-    if (
-      modelType == "Random Forest" ||
-        modelType == "MaxEnt" ||
-        modelType == "CNN"
-    ) {
-      for (row in seq(1, nrow(trainingCovariateDataframe), by = 1)) {
-        covariateRaster <- rast(trainingCovariateDataframe[row, 1])
-
-        # assign generic CRS if none exists
-        covariateRaster <- assignGenericCRS(covariateRaster)
-
-        dataType <- as.character(trainingCovariateDataframe[row, 2])
-
-        if (dataType == "Categorical") {
-          covariateRaster <- as.factor(covariateRaster)
-        } else if (dataType == "Continuous") {
-          covariateRaster <- as.numeric(covariateRaster)
-        } else {
-          stop("Data type not recognized")
-        }
-
-        # as.factor() and as.numeric() can produce in-memory rasters. Write to a
-        # temp file so the raster is file-backed before it is combined with the
-        # training rasters in addCovariates; writeRaster cannot read from in-memory
-        # sources if those sources were freed by a gc() call earlier in the session.
-        tmpFile <- tempfile(fileext = ".tif")
-        terra::writeRaster(covariateRaster, tmpFile, overwrite = TRUE)
-        covariateRaster <- terra::rast(tmpFile)
-
-        covariateRasterList <- c(covariateRasterList, covariateRaster)
-      }
-
-      mergedCovariateRaster <- rast(covariateRasterList)
-    }
-
-    return(mergedCovariateRaster)
+  # Determine the file path and data type column names (training vs predicting)
+  fileCol <- if ("trainingCovariateRasterFile" %in% names(trainingCovariateDataframe)) {
+    "trainingCovariateRasterFile"
+  } else {
+    "predictingCovariateRasterFile"
   }
+  typeCol <- if ("trainingCovariateType" %in% names(trainingCovariateDataframe)) {
+    "trainingCovariateType"
+  } else {
+    "predictingCovariateType"
+  }
+
+  trainingCovariateDataframe <- trainingCovariateDataframe %>%
+    filter(!is.na(.data[[fileCol]]))
+
+  if (nrow(trainingCovariateDataframe) == 0) {
+    return(NULL)
+  }
+
+  # Read one row's raster, apply type conversion, and return a file-backed SpatRaster.
+  # as.factor()/as.numeric() can produce in-memory rasters; writing to a temp file
+  # ensures the raster remains valid after any gc() calls later in the session.
+  readCovariateRow <- function(filePath, dataType) {
+    covariateRaster <- rast(filePath)
+    covariateRaster <- assignGenericCRS(covariateRaster)
+    dataTypeStr <- as.character(dataType)
+    if (dataTypeStr == "Categorical") {
+      covariateRaster <- as.factor(covariateRaster)
+    } else if (dataTypeStr == "Continuous") {
+      covariateRaster <- as.numeric(covariateRaster)
+    } else {
+      stop("Data type not recognized")
+    }
+    tmpFile <- tempfile(fileext = ".tif")
+    terra::writeRaster(covariateRaster, tmpFile, overwrite = TRUE)
+    terra::rast(tmpFile)
+  }
+
+  # Assign a group key: NA or absent Timesteps → "global"; numeric → character.
+  hasTimestepsCol <- "Timesteps" %in% names(trainingCovariateDataframe)
+  trainingCovariateDataframe$groupKey <- if (hasTimestepsCol) {
+    ifelse(
+      is.na(trainingCovariateDataframe$Timesteps),
+      "global",
+      as.character(trainingCovariateDataframe$Timesteps)
+    )
+  } else {
+    "global"
+  }
+
+  groupKeys <- unique(trainingCovariateDataframe$groupKey)
+  covariateList <- vector("list", length(groupKeys))
+  names(covariateList) <- groupKeys
+
+  for (k in groupKeys) {
+    groupRows <- trainingCovariateDataframe[
+      trainingCovariateDataframe$groupKey == k, , drop = FALSE
+    ]
+    groupRasters <- c()
+    for (row in seq_len(nrow(groupRows))) {
+      r <- readCovariateRow(groupRows[[fileCol]][row], groupRows[[typeCol]][row])
+      groupRasters <- c(groupRasters, r)
+    }
+    covariateList[[k]] <- rast(groupRasters)
+  }
+
+  return(covariateList)
 }
 
 #' Add Covariates to Raster List ----
 #'
 #' @description
-#' Adds covariate rasters to each raster in a list.
+#' Adds covariate rasters to each raster in a list. `covariateList` is a named
+#' list returned by `processCovariates()`, keyed by timestep (as character) or
+#' "global". For each raster in `rasterList`, its timestep key is looked up in
+#' `covariateList`; if no match exists the "global" entry is used as a fallback.
+#' A warning is logged if neither a timestep-specific nor a global covariate is
+#' found for a particular timestep.
 #'
-#' @param rasterList List of SpatRasters.
-#' @param covariateRaster SpatRaster of covariates to append.
+#' outDir should be the SyncroSim transferDir rather than R's tempdir() so that
+#' the combined files survive for the full transformer run. On Windows, doParallel
+#' PSOCK workers can scan and remove orphaned Rtmp* directories from tempdir(),
+#' which would delete these files and trigger [readValues] errors.
+#'
+#' @param rasterList Named list of SpatRasters (names are timestep strings).
+#' @param covariateList Named list of SpatRasters from processCovariates(), or NULL.
+#' @param outDir Directory for writing combined file-backed rasters.
 #'
 #' @return Updated list of SpatRasters.
 #'
 #' @noRd
-addCovariates <- function(rasterList, covariateRaster, outDir = NULL) {
-  if (is.null(covariateRaster)) return(rasterList)
+addCovariates <- function(rasterList, covariateList, outDir = NULL) {
+  if (is.null(covariateList)) return(rasterList)
 
-  # Merge covariateFiles with each raster in trainingRasterList.
-  # Write each combined raster to a file to ensure it is file-backed.
-  # outDir should be the SyncroSim transferDir rather than R's tempdir() so
-  # that the files survive for the lifetime of the transformer run.  On
-  # Windows, doParallel PSOCK worker processes can scan and remove orphaned
-  # Rtmp* directories from tempdir(), which would delete these files and
-  # trigger [readValues] errors when they are read later in the session.
   for (i in seq_along(rasterList)) {
-    combined <- c(rasterList[[i]], covariateRaster)
+    timestepKey <- names(rasterList)[i]
+
+    # Prefer timestep-specific covariates; fall back to global
+    covRaster <- if (!is.null(timestepKey) && !is.null(covariateList[[timestepKey]])) {
+      covariateList[[timestepKey]]
+    } else if (!is.null(covariateList[["global"]])) {
+      covariateList[["global"]]
+    } else {
+      NULL
+    }
+
+    if (is.null(covRaster)) {
+      # Report both the key that was looked up and the keys that are available,
+      # so a genuine timestep mismatch is distinguishable from a rasterList that
+      # arrived without timestep names.
+      timestepLabel <- if (is.null(timestepKey) || is.na(timestepKey) || !nzchar(timestepKey)) {
+        paste0("<unnamed raster ", i, ">")
+      } else {
+        timestepKey
+      }
+      updateRunLog(
+        paste0(
+          "No covariates found for timestep ", timestepLabel,
+          "; skipping covariate addition for this timestep. Available covariate ",
+          "timesteps: ", paste(names(covariateList), collapse = ", "), "."
+        ),
+        type = "warning"
+      )
+      next
+    }
+
+    combined <- c(rasterList[[i]], covRaster)
     outFile <- if (!is.null(outDir)) {
       file.path(outDir, paste0("covCombined_", i, ".tif"))
     } else {
@@ -399,18 +528,20 @@ normalizeBand <- function(band) {
 #'
 #' @noRd
 normalizeRaster <- function(rasterList) {
-  # make an empty list for normalized rasters
-  normalizedRasterList <- c()
+  # Preallocate and carry over the timestep names of rasterList; downstream
+  # functions such as addCovariates() match rasters to per-timestep covariates
+  # by name, so dropping the names silently discards covariate data.
+  normalizedRasterList <- vector("list", length(rasterList))
+  names(normalizedRasterList) <- names(rasterList)
 
-  for (raster in rasterList) {
+  for (i in seq_along(rasterList)) {
+    raster <- rasterList[[i]]
+
     # normalize bands for each raster in rasterList
-    normalizedRaster <- lapply(1:nlyr(raster), function(i) {
-      normalizeBand(raster[[i]])
+    normalizedRasterList[[i]] <- lapply(1:nlyr(raster), function(b) {
+      normalizeBand(raster[[b]])
     }) %>%
       rast()
-
-    # append to normalizedRasterList
-    normalizedRasterList <- c(normalizedRasterList, normalizedRaster)
   }
 
   return(normalizedRasterList)
@@ -462,14 +593,11 @@ checkNA <- function(rasterList, verbose = TRUE) {
 
 
 validateAndAlignRasters <- function(trainingRasterList, groundTruthRasterList) {
-  #' Validate training rasters consistency and align ground truth rasters
+  #' Align ground truth rasters with their corresponding training rasters
   #'
-  #' @param trainingRasterList List of training rasters
+  #' @param trainingRasterList List of training rasters (may have different extents)
   #' @param groundTruthRasterList List of ground truth rasters
-  #' @return List with aligned ground truth rasters
-  #' @description This function:
-  #'   1. Validates that all training rasters have matching spatial properties
-  #'   2. Resamples ground truth rasters to match training rasters if needed
+  #' @return List with ground truth rasters resampled to match their training raster
 
   if (length(trainingRasterList) == 0 || length(groundTruthRasterList) == 0) {
     stop(
@@ -526,83 +654,7 @@ validateAndAlignRasters <- function(trainingRasterList, groundTruthRasterList) {
     ))
   }
 
-  # Step 1: Validate training rasters consistency
-  cat("Validating training raster consistency...\n")
-
-  # Get properties of the first training raster as reference
-  reference_props <- getRasterProperties(trainingRasterList[[1]])
-
-  # Check all training rasters against the reference
-  for (i in seq_along(trainingRasterList)) {
-    current_props <- getRasterProperties(trainingRasterList[[i]])
-    comparison <- compareRasterProperties(reference_props, current_props)
-
-    if (!comparison$overall) {
-      error_msg <- paste0(
-        "Training raster ",
-        i,
-        " does not match reference raster properties:\n"
-      )
-
-      if (!comparison$extent) {
-        error_msg <- paste0(
-          error_msg,
-          "  - Extent mismatch: ",
-          "Reference: ",
-          paste(as.vector(reference_props$extent), collapse = ", "),
-          " vs Current: ",
-          paste(as.vector(current_props$extent), collapse = ", "),
-          "\n"
-        )
-      }
-
-      if (!comparison$resolution) {
-        error_msg <- paste0(
-          error_msg,
-          "  - Resolution mismatch: ",
-          "Reference: ",
-          paste(reference_props$resolution, collapse = ", "),
-          " vs Current: ",
-          paste(current_props$resolution, collapse = ", "),
-          "\n"
-        )
-      }
-
-      if (!comparison$crs) {
-        error_msg <- paste0(
-          error_msg,
-          "  - CRS mismatch: ",
-          "Reference: ",
-          as.character(reference_props$crs),
-          " vs Current: ",
-          as.character(current_props$crs),
-          "\n"
-        )
-      }
-
-      if (!comparison$dimensions) {
-        error_msg <- paste0(
-          error_msg,
-          "  - Dimension mismatch: ",
-          "Reference: ",
-          reference_props$nrows,
-          "x",
-          reference_props$ncols,
-          " vs Current: ",
-          current_props$nrows,
-          "x",
-          current_props$ncols,
-          "\n"
-        )
-      }
-
-      stop(error_msg)
-    }
-  }
-
-  cat("✓ All training rasters have consistent spatial properties\n")
-
-  # Step 2: Align ground truth rasters with training rasters
+  # Align ground truth rasters with training rasters
   cat("Checking and aligning ground truth rasters...\n")
 
   aligned_groundTruthRasterList <- vector("list", length(groundTruthRasterList))
@@ -749,10 +801,15 @@ overrideBandNames <- function(rasterList, bandLabelFile) {
     type = "info"
   )
 
-  renamedRasterList <- c()
-  for (raster in rasterList) {
+  # Preallocate and carry over the timestep names of rasterList (see
+  # normalizeRaster() for why the names matter downstream)
+  renamedRasterList <- vector("list", length(rasterList))
+  names(renamedRasterList) <- names(rasterList)
+
+  for (i in seq_along(rasterList)) {
+    raster <- rasterList[[i]]
     names(raster) <- newNames
-    renamedRasterList <- c(renamedRasterList, raster)
+    renamedRasterList[[i]] <- raster
   }
 
   return(renamedRasterList)

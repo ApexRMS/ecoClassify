@@ -121,6 +121,15 @@ if (nrow(targetClassSheet) > 0) {
 trainingRasterList <- extractRasters(trainingRasterDataframe, column = 2)
 groundTruthRasterList <- extractRasters(trainingRasterDataframe, column = 3)
 
+# extractRasters() skips rows with no raster file, so re-align timestepList with
+# the rasters that were actually loaded. Outputs and log messages below are
+# labelled positionally (timestepList[t] for trainingRasterList[[t]]).
+timestepList <- alignTimestepList(
+  timestepList,
+  trainingRasterList,
+  context = "training rasters"
+)
+
 # Override band names if selected
 if (isTRUE(overrideBandnames)) {
   if (!is.null(bandLabelFile)) {
@@ -217,7 +226,7 @@ groundTruthRasterList <- reclassifyGroundTruth(
 )
 
 # Extract covariate rasters and convert to correct data type
-trainingCovariateRaster <- processCovariates(
+trainingCovariateList <- processCovariates(
   trainingCovariateDataframe,
   modelType
 )
@@ -246,7 +255,7 @@ if (length(trainingRasterList) == 0) {
 # Add covariate data to training rasters.
 # Pass transferDir so combined files are written there rather than R's
 # tempdir(), which doParallel PSOCK workers can clean up on Windows.
-trainingRasterList <- addCovariates(trainingRasterList, trainingCovariateRaster, transferDir)
+trainingRasterList <- addCovariates(trainingRasterList, trainingCovariateList, transferDir)
 
 # Check for NA values in training rasters
 # NOTE: Masking is not applied, but a message is returned if there are an uneven
@@ -471,7 +480,7 @@ for (t in seq_along(trainingRasterList)) {
 # earlier — including inside getRandomForestModel — can invalidate terra's
 # internal raster state when covariate rasters are present, causing
 # [readValues] errors.
-rm(allTrainData, model, variableImportance, trainingRasterList, trainingCovariateRaster)
+rm(allTrainData, model, variableImportance, trainingRasterList, trainingCovariateList)
 gc()
 
 progressBar(type = "message", message = "Calculating summary statistics")

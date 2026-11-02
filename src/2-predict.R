@@ -212,6 +212,15 @@ if (!is.null(tileJobId) && !is.null(tileRasterMap)) {
 
 predictRasterList <- extractRasters(predictingRasterDataframe, column = 2)
 
+# extractRasters() skips rows with no raster file, so re-align timestepList with
+# the rasters that were actually loaded. Outputs below are labelled positionally
+# (timestepList[t] for predictRasterList[[t]]).
+timestepList <- alignTimestepList(
+  timestepList,
+  predictRasterList,
+  context = "predicting rasters"
+)
+
 # Override band names if selected
 if (isTRUE(overrideBandnames)) {
   if (!is.null(bandLabelFile)) {
@@ -279,19 +288,23 @@ if (!is.null(tileJobId) && buffer_px > 0L && !is.null(tileExtent)) {
 }
 
 # Extract covariate rasters and convert to correct data type
-predictingCovariateRaster <- processCovariates(
+predictingCovariateList <- processCovariates(
   predictingCovariateDataframe,
   modelType
 )
 
-# Crop covariate raster to tile extent so it aligns with the pre-cropped predicting rasters
-if (!is.null(tileJobId) && !is.null(tileExtent) && !is.null(predictingCovariateRaster)) {
-  predictingCovariateRaster <- terra::crop(predictingCovariateRaster, tileExtent)
+# Crop all per-timestep covariates to the tile extent so they align with
+# the pre-cropped predicting rasters.
+if (!is.null(tileJobId) && !is.null(tileExtent) && !is.null(predictingCovariateList)) {
+  predictingCovariateList <- lapply(
+    predictingCovariateList,
+    function(r) terra::crop(r, tileExtent)
+  )
 }
 
 # Add covariate data to predicting rasters.
 # Pass transferDir so combined files are written there rather than R's tempdir().
-predictRasterList <- addCovariates(predictRasterList, predictingCovariateRaster, transferDir)
+predictRasterList <- addCovariates(predictRasterList, predictingCovariateList, transferDir)
 
 # Check and mask NA values in predicting rasters
 checkNA(predictRasterList)
