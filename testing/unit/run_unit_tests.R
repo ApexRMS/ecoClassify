@@ -32,6 +32,7 @@ source("src/functions/0.1-pre-processing.r")
 source("src/functions/0.2-training-and-prediction.r")
 source("src/functions/0.3-contextualization.r")
 source("src/functions/0.4-maxent.r")
+source("src/functions/0.4-CNN.r")
 source("src/functions/0.5-histogram.r")
 source("src/functions/0.6-post-processing.r")
 
@@ -496,6 +497,75 @@ test_results$maxentModel <- test_that("MaxEnt uses every predictor", {
   expect_gt(probs[2], probs[1])        # band_1 has an effect
   expect_gt(probs[4], probs[3])        # class 41 above class 11
   expect_true(is.na(probs[5]))         # unseen category
+})
+
+test_results$cnnScaling <- test_that("CNN inputs are standardized", {
+  X <- cbind(elevation = c(100, 200, 300, 400), constant = 5)
+  scaling <- computeCnnScaling(X)
+  expect_equal(unname(scaling$center), c(250, 5))
+  expect_equal(unname(scaling$scale), c(sd(c(100, 200, 300, 400)), 1))
+
+  model <- list(num_center = scaling$center, num_scale = scaling$scale)
+  standardized <- standardizeCnnInputs(X, model)
+  expect_equal(mean(standardized[, "elevation"]), 0)
+  expect_equal(sd(standardized[, "elevation"]), 1)
+  expect_equal(unname(standardized[, "constant"]), rep(0, 4))
+
+  # Columns are matched by name, not position
+  reordered <- standardizeCnnInputs(X[, c("constant", "elevation")], model)
+  expect_equal(reordered[, "elevation"], standardized[, "elevation"])
+
+  # Models trained before standardization predict as before
+  expect_identical(standardizeCnnInputs(X, list()), X)
+})
+
+test_results$cnnModel <- test_that("CNN saves and applies its scaling", {
+  skip_if_not(
+    requireNamespace("torch", quietly = TRUE) && torch::torch_is_installed(),
+    "torch not available"
+  )
+  suppressPackageStartupMessages(library(torch))
+  set.seed(4)
+  torch::torch_manual_seed(4)
+  n <- 1000
+  trainData <- data.frame(elevation = runif(n, 200, 3000), noise = runif(n),
+                          lc = factor(sample(c("11", "41"), n, TRUE)))
+  trainData$presence <- rbinom(n, 1, plogis(-4 + 0.003 * trainData$elevation))
+  model <- getCNNModel(trainData, nCores = 1, isTuningOn = FALSE)
+  expect_equal(model$num_center, colMeans(trainData[, c("elevation", "noise")]))
+
+  # Round trip through the files Train writes and Predict reads
+  dir <- tempfile()
+  dir.create(dir)
+  on.exit(unlink(dir, recursive = TRUE), add = TRUE)
+  torch::torch_save(model$model$state_dict(), file.path(dir, "w.pt"))
+  saveRDS(model[names(model) != "model"], file.path(dir, "meta.rds"))
+  loaded <- loadCNNModel(file.path(dir, "w.pt"), file.path(dir, "meta.rds"))
+  expect_equal(loaded$num_scale, model$num_scale)
+
+  newData <- trainData[1:50, c("elevation", "noise", "lc")]
+  tableProbs <- predictCNN(model, newData, isRaster = FALSE)
+  expect_equal(predictCNN(loaded, newData, isRaster = FALSE), tableProbs,
+               tolerance = 1e-6)
+  expect_equal(unname(predictCnnDataframe(loaded, newData, "prob")[, 2]),
+               unname(tableProbs), tolerance = 1e-6)
+
+  r <- terra::rast(nrows = 5, ncols = 10, nlyrs = 2,
+                   vals = c(newData$elevation, newData$noise))
+  names(r) <- c("elevation", "noise")
+  lcRaster <- terra::rast(r[[1]], vals = as.integer(as.character(newData$lc)))
+  lcRaster <- terra::as.factor(lcRaster)
+  names(lcRaster) <- "lc"
+  rasterProbs <- predictCNN(loaded, c(r, lcRaster), isRaster = TRUE)
+  expect_equal(as.vector(terra::values(rasterProbs)), unname(tableProbs),
+               tolerance = 1e-5)
+
+  # Learns the elevation effect
+  extremes <- predictCNN(
+    loaded, data.frame(elevation = c(300, 2900), noise = 0.5, lc = "11"),
+    isRaster = FALSE
+  )
+  expect_gt(extremes[2] - extremes[1], 0.7)
 })
 
 # Test 4: Validation Logic

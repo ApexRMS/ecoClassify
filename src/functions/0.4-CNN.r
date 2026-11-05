@@ -3,6 +3,49 @@
 ## ApexRMS, November 2024
 ## -------------------------------
 
+#' Compute CNN Input Standardization ----
+#'
+#' @description
+#' Mean and standard deviation of each numeric predictor in the training
+#' data. The CNN sees `(x - center) / scale`, so predictors in large units
+#' (reflectance, elevation) do not dominate training, and first-layer weights
+#' (used for variable importance) are comparable across predictors.
+#' Constant predictors get a scale of 1.
+#'
+#' @param X_num Numeric matrix of training predictors (columns named).
+#'
+#' @return A list with named numeric vectors `center` and `scale`.
+#'
+#' @noRd
+computeCnnScaling <- function(X_num) {
+  center <- colMeans(X_num)
+  scale <- apply(X_num, 2, stats::sd)
+  scale[!is.finite(scale) | scale == 0] <- 1
+  list(center = center, scale = scale)
+}
+
+#' Standardize CNN Numeric Inputs ----
+#'
+#' @description
+#' Applies the training-time standardization saved on the model
+#' (`num_center`, `num_scale`). Models trained before standardization was
+#' added have neither and are returned unchanged, so they predict as before.
+#'
+#' @param X_num Numeric matrix whose columns are `model$num_vars`.
+#' @param model A CNN model list.
+#'
+#' @return The standardized matrix.
+#'
+#' @noRd
+standardizeCnnInputs <- function(X_num, model) {
+  if (is.null(model$num_center) || ncol(X_num) == 0) {
+    return(X_num)
+  }
+  vars <- colnames(X_num)
+  X_num <- sweep(X_num, 2, model$num_center[vars], "-")
+  sweep(X_num, 2, model$num_scale[vars], "/")
+}
+
 #' Train a Convolutional Neural Network (CNN) ----
 #'
 #' @description
@@ -37,6 +80,14 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   storage.mode(X_num) <- "double"
   if (anyNA(X_num)) stop("NA values detected in numeric predictors. Ensure complete cases before training.")
   if (nrow(X_num) < 2) stop("Numeric input matrix has fewer than 2 samples after filtering.")
+
+  # Standardize with training statistics (saved with the model and applied
+  # identically at every prediction step)
+  numScaling <- computeCnnScaling(X_num)
+  X_num <- standardizeCnnInputs(
+    X_num,
+    list(num_center = numScaling$center, num_scale = numScaling$scale)
+  )
 
   # Optional warning for zero-variance predictors
   zero_var <- apply(X_num, 2, function(x) var(x, na.rm = TRUE) == 0)
@@ -213,7 +264,8 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   vimp <- numeric(length(num_vars) + length(cat_vars))
   names(vimp) <- c(num_vars, cat_vars)
 
-  # For numeric vars: use sum of absolute weights from fc1
+  # For numeric vars: use sum of absolute weights from fc1. Inputs are
+  # standardized, so the weights are on a comparable scale across predictors.
   if (length(num_vars)) {
     weights <- net$fc1$weight$data()[, 1:length(num_vars)]$abs()$sum(dim = 1)
     vimp[num_vars] <- as.numeric(weights)
@@ -236,7 +288,9 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
     num_vars = num_vars,
     cat_level_lengths = cat_level_lengths,
     cat_levels = cat_levels,
-    embedding_dims = embedding_dims
+    embedding_dims = embedding_dims,
+    num_center = numScaling$center,
+    num_scale = numScaling$scale
   )
 }
 
@@ -272,6 +326,7 @@ predictCNN <- function(model, newdata, isRaster = TRUE, filename = "", memfrac =
 
     X_num <- as.matrix(df[, num_vars, drop = FALSE])
     storage.mode(X_num) <- "double"
+    X_num <- standardizeCnnInputs(X_num, model)
     if (nrow(X_num) < 2) {
       stop("Too few rows in numeric predictor matrix (n < 2)")
     }
@@ -342,6 +397,7 @@ predictCNN <- function(model, newdata, isRaster = TRUE, filename = "", memfrac =
     # Prepare numeric data
     X_num <- as.matrix(data[, num_vars, drop = FALSE])
     storage.mode(X_num) <- "double"
+    X_num <- standardizeCnnInputs(X_num, model)
 
     # Handle categorical variables
     if (length(cat_vars) == 0) {
@@ -547,6 +603,8 @@ loadCNNModel <- function(weights_path, metadata_path) {
     cat_level_lengths = metadata$cat_level_lengths,
     cat_levels = metadata$cat_levels,
     embedding_dims = metadata$embedding_dims,
+    num_center = metadata$num_center,
+    num_scale = metadata$num_scale,
     preprocessing = metadata$preprocessing
   )
 
@@ -591,6 +649,8 @@ predictCnnDataframe <- function(model, newdata, return = c("class", "prob")) {
     warning("NA values found in numeric predictors:\n", paste(names(na_summary[na_summary > 0]), collapse = ", "))
     stop("NA values in numeric predictors not allowed.")
   }
+  storage.mode(X_num) <- "double"
+  X_num <- standardizeCnnInputs(X_num, model)
   input_num <- torch_tensor(X_num, dtype = torch_float())
 
   if (length(cat_vars) == 0) {

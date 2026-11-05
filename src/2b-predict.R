@@ -193,6 +193,17 @@ if (modelType == "CNN") {
 }
 checkModelType(model, modelType)
 
+if (modelType == "CNN" && is.null(model$num_center)) {
+  updateRunLog(
+    paste0(
+      "This CNN model was trained with an earlier ecoClassify version that ",
+      "did not standardize its inputs. It will predict as before; retrain ",
+      "it for better-fitting models and comparable variable importance."
+    ),
+    type = "warning"
+  )
+}
+
 if (!isTRUE(setManualThreshold)) {
   threshold <- modelObjectDataframe$Threshold
 } else {
