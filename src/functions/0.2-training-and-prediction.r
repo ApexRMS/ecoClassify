@@ -141,6 +141,37 @@ skipBadTimesteps <- function(
 }
 
 
+#' Extract Raster Values at Cells ----
+#'
+#' @description
+#' `extractDfAtCells()` returns a data frame of every layer's values at the
+#' given cell numbers (without terra's "ID" column); `extractValsAtCells()`
+#' returns the first layer's values as a vector.
+#'
+#' @param r A SpatRaster.
+#' @param cells Integer cell numbers.
+#'
+#' @noRd
+extractDfAtCells <- function(r, cells) {
+  xy <- terra::xyFromCell(r, cells)
+  df <- terra::extract(r, xy)
+  if (!is.null(df) && "ID" %in% names(df)) {
+    df <- df[, setdiff(names(df), "ID"), drop = FALSE]
+  }
+  df
+}
+
+#' @rdname extractDfAtCells
+#' @noRd
+extractValsAtCells <- function(r, cells) {
+  df <- extractDfAtCells(r, cells)
+  if (is.null(df) || ncol(df) == 0 || nrow(df) == 0) {
+    return(numeric(0))
+  }
+  as.vector(df[[1]])
+}
+
+
 #' Split raster data into spatially stratified training and testing sets ----
 #'
 #' @description
@@ -198,31 +229,6 @@ splitTrainTest <- function(
   }
   if (length(trainingRasterList) != length(groundTruthRasterList)) {
     stop("trainingRasterList and groundTruthRasterList must have same length.")
-  }
-
-  # ---- small helpers ----
-
-  # Drop 'ID' column if present (terra::extract quirks)
-  stripId <- function(df) {
-    if (!is.null(df) && "ID" %in% names(df)) {
-      df <- df[, setdiff(names(df), "ID"), drop = FALSE]
-    }
-    df
-  }
-
-  # Generic "extract at cell ids" for a stack
-  extractDfAtCells <- function(r, cells) {
-    xy <- terra::xyFromCell(r, cells)
-    stripId(terra::extract(r, xy))
-  }
-
-  # Convenience: first-layer values as a vector
-  extractValsAtCells <- function(r, cells) {
-    df <- extractDfAtCells(r, cells)
-    if (is.null(df) || ncol(df) == 0 || nrow(df) == 0) {
-      return(numeric(0))
-    }
-    as.vector(df[[1]])
   }
 
   # ---- estimate class balance from a sample of GT ----
@@ -1009,26 +1015,6 @@ getPredictionRasters <- function(
 
   # Return paths instead of rasters
   return(list(presencePath = presencePath, probabilityPath = probabilityPath))
-}
-
-#' Reclassify raster to binary presence/absence ----
-#'
-#' @description
-#' 'reclassifyRaster' converts a continuous raster of probabilities into
-#' a binary presence/absence raster based on a given threshold.
-#'
-#' @param raster Raster to reclassify (spatRaster).
-#' @param threshold Threshold above which presence is assigned (numeric).
-#' @return Binary raster (spatRaster).
-#'
-#' @details
-#' Used to convert probability outputs from classifiers into discrete predictions.
-#' @noRd
-reclassifyRaster <- function(raster, threshold) {
-  raster[raster >= threshold] <- 1
-  raster[raster < threshold] <- 0
-
-  return(raster)
 }
 
 #' Generate and document prediction raster outputs ----

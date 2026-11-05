@@ -46,6 +46,67 @@ standardizeCnnInputs <- function(X_num, model) {
   sweep(X_num, 2, model$num_scale[vars], "/")
 }
 
+#' Build the ecoClassify CNN Network ----
+#'
+#' @description
+#' The single definition of the network used for training (`getCNNModel()`)
+#' and for rebuilding a saved model (`loadCNNModel()`): an embedding per
+#' categorical predictor (sized levels + 2 for the NA/unknown buckets), a
+#' 16-unit ReLU layer and a 2-class output. Defined inside a function so
+#' torch is only needed when a CNN is used. Layer names must not change, or
+#' saved weights will no longer load.
+#'
+#' @param nNum Number of numeric predictors.
+#' @param catLevelLengths Integer vector: number of levels per categorical
+#'   predictor (may be empty).
+#' @param embeddingDims Integer vector: embedding size per categorical
+#'   predictor.
+#'
+#' @return An initialized torch module.
+#'
+#' @noRd
+buildCnnNetwork <- function(nNum, catLevelLengths, embeddingDims) {
+  CNNWithEmbeddings <- nn_module(
+    "CNNWithEmbeddings",
+    initialize = function(n_num, cat_level_lengths, embedding_dims) {
+      self$has_cat <- length(cat_level_lengths) > 0
+      if (self$has_cat) {
+        self$embeddings <- nn_module_list(
+          mapply(
+            function(l, d) {
+              nn_embedding(num_embeddings = l + 2, embedding_dim = d)
+            },
+            cat_level_lengths,
+            embedding_dims,
+            SIMPLIFY = FALSE
+          )
+        )
+        embed_dim <- sum(embedding_dims)
+      } else {
+        embed_dim <- 0
+        self$embeddings <- NULL
+      }
+      self$fc1 <- nn_linear(embed_dim + n_num, 16)
+      self$fc2 <- nn_linear(16, 2)
+    },
+    forward = function(x_num, x_cat) {
+      if (self$has_cat && length(x_cat)) {
+        embeds <- lapply(
+          seq_along(x_cat),
+          function(i) self$embeddings[[i]](x_cat[[i]])
+        )
+        x_cat_emb <- torch_cat(embeds, dim = 2)
+        x <- torch_cat(list(x_num, x_cat_emb), dim = 2)
+      } else {
+        x <- x_num
+      }
+      x <- nnf_relu(self$fc1(x))
+      self$fc2(x)
+    }
+  )
+  CNNWithEmbeddings(nNum, catLevelLengths, embeddingDims)
+}
+
 #' Train a Convolutional Neural Network (CNN) ----
 #'
 #' @description
@@ -103,8 +164,8 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
     }
   }
   # Map NA to the "unknown" bucket at length(levels) + 1, matching the index
-  # used for unseen/NA levels at prediction time (see predictCNN and
-  # predictCnnDataframe). Embedding tables are sized length(levels) + 2.
+  # used for unseen/NA levels at prediction time (see
+  # cnnPresenceProbability). Embedding tables are sized length(levels) + 2.
   cat_indices <- if (length(cat_vars)) {
     lapply(predictors[cat_vars], function(x) {
       v <- as.integer(x)
@@ -204,39 +265,11 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
     collate_fn = collate_cnn
   )
 
-  net <- nn_module(
-    "CNNWithEmbeddings",
-    initialize = function(n_num, cat_level_lengths, embedding_dims) {
-      self$has_cat <- length(cat_level_lengths) > 0
-      if (self$has_cat) {
-        self$embeddings <- nn_module_list(
-          mapply(
-            function(l, d) nn_embedding(num_embeddings = l + 2, embedding_dim = d),
-            cat_level_lengths,
-            embedding_dims,
-            SIMPLIFY = FALSE
-          )
-        )
-        embed_dim <- sum(unlist(embedding_dims))
-      } else {
-        embed_dim <- 0
-        self$embeddings <- NULL
-      }
-      self$fc1 <- nn_linear(embed_dim + n_num, 16)
-      self$fc2 <- nn_linear(16, 2)
-    },
-    forward = function(x_num, x_cat) {
-      if (self$has_cat && length(x_cat)) {
-        embeds <- lapply(seq_along(x_cat), function(i) self$embeddings[[i]](x_cat[[i]]))
-        x_cat_emb <- torch_cat(embeds, dim = 2)
-        x <- torch_cat(list(x_num, x_cat_emb), dim = 2)
-      } else {
-        x <- x_num
-      }
-      x <- nnf_relu(self$fc1(x))
-      self$fc2(x)
-    }
-  )(ncol(X_num), unlist(cat_level_lengths), unlist(embedding_dims))
+  net <- buildCnnNetwork(
+    nNum = ncol(X_num),
+    catLevelLengths = unlist(cat_level_lengths),
+    embeddingDims = unlist(embedding_dims)
+  )
 
   device <- torch_device("cpu")
   net <- net$to(device = device)
@@ -294,151 +327,119 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
   )
 }
 
-#' Predict Using a CNN Model ----
-#' Predict CNN Probabilities or Classes from Raster or Tabular Data ----
+#' Predict CNN Presence Probability for a Data Frame ----
 #'
 #' @description
-#' Predicts presence probabilities or class labels using a trained CNN model.
+#' The one place CNN inputs are prepared: numeric predictors are standardized
+#' with the training statistics (`standardizeCnnInputs()`), and categorical
+#' predictors are coded by their training levels, with NA and unseen levels
+#' mapped to the "unknown" index `length(levels) + 1` (embedding tables are
+#' sized `length(levels) + 2`).
 #'
-#' @param model A torchCNN object.
-#' @param newdata A SpatRaster or dataframe of predictors.
-#' @param isRaster Logical; TRUE if input is raster.
+#' @param model A CNN model list (from `getCNNModel()` or `loadCNNModel()`).
+#' @param data Data frame of predictors.
+#' @param device torch device to run on.
+#' @param warnContext If not NULL, log a warning naming this context when
+#'   categorical values were not seen in training.
 #'
-#' @return A SpatRaster (if raster input) or a vector of predictions.
+#' @return Numeric vector of P(presence).
 #'
 #' @noRd
-predictCNN <- function(model, newdata, isRaster = TRUE, filename = "", memfrac = 0.5, ...) {
-  # Handle tabular data (non-raster) - original implementation
-  if (!isRaster) {
-    df <- as.data.frame(newdata, stringsAsFactors = TRUE)
-    drop <- intersect(c("presence", "kfold"), names(df))
-    if (length(drop)) df <- df[, setdiff(names(df), drop), drop = FALSE]
-
-    num_vars <- model$num_vars
-    cat_vars <- model$cat_vars
-    cat_levels <- model$cat_levels
-
-    # Validate column presence
-    missing_vars <- setdiff(num_vars, names(df))
-    if (length(missing_vars) > 0) {
-      stop(sprintf("Missing numeric predictors in newdata: %s", paste(missing_vars, collapse = ", ")))
-    }
-
-    X_num <- as.matrix(df[, num_vars, drop = FALSE])
-    storage.mode(X_num) <- "double"
-    X_num <- standardizeCnnInputs(X_num, model)
-    if (nrow(X_num) < 2) {
-      stop("Too few rows in numeric predictor matrix (n < 2)")
-    }
-
-    if (length(cat_vars) == 0) {
-      X_cat_tensor <- list()
-    } else {
-      X_cat <- lapply(seq_along(cat_vars), function(i) {
-        var <- cat_vars[i]
-        levels_train <- cat_levels[[i]]
-        x <- df[[var]]
-        # Always re-level to the training order: a factor from terra carries its
-        # own level order, so as.integer() would otherwise use the wrong codes.
-        x <- factor(as.character(x), levels = levels_train)
-
-        unseen <- sum(is.na(x))
-        if (unseen > 0) {
-          updateRunLog(sprintf(
-            "PredictCNN: Variable '%s' contains %d unseen level(s) not present during training. They will be handled as a special 'unknown' category.",
-            var, unseen
-          ), type = "warning")
-        }
-
-        idx <- as.integer(x)
-        idx[is.na(idx)] <- length(levels_train) + 1
-        idx
-      })
-      X_cat_tensor <- lapply(X_cat, function(x) torch_tensor(x, dtype = torch_long()))
-    }
-
-    X_num_tensor <- torch_tensor(X_num, dtype = torch_float())
-
-    dev <- if (cuda_is_available()) torch_device("cuda") else torch_device("cpu")
-    mdl <- model$model$to(device = dev)$eval()
-
-    X_num_tensor <- X_num_tensor$to(device = dev)
-    X_cat_tensor <- lapply(X_cat_tensor, function(x) x$to(device = dev))
-
-    probs_t <- with_no_grad({
-      logits <- mdl(X_num_tensor, X_cat_tensor)
-      nnf_softmax(logits, dim = 2)$to(device = torch_device("cpu"))
-    })
-
-    mat <- as.matrix(probs_t)
-    colnames(mat) <- c("absent", "presence")
-    return(mat[, "presence"])
-  }
-
-  # Store metadata in local variables
+cnnPresenceProbability <- function(model, data, device = torch_device("cpu"),
+                                   warnContext = NULL) {
   num_vars <- model$num_vars
   cat_vars <- model$cat_vars
   cat_levels <- model$cat_levels
 
-  # CRITICAL: Move model to device ONCE, not per chunk
-  # Use CPU for chunked prediction to avoid GPU memory issues
-  dev <- torch_device("cpu")
-  mdl <- model$model$to(device = dev)$eval()
-
-  # Create wrapper function for terra::predict
-  # This function will be called many times (once per chunk)
-  predictFn <- function(m, data, ...) {
-    # Validate column presence
-    missing_vars <- setdiff(num_vars, names(data))
-    if (length(missing_vars) > 0) {
-      stop(sprintf("Missing numeric predictors: %s", paste(missing_vars, collapse = ", ")))
-    }
-
-    # Prepare numeric data
-    X_num <- as.matrix(data[, num_vars, drop = FALSE])
-    storage.mode(X_num) <- "double"
-    X_num <- standardizeCnnInputs(X_num, model)
-
-    # Handle categorical variables
-    if (length(cat_vars) == 0) {
-      X_cat_tensor <- list()
-    } else {
-      X_cat <- lapply(seq_along(cat_vars), function(i) {
-        var <- cat_vars[i]
-        levels_train <- cat_levels[[i]]
-        x <- data[[var]]
-        # Always re-level to the training order: a factor from terra carries its
-        # own level order, so as.integer() would otherwise use the wrong codes.
-        x <- factor(as.character(x), levels = levels_train)
-
-        idx <- as.integer(x)
-        idx[is.na(idx)] <- length(levels_train) + 1
-        idx
-      })
-      X_cat_tensor <- lapply(X_cat, function(x) torch_tensor(x, dtype = torch_long()))
-    }
-
-    X_num_tensor <- torch_tensor(X_num, dtype = torch_float())
-    X_cat_tensor <- lapply(X_cat_tensor, function(x) x$to(device = dev))
-
-    # Make prediction (mdl is from parent scope, already on device)
-    probs_t <- with_no_grad({
-      logits <- mdl(X_num_tensor, X_cat_tensor)
-      nnf_softmax(logits, dim = 2)
-    })
-
-    mat <- as.matrix(probs_t)
-    result <- mat[, 2]  # Extract presence probability (column 2)
-
-    # Clean up tensors to free memory
-    rm(X_num_tensor, X_cat_tensor, probs_t, mat)
-
-    return(result)
+  missing_vars <- setdiff(num_vars, names(data))
+  if (length(missing_vars) > 0) {
+    stop(sprintf(
+      "Missing numeric predictors: %s", paste(missing_vars, collapse = ", ")
+    ))
   }
 
-  # Use terra::predict for automatic memory-efficient chunking
-  # This processes the raster in blocks instead of loading everything at once
-  # filename = "" => in-memory; set a path to write to disk for better memory efficiency
+  X_num <- as.matrix(data[, num_vars, drop = FALSE])
+  storage.mode(X_num) <- "double"
+  X_num <- standardizeCnnInputs(X_num, model)
+
+  X_cat_tensor <- lapply(seq_along(cat_vars), function(i) {
+    var <- cat_vars[i]
+    levels_train <- cat_levels[[i]]
+    # Always re-level to the training order: a factor from terra carries its
+    # own level order, so as.integer() would otherwise use the wrong codes.
+    x <- factor(as.character(data[[var]]), levels = levels_train)
+
+    if (!is.null(warnContext)) {
+      unseen <- sum(is.na(x))
+      if (unseen > 0) {
+        updateRunLog(sprintf(
+          paste0(
+            "%s: Variable '%s' contains %d unseen level(s) not present ",
+            "during training. They will be handled as a special 'unknown' ",
+            "category."
+          ),
+          warnContext, var, unseen
+        ), type = "warning")
+      }
+    }
+
+    idx <- as.integer(x)
+    idx[is.na(idx)] <- length(levels_train) + 1
+    torch_tensor(idx, dtype = torch_long())$to(device = device)
+  })
+
+  X_num_tensor <- torch_tensor(X_num, dtype = torch_float())$to(
+    device = device
+  )
+  mdl <- model$model$to(device = device)$eval()
+
+  probs_t <- with_no_grad({
+    nnf_softmax(mdl(X_num_tensor, X_cat_tensor), dim = 2)$to(
+      device = torch_device("cpu")
+    )
+  })
+
+  # Column 2 is the presence class
+  as.matrix(probs_t)[, 2]
+}
+
+#' Predict CNN Probabilities from Raster or Tabular Data ----
+#'
+#' @description
+#' Predicts presence probabilities using a trained CNN model, from a data
+#' frame (threshold selection and test statistics) or a SpatRaster (maps,
+#' processed block by block with `terra::predict()`).
+#'
+#' @param model A CNN model list.
+#' @param newdata A SpatRaster or data frame of predictors.
+#' @param isRaster Logical; TRUE if input is raster.
+#' @param filename Output file for raster predictions ("" = in memory).
+#' @param memfrac Memory fraction for terra's block size.
+#'
+#' @return A SpatRaster (raster input) or a numeric vector of probabilities.
+#'
+#' @noRd
+predictCNN <- function(model, newdata, isRaster = TRUE, filename = "",
+                       memfrac = 0.5, ...) {
+  if (!isRaster) {
+    df <- as.data.frame(newdata, stringsAsFactors = TRUE)
+    drop <- intersect(c("presence", "kfold"), names(df))
+    if (length(drop)) df <- df[, setdiff(names(df), drop), drop = FALSE]
+    if (nrow(df) < 2) {
+      stop("Too few rows in numeric predictor matrix (n < 2)")
+    }
+
+    dev <- if (cuda_is_available()) torch_device("cuda") else
+      torch_device("cpu")
+    return(cnnPresenceProbability(model, df, dev, warnContext = "PredictCNN"))
+  }
+
+  # Rasters run on the CPU in blocks, to avoid GPU memory issues
+  dev <- torch_device("cpu")
+  predictFn <- function(m, data, ...) {
+    cnnPresenceProbability(model, data, dev)
+  }
+
   predictionRaster <- terra::predict(
     newdata,
     model,
@@ -451,56 +452,6 @@ predictCNN <- function(model, newdata, isRaster = TRUE, filename = "", memfrac =
 
   names(predictionRaster) <- "presence"
   return(predictionRaster)
-}
-
-#' Save CNN Model as RDS ----
-#'
-#' @description
-#' Converts a CNN model to plain R objects and saves it.
-#'
-#' @param model A trained torch model.
-#' @param path File path to save the RDS.
-#'
-#' @noRd
-saveTorchCNNasRDS <- function(model, path) {
-  # 1a) pull out the state dict (a named list of torch_tensors)
-  sd <- model$state_dict()
-  # 1b) move everything to CPU and convert to plain R arrays
-  sd_r <- lapply(sd, function(x) as.array(x$to(device = torch_device("cpu"))))
-  # 1c) write to disk
-  saveRDS(sd_r, path)
-}
-
-#' Load CNN Model from RDS
-#'
-#' @description
-#' Loads a CNN model saved using `saveTorchCNNasRDS`.
-#'
-#' @param path File path to the RDS object.
-#'
-#' @return A CNN model restored with weights.
-#'
-#' @noRd
-loadTorchCNNfromRDS <- function(path, n_feat, hidden_chs = 16, device = "cpu") {
-  # 2a) read the plain‐R list of arrays
-  sd_r <- readRDS(path)
-
-  # 2b) rebuild your module skeleton
-  model <- OneByOneCNN(n_feat = n_feat, hidden_chs = hidden_chs)
-
-  # 2c) turn the arrays back into torch_tensors
-  sd_t <- lapply(sd_r, function(a) torch_tensor(a, dtype = torch_float()))
-  # ensure names line up
-  names(sd_t) <- names(sd_r)
-
-  # 2d) load into the model
-  model$load_state_dict(sd_t)
-
-  # 2e) move to desired device & eval mode
-  dev <- if (device == "cpu") torch_device("cpu") else torch_device(device)
-  model <- model$to(device = dev)$eval()
-
-  return(model)
 }
 
 #' Load a CNN from Saved Files ----
@@ -548,44 +499,11 @@ loadCNNModel <- function(weights_path, metadata_path) {
                  length(cat_len), length(emb_dims)))
   }
 
-  # Define the same architecture used at training
-  CNNWithEmbeddings <- nn_module(
-    "CNNWithEmbeddings",
-    initialize = function(n_num, cat_level_lengths, embedding_dims) {
-      self$has_cat <- length(cat_level_lengths) > 0
-      if (self$has_cat) {
-        self$embeddings <- nn_module_list(
-          mapply(
-            function(l, d) nn_embedding(num_embeddings = l + 2, embedding_dim = d),
-            cat_level_lengths, embedding_dims, SIMPLIFY = FALSE
-          )
-        )
-        embed_dim <- sum(embedding_dims)
-      } else {
-        embed_dim <- 0
-        self$embeddings <- NULL
-      }
-      self$fc1 <- nn_linear(embed_dim + n_num, 16)
-      self$fc2 <- nn_linear(16, 2)
-    },
-    forward = function(x_num, x_cat) {
-      if (self$has_cat && length(x_cat)) {
-        embeds <- lapply(seq_along(x_cat), function(i) self$embeddings[[i]](x_cat[[i]]))
-        x_cat_emb <- torch_cat(embeds, dim = 2)
-        x <- torch_cat(list(x_num, x_cat_emb), dim = 2)
-      } else {
-        x <- x_num
-      }
-      x <- nnf_relu(self$fc1(x))
-      self$fc2(x)
-    }
-  )
-
-  # Build model skeleton with numeric inputs
-  net <- CNNWithEmbeddings(
-    n_num             = length(metadata$num_vars),
-    cat_level_lengths = as.integer(cat_len),
-    embedding_dims    = as.integer(emb_dims)
+  # Rebuild the architecture used at training, then load its weights
+  net <- buildCnnNetwork(
+    nNum = length(metadata$num_vars),
+    catLevelLengths = as.integer(cat_len),
+    embeddingDims = as.integer(emb_dims)
   )
   class(net) <- c("torchCNN", class(net))
 
@@ -609,84 +527,4 @@ loadCNNModel <- function(weights_path, metadata_path) {
   )
 
   return(result)
-}
-
-
-#' Predict CNN from Dataframe ----
-#'
-#' @description
-#' Predicts presence probabilities or class labels using a CNN model on a tabular dataframe.
-#'
-#' @param model Trained CNN model.
-#' @param newdata Dataframe of predictors.
-#' @param return Either "class" or "prob".
-#'
-#' @return A vector of class predictions or probabilities.
-#'
-#' @noRd
-predictCnnDataframe <- function(model, newdata, return = c("class", "prob")) {
-  return <- match.arg(return)
-
-  if (!inherits(model$model, "nn_module")) {
-    stop("model$model must be a torch nn_module object")
-  }
-  if (!is.data.frame(newdata)) {
-    stop("newdata must be a data.frame")
-  }
-
-  num_vars <- model$num_vars
-  cat_vars <- model$cat_vars
-  cat_levels <- model$cat_levels
-
-  missing_vars <- setdiff(num_vars, names(newdata))
-  if (length(missing_vars) > 0) {
-    stop(sprintf("Missing numeric predictors in newdata: %s", paste(missing_vars, collapse = ", ")))
-  }
-
-  X_num <- as.matrix(newdata[, num_vars, drop = FALSE])
-  if (anyNA(X_num)) {
-    na_summary <- colSums(is.na(X_num))
-    warning("NA values found in numeric predictors:\n", paste(names(na_summary[na_summary > 0]), collapse = ", "))
-    stop("NA values in numeric predictors not allowed.")
-  }
-  storage.mode(X_num) <- "double"
-  X_num <- standardizeCnnInputs(X_num, model)
-  input_num <- torch_tensor(X_num, dtype = torch_float())
-
-  if (length(cat_vars) == 0) {
-    input_cat <- list()
-  } else {
-    input_cat <- lapply(seq_along(cat_vars), function(i) {
-      var <- cat_vars[i]
-      levels_train <- cat_levels[[i]]
-      x <- newdata[[var]]
-      x <- factor(as.character(x), levels = levels_train)
-
-      unseen <- sum(is.na(x))
-      if (unseen > 0) {
-        updateRunLog(sprintf(
-          "predictCnnDataframe: Variable '%s' contains %d unseen level(s) not present during training. They will be handled as a special 'unknown' category.",
-          var, unseen
-        ), type = "warning")
-      }
-
-      idx <- as.integer(x)
-      idx[is.na(idx)] <- length(levels_train) + 1
-      torch_tensor(idx, dtype = torch_long())
-    })
-  }
-
-  net <- model$model
-  net$eval()
-  with_no_grad({
-    output <- net(input_num, input_cat)
-  })
-
-  if (return == "prob") {
-    probs <- output$softmax(dim = 2)
-    return(as_array(probs))
-  } else {
-    classes <- output$argmax(dim = 2)$to(dtype = torch_int())$cpu()
-    return(as_array(classes))
-  }
 }

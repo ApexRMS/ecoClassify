@@ -1121,3 +1121,74 @@ cropRastersToTile <- function(rasterList, cropExtent) {
   names(croppedList) <- names(rasterList)
   croppedList
 }
+
+#' Parse the TargetClassOptions Datasheet ----
+#'
+#' @description
+#' Reads the first row of `ecoClassify_TargetClassOptions` into a list, with
+#' NA (or FALSE) for anything missing. Shared by every transformer.
+#'
+#' @param targetClassSheet The datasheet as a data frame (may have no rows).
+#'
+#' @return A list with `useTargetClass`, `targetClassValue`,
+#'   `backgroundValues`, `ignoreValues` and `targetClassLabel`.
+#'
+#' @noRd
+parseTargetClassOptions <- function(targetClassSheet) {
+  firstValue <- function(column, convert) {
+    value <- targetClassSheet[[column]]
+    if (nrow(targetClassSheet) == 0 || is.null(value) || is.na(value[1])) {
+      return(convert(NA))
+    }
+    convert(value[1])
+  }
+
+  list(
+    useTargetClass = nrow(targetClassSheet) > 0 &&
+      isTRUE(as.logical(targetClassSheet$useTargetClass[1])),
+    targetClassValue = firstValue("targetClassValue", as.integer),
+    backgroundValues = firstValue("backgroundValues", as.character),
+    ignoreValues = firstValue("ignoreValues", as.character),
+    targetClassLabel = firstValue("targetClassLabel", as.character)
+  )
+}
+
+#' Parse the Terminology Datasheet ----
+#'
+#' @description
+#' Reads the band label file and RGB band choices from the first row of
+#' `ecoClassify_Terminology`.
+#'
+#' @param terminologyDataframe The datasheet as a data frame.
+#'
+#' @return A list with `bandLabelFile` (path or NULL) and `rgbBands` (a list
+#'   of `red`, `green`, `blue`, or NULL unless all three are set).
+#'
+#' @noRd
+parseTerminology <- function(terminologyDataframe) {
+  hasRow <- nrow(terminologyDataframe) > 0
+  isSet <- function(column) {
+    hasRow && !is.null(terminologyDataframe[[column]]) &&
+      !is.na(terminologyDataframe[[column]][1])
+  }
+
+  bandLabelFile <- if (isSet("bandNames") &&
+                         nchar(terminologyDataframe$bandNames[1]) > 0) {
+    terminologyDataframe$bandNames[1]
+  } else {
+    NULL
+  }
+
+  rgbBands <- if (isSet("redBand") && isSet("greenBand") &&
+                    isSet("blueBand")) {
+    list(
+      red   = terminologyDataframe$redBand[1],
+      green = terminologyDataframe$greenBand[1],
+      blue  = terminologyDataframe$blueBand[1]
+    )
+  } else {
+    NULL
+  }
+
+  list(bandLabelFile = bandLabelFile, rgbBands = rgbBands)
+}

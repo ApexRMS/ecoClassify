@@ -547,7 +547,7 @@ test_results$cnnModel <- test_that("CNN saves and applies its scaling", {
   tableProbs <- predictCNN(model, newData, isRaster = FALSE)
   expect_equal(predictCNN(loaded, newData, isRaster = FALSE), tableProbs,
                tolerance = 1e-6)
-  expect_equal(unname(predictCnnDataframe(loaded, newData, "prob")[, 2]),
+  expect_equal(unname(cnnPresenceProbability(loaded, newData)),
                unname(tableProbs), tolerance = 1e-6)
 
   r <- terra::rast(nrows = 5, ncols = 10, nlyrs = 2,
@@ -566,6 +566,121 @@ test_results$cnnModel <- test_that("CNN saves and applies its scaling", {
     isRaster = FALSE
   )
   expect_gt(extremes[2] - extremes[1], 0.7)
+})
+
+test_results$datasheetParsing <- test_that("datasheet parsing helpers", {
+  empty <- parseTargetClassOptions(data.frame())
+  expect_false(empty$useTargetClass)
+  expect_true(is.na(empty$targetClassValue) && is.integer(empty$targetClassValue))
+  expect_true(is.na(empty$targetClassLabel) && is.character(empty$targetClassLabel))
+
+  sheet <- data.frame(useTargetClass = TRUE, targetClassValue = 3,
+                      backgroundValues = "1,2", ignoreValues = NA,
+                      targetClassLabel = "Snow")
+  parsed <- parseTargetClassOptions(sheet)
+  expect_true(parsed$useTargetClass)
+  expect_identical(parsed$targetClassValue, 3L)
+  expect_identical(parsed$backgroundValues, "1,2")
+  expect_true(is.na(parsed$ignoreValues))
+  expect_identical(parsed$targetClassLabel, "Snow")
+
+  expect_null(parseTerminology(data.frame())$bandLabelFile)
+  terminology <- parseTerminology(data.frame(
+    bandNames = "bands.csv", redBand = 3, greenBand = 2, blueBand = NA
+  ))
+  expect_identical(terminology$bandLabelFile, "bands.csv")
+  expect_null(terminology$rgbBands)  # all three bands are required
+  terminology <- parseTerminology(data.frame(
+    bandNames = "", redBand = 3, greenBand = 2, blueBand = 1
+  ))
+  expect_null(terminology$bandLabelFile)
+  expect_equal(terminology$rgbBands, list(red = 3, green = 2, blue = 1))
+})
+
+test_results$reclassRules <- test_that("reclassification rules", {
+  wopt <- list(datatype = "INT2S", NAflag = -32768)
+  base <- terra::rast(nrows = 2, ncols = 3, vals = c(1, 1, 1, 0, 0, NA))
+  ruleDir <- tempfile()
+  dir.create(ruleDir)
+  on.exit(unlink(ruleDir, recursive = TRUE), add = TRUE)
+  rulePath <- file.path(ruleDir, "rule.tif")
+  terra::writeRaster(
+    terra::rast(base, vals = c(10, 20, 30, 40, 50, 60)), rulePath
+  )
+
+  rules <- data.frame(
+    ruleRasterFile = c(rulePath, rulePath, "missing.tif", rulePath),
+    ruleMinValue = c(20, 60, 0, NA),
+    ruleMaxValue = c(20, 35, 1, 5),
+    # Reclass values are stored as list positions: 1 = absent, 2 = present
+    ruleReclassValue = c(1, 2, 2, 2)
+  )
+  todiskBefore <- terraOptions(print = FALSE)$todisk
+  warningsSeen <- character(0)
+  result <- withCallingHandlers(
+    applyReclassRules(base, rules, "test raster", wopt),
+    warning = function(w) {
+      warningsSeen <<- c(warningsSeen, conditionMessage(w))
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_true(any(grepl("missing for rule index 3", warningsSeen)))
+  expect_true(any(grepl("contain NA for rule index 4", warningsSeen)))
+  # Rule 1 (categorical 20 -> 0); rule 2 (swapped to [35, 60] -> 1).
+  # NA cells under a rule are set too, as before.
+  expect_equal(as.vector(terra::values(result)), c(1, 0, 1, 1, 1, 1))
+  expect_identical(terraOptions(print = FALSE)$todisk, todiskBefore)
+
+  shifted <- terra::shift(terra::rast(rulePath), dx = terra::xres(base))
+  shiftedPath <- file.path(ruleDir, "shifted.tif")
+  terra::writeRaster(shifted, shiftedPath)
+  expect_warning(
+    applyReclassRules(
+      base, data.frame(ruleRasterFile = shiftedPath, ruleMinValue = 0,
+                       ruleMaxValue = 100, ruleReclassValue = 2),
+      "unfiltered training raster", wopt
+    ),
+    "does not match unfiltered training raster extent"
+  )
+
+  # End to end for one context: output paths, file names and summary rows
+  basePath <- file.path(ruleDir, "unfiltered.tif")
+  probPath <- file.path(ruleDir, "prob.tif")
+  terra::writeRaster(base, basePath)
+  terra::writeRaster(terra::rast(base, vals = seq(0.1, 0.6, 0.1)), probPath)
+  outputDf <- data.frame(
+    Timestep = 4, ClassifiedUnfiltered = basePath,
+    ClassifiedUnfilteredRestricted = NA_character_,
+    ClassifiedFilteredRestricted = NA_character_,
+    ClassifiedProbability = probPath
+  )
+  outputs <- reclassifyOutputs(
+    outputDf, 4, "predicting",
+    columns = list(
+      unfiltered = "ClassifiedUnfiltered",
+      unfilteredRestricted = "ClassifiedUnfilteredRestricted",
+      filteredRestricted = "ClassifiedFilteredRestricted",
+      probability = "ClassifiedProbability"
+    ),
+    rasterLabel = "predicting raster",
+    ruleReclassDataframe = rules[1:2, ], applyFiltering = TRUE,
+    filterValue = 0, fillValue = 8, transferDir = ruleDir,
+    restrictedTmpDir = tempdir(), wopt = wopt,
+    targetClassValue = NA, targetClassLabel = NA
+  )
+  expect_equal(
+    basename(outputs$outputDf$ClassifiedUnfilteredRestricted),
+    "PredictedPresenceRestricted-predicting-t4.tif"
+  )
+  expect_equal(
+    basename(outputs$outputDf$ClassifiedFilteredRestricted),
+    "PredictedPresenceFilteredRestricted-predicting-t4.tif"
+  )
+  expect_equal(
+    vapply(outputs$summaryRows, `[[`, "", "PredictionType"),
+    c("reclassified - predicting", "filtered_reclassified - predicting")
+  )
+  expect_equal(outputs$summaryRows[[1]]$PredictedPixels, 5)
 })
 
 # Test 4: Validation Logic

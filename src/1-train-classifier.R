@@ -32,28 +32,9 @@ transferDir <- e$TransferDirectory
 
 # Load project-level datasheets ------------------------------------------------
 terminologyDataframe <- datasheet(myProject, name = "ecoClassify_Terminology")
-
-bandLabelFile <- if (
-  nrow(terminologyDataframe) > 0 &&
-  !is.null(terminologyDataframe$bandNames) &&
-  !is.na(terminologyDataframe$bandNames[1]) &&
-  nchar(terminologyDataframe$bandNames[1]) > 0
-) terminologyDataframe$bandNames[1] else NULL
-
-rgbBands <- if (
-  nrow(terminologyDataframe) > 0 &&
-  !is.null(terminologyDataframe$redBand) && !is.na(terminologyDataframe$redBand[1]) &&
-  !is.null(terminologyDataframe$greenBand) && !is.na(terminologyDataframe$greenBand[1]) &&
-  !is.null(terminologyDataframe$blueBand) && !is.na(terminologyDataframe$blueBand[1])
-) {
-  list(
-    red   = terminologyDataframe$redBand[1],
-    green = terminologyDataframe$greenBand[1],
-    blue  = terminologyDataframe$blueBand[1]
-  )
-} else {
-  NULL
-}
+terminology <- parseTerminology(terminologyDataframe)
+bandLabelFile <- terminology$bandLabelFile
+rgbBands <- terminology$rgbBands
 
 # Load raster input datasheets -------------------------------------------------
 trainingRasterDataframe <- datasheet(
@@ -101,19 +82,14 @@ nCores <- setCores(mulitprocessingSheet)
 
 # Read TargetClassOptions ------------------------------------------------------
 
-targetClassSheet <- datasheet(myScenario, "ecoClassify_TargetClassOptions")
-useTargetClass   <- FALSE
-targetClassValue <- NA_integer_
-backgroundValues <- NA_character_
-ignoreValues     <- NA_character_
-targetClassLabel <- NA_character_
-if (nrow(targetClassSheet) > 0) {
-  if (isTRUE(targetClassSheet$useTargetClass[1]))                                                    useTargetClass   <- TRUE
-  if (!is.null(targetClassSheet$targetClassValue) && isTRUE(!is.na(targetClassSheet$targetClassValue[1]))) targetClassValue <- as.integer(targetClassSheet$targetClassValue[1])
-  if (!is.null(targetClassSheet$backgroundValues) && isTRUE(!is.na(targetClassSheet$backgroundValues[1]))) backgroundValues <- as.character(targetClassSheet$backgroundValues[1])
-  if (!is.null(targetClassSheet$ignoreValues)     && isTRUE(!is.na(targetClassSheet$ignoreValues[1])))     ignoreValues     <- as.character(targetClassSheet$ignoreValues[1])
-  if (!is.null(targetClassSheet$targetClassLabel) && isTRUE(!is.na(targetClassSheet$targetClassLabel[1]))) targetClassLabel <- as.character(targetClassSheet$targetClassLabel[1])
-}
+targetClassOptions <- parseTargetClassOptions(
+  datasheet(myScenario, "ecoClassify_TargetClassOptions")
+)
+useTargetClass   <- targetClassOptions$useTargetClass
+targetClassValue <- targetClassOptions$targetClassValue
+backgroundValues <- targetClassOptions$backgroundValues
+ignoreValues     <- targetClassOptions$ignoreValues
+targetClassLabel <- targetClassOptions$targetClassLabel
 
 
 # Extract list of training and ground truth rasters ----------------------------

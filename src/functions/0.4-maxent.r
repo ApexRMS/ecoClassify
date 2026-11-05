@@ -82,59 +82,45 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
   # (each parallel worker starts its own JVM with the -Xmx heap)
   nCores <- min(2L, as.integer(nCores))
 
-  max1 <- tryCatch(
-    {
-      usableCores <- max(1, min(nCores, parallel::detectCores() - 1))
-      useParallel <- usableCores > 1
-      
-      # Try new ENMeval 2.0+ API first
-      tryCatch({
-        ENMeval::ENMevaluate(
-          occs = presenceTrainData,
-          bg = absenceTrainData,
-          tune.args = tuneArgs,
-          partitions = "randomkfold",
-          algorithm = 'maxent.jar',
-          parallel = useParallel,
-          numCores = usableCores,
-          quiet = TRUE
-        )
-      }, error = function(e1) {
-        # If that fails, try old ENMeval < 2.0 API
-        if (grepl("unused argument|unexpected.*argument|object.*not found", conditionMessage(e1))) {
-          rsyncrosim::updateRunLog(type = "warning", message = "ENMevaluate failed, update ENMeval package to version 2.0")
-          stop(e1)
-        } else {
-          stop(e1)
+  usableCores <- max(1, min(nCores, parallel::detectCores() - 1))
+
+  runEnmevaluate <- function(parallel) {
+    tryCatch(
+      ENMeval::ENMevaluate(
+        occs = presenceTrainData,
+        bg = absenceTrainData,
+        tune.args = tuneArgs,
+        partitions = "randomkfold",
+        algorithm = "maxent.jar",
+        parallel = parallel,
+        numCores = if (parallel) usableCores else 1,
+        quiet = TRUE
+      ),
+      error = function(e) {
+        # Argument errors usually mean ENMeval < 2.0, which this code does
+        # not support
+        if (grepl("unused argument|unexpected.*argument|object.*not found",
+                  conditionMessage(e))) {
+          updateRunLog(
+            "ENMevaluate failed; update the ENMeval package to version 2.0",
+            type = "warning"
+          )
         }
-      })
-    },
+        stop(e)
+      }
+    )
+  }
+
+  # Run in parallel when more than one core is usable; if that fails, retry
+  # once in serial mode
+  max1 <- tryCatch(
+    runEnmevaluate(parallel = usableCores > 1),
     error = function(e) {
       warning(
         "Parallel Maxent failed. Retrying in serial mode...\n",
         "Original error: ", conditionMessage(e)
       )
-
-      # Retry in serial mode with new API
-      tryCatch({
-        ENMeval::ENMevaluate(
-          occs = presenceTrainData,
-          bg = absenceTrainData,
-          tune.args = tuneArgs,
-          partitions = "randomkfold",
-          algorithm = 'maxent.jar',
-          parallel = FALSE,
-          quiet = TRUE
-        )
-      }, error = function(e2) {
-        # If that fails, try old API in serial
-        if (grepl("unused argument|unexpected.*argument|object.*not found", conditionMessage(e2))) {
-          rsyncrosim::updateRunLog(type = "warning", message = "ENMevaluate failed, update ENMeval package to version 2.0")
-          stop(e2)
-        } else {
-          stop(e2)
-        }
-      })
+      runEnmevaluate(parallel = FALSE)
     }
   )
 
@@ -202,20 +188,18 @@ encodeMaxentCategoricals <- function(data, catLevels) {
 #'   model.rds), with `$model` and `$cat_levels`.
 #' @param newdata Data frame of predictors.
 #'
-#' @return Numeric vector of P(presence); NA where a row cannot be predicted.
+#' @return Numeric vector of P(presence) in maxent.jar's default output
+#'   format (cloglog for MaxEnt 3.4+); NA where a row cannot be predicted.
 #'
 #' @noRd
 predictMaxentProbability <- function(model, newdata) {
   newdata <- as.data.frame(newdata, stringsAsFactors = FALSE)
   newdata <- encodeMaxentCategoricals(newdata, model$cat_levels)
 
-  p1 <- tryCatch(
-    as.numeric(dismo::predict(model$model, newdata, type = "logistic")),
-    error = function(e) {
-      # some MaxEnt builds require the 'args' signature
-      as.numeric(dismo::predict(model$model, newdata, args = "logistic"))
-    }
-  )
+  # Output is maxent.jar's default format (cloglog for MaxEnt 3.4+).
+  # dismo::predict() has no `type` argument; passing type = "logistic", as
+  # earlier versions did, was silently ignored.
+  p1 <- as.numeric(dismo::predict(model$model, newdata))
   p1[!is.finite(p1)] <- NA_real_
   p1
 }

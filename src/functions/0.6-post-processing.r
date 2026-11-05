@@ -549,3 +549,203 @@ buildMetricsRow <- function(statsDataframe, targetClassValue = NA,
     AUC         = auc
   )
 }
+
+#' Apply Rule-Based Reclassification to a Prediction Raster ----
+#'
+#' @description
+#' Applies each row of the PostProcessingRule datasheet in turn to a copy of
+#' `baseRaster`. A rule with min == max is categorical (cells where the rule
+#' raster equals that value get the reclass value); otherwise cells where
+#' the rule raster is in [min, max] get it. Rules with a missing raster, a
+#' different grid or NA values are skipped with a warning.
+#'
+#' @param baseRaster SpatRaster of 0/1 predictions.
+#' @param ruleReclassDataframe The PostProcessingRule datasheet.
+#' @param rasterLabel Description of `baseRaster` for the grid-mismatch
+#'   warning (e.g. "unfiltered training raster").
+#' @param wopt terra write options for the working copy.
+#'
+#' @return The reclassified SpatRaster (backed by a temporary file).
+#'
+#' @noRd
+applyReclassRules <- function(baseRaster, ruleReclassDataframe, rasterLabel,
+                              wopt) {
+  reclassed <- writeRaster(
+    baseRaster, filename = tempfile(fileext = ".tif"),
+    overwrite = TRUE, wopt = wopt
+  )
+
+  # Disk-backing is disabled while rules are applied (needed in the conda
+  # environment); on.exit restores it even if a rule errors
+  oldTodisk <- terraOptions()$todisk
+  terraOptions(todisk = FALSE)
+  on.exit(terraOptions(todisk = oldTodisk), add = TRUE)
+
+  for (i in seq_len(nrow(ruleReclassDataframe))) {
+    rulePath <- ruleReclassDataframe$ruleRasterFile[i]
+    if (is.na(rulePath) || !file.exists(rulePath)) {
+      updateRunLog(
+        paste0("Rule raster missing for rule index ", i, "; skipping."),
+        type = "warning"
+      )
+      next
+    }
+    ruleRaster <- rast(rulePath)
+
+    if (!compareGeom(ruleRaster, reclassed, stopOnError = FALSE)) {
+      updateRunLog(
+        paste0(
+          "Rule raster extent does not match ", rasterLabel, " extent. ",
+          "Skipping reclassification."
+        ),
+        type = "warning"
+      )
+      next
+    }
+
+    vmin <- ruleReclassDataframe$ruleMinValue[i]
+    vmax <- ruleReclassDataframe$ruleMaxValue[i]
+    rval <- as.numeric(ruleReclassDataframe$ruleReclassValue[i]) - 1
+
+    if (any(is.na(c(vmin, vmax, rval)))) {
+      updateRunLog(
+        paste0(
+          "Rule values (min/max/reclass) contain NA for rule index ", i,
+          "; skipping."
+        ),
+        type = "warning"
+      )
+      next
+    }
+    if (vmin > vmax) {
+      tmp <- vmin; vmin <- vmax; vmax <- tmp
+      updateRunLog(
+        paste0("Swapped vmin/vmax for rule index ", i,
+               " to maintain [min,max]."),
+        type = "info"
+      )
+    }
+
+    if (isTRUE(vmin == vmax)) {
+      # Categorical: apply where ruleRaster == vmin
+      reclassed <- ifel(
+        ruleRaster == vmin, rval, reclassed,
+        filename = tempfile(fileext = ".tif"), overwrite = TRUE
+      )
+    } else {
+      # Continuous: apply where ruleRaster is within [vmin, vmax]
+      classedMask <- classify(
+        ruleRaster, matrix(c(vmin, vmax, rval), ncol = 3, byrow = TRUE),
+        others = NA,
+        filename = tempfile(fileext = ".tif"), overwrite = TRUE,
+        right = FALSE, include.lowest = TRUE
+      )
+      reclassed <- ifel(
+        !is.na(classedMask), rval, reclassed,
+        filename = tempfile(fileext = ".tif"), overwrite = TRUE
+      )
+      rm(classedMask)
+    }
+    gc()
+  }
+
+  reclassed
+}
+
+#' Reclassify (and Filter) the Outputs of One Context ----
+#'
+#' @description
+#' For each timestep of the training or predicting outputs: applies the
+#' reclassification rules to the unfiltered prediction (`...Restricted`
+#' output), optionally filters the result (`...FilteredRestricted`), records
+#' both paths in the output datasheet and builds their summary rows.
+#'
+#' @param outputDf RasterOutput (training) or ClassifiedRasterOutput
+#'   (predicting) datasheet.
+#' @param timesteps Timesteps to process.
+#' @param context "training" or "predicting".
+#' @param columns Named list of column names in `outputDf`: `unfiltered`,
+#'   `unfilteredRestricted`, `filteredRestricted`, `probability`.
+#' @param rasterLabel Description used in the grid-mismatch warning.
+#' @param ruleReclassDataframe,applyFiltering,filterValue,fillValue
+#'   Post-processing settings.
+#' @param transferDir,restrictedTmpDir Output and intermediate folders.
+#' @param wopt terra write options.
+#' @param targetClassValue,targetClassLabel For the summary rows.
+#'
+#' @return A list with the updated `outputDf` and `summaryRows`.
+#'
+#' @noRd
+reclassifyOutputs <- function(outputDf, timesteps, context, columns,
+                              rasterLabel, ruleReclassDataframe,
+                              applyFiltering, filterValue, fillValue,
+                              transferDir, restrictedTmpDir, wopt,
+                              targetClassValue, targetClassLabel) {
+  summaryRows <- list()
+
+  firstPath <- function(t, column) {
+    paths <- outputDf[[column]][outputDf$Timestep == t]
+    paths <- paths[!is.na(paths) & nzchar(paths)]
+    if (length(paths) == 0) NA_character_ else paths[1]
+  }
+  addSummaryRow <- function(predictionPath, probPath, predictionType) {
+    if (is.na(probPath) || !file.exists(probPath)) return(invisible(NULL))
+    summaryRows[[length(summaryRows) + 1]] <<- buildSummaryRow(
+      predictionRaster  = terra::rast(predictionPath),
+      probabilityRaster = terra::rast(probPath),
+      timestep          = t,
+      predictionType    = paste0(predictionType, " - ", context),
+      targetClassValue  = targetClassValue,
+      targetClassLabel  = targetClassLabel
+    )
+  }
+
+  for (t in timesteps) {
+    unfilteredPath <- outputDf[[columns$unfiltered]][outputDf$Timestep == t][1]
+    if (length(unfilteredPath) == 0 || is.na(unfilteredPath) ||
+          !file.exists(unfilteredPath)) next
+
+    reclassed <- applyReclassRules(
+      rast(unfilteredPath), ruleReclassDataframe, rasterLabel, wopt
+    )
+
+    reclassedPath <- file.path(
+      transferDir,
+      paste0("PredictedPresenceRestricted-", context, "-t", t, ".tif")
+    )
+    writeRaster(reclassed, filename = reclassedPath, overwrite = TRUE,
+                wopt = wopt)
+    outputDf[[columns$unfilteredRestricted]][outputDf$Timestep == t] <-
+      reclassedPath
+
+    probPath <- firstPath(t, columns$probability)
+    addSummaryRow(reclassedPath, probPath, "reclassified")
+
+    # Filter after reclassification to create FilteredRestricted
+    if (isTRUE(applyFiltering)) {
+      filteredRestricted <- filterRasterDataframe(
+        applyFiltering, rast(reclassedPath), filterValue, fillValue,
+        context, t, restrictedTmpDir,
+        fileName = "PredictedPresenceFilteredRestricted"
+      )
+      reclassedFilteredPath <- file.path(
+        transferDir,
+        paste0("PredictedPresenceFilteredRestricted-", context, "-t", t,
+               ".tif")
+      )
+      writeRaster(
+        rast(filteredRestricted$PredictedFiltered),
+        filename = reclassedFilteredPath, overwrite = TRUE, wopt = wopt
+      )
+      outputDf[[columns$filteredRestricted]][outputDf$Timestep == t] <-
+        reclassedFilteredPath
+
+      addSummaryRow(reclassedFilteredPath, probPath, "filtered_reclassified")
+    }
+
+    rm(reclassed)
+    gc()
+  }
+
+  list(outputDf = outputDf, summaryRows = summaryRows)
+}

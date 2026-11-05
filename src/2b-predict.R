@@ -92,28 +92,9 @@ if (grepl("^Job-\\d+\\.ssim$", .lib_name)) {
 
 # Load project-level datasheets ------------------------------------------------
 terminologyDataframe <- datasheet(myProject, name = "ecoClassify_Terminology")
-
-bandLabelFile <- if (
-  nrow(terminologyDataframe) > 0 &&
-  !is.null(terminologyDataframe$bandNames) &&
-  !is.na(terminologyDataframe$bandNames[1]) &&
-  nchar(terminologyDataframe$bandNames[1]) > 0
-) terminologyDataframe$bandNames[1] else NULL
-
-rgbBands <- if (
-  nrow(terminologyDataframe) > 0 &&
-  !is.null(terminologyDataframe$redBand) && !is.na(terminologyDataframe$redBand[1]) &&
-  !is.null(terminologyDataframe$greenBand) && !is.na(terminologyDataframe$greenBand[1]) &&
-  !is.null(terminologyDataframe$blueBand) && !is.na(terminologyDataframe$blueBand[1])
-) {
-  list(
-    red   = terminologyDataframe$redBand[1],
-    green = terminologyDataframe$greenBand[1],
-    blue  = terminologyDataframe$blueBand[1]
-  )
-} else {
-  NULL
-}
+terminology <- parseTerminology(terminologyDataframe)
+bandLabelFile <- terminology$bandLabelFile
+rgbBands <- terminology$rgbBands
 
 # Load raster input datasheets -------------------------------------------------
 
@@ -169,13 +150,11 @@ overrideBandnames <- inputVariables[[12]]
 
 # Read TargetClassOptions ------------------------------------------------------
 
-targetClassSheet <- datasheet(myScenario, "ecoClassify_TargetClassOptions")
-targetClassValue <- NA_integer_
-targetClassLabel <- NA_character_
-if (nrow(targetClassSheet) > 0) {
-  if (!is.null(targetClassSheet$targetClassValue) && isTRUE(!is.na(targetClassSheet$targetClassValue[1]))) targetClassValue <- as.integer(targetClassSheet$targetClassValue[1])
-  if (!is.null(targetClassSheet$targetClassLabel) && isTRUE(!is.na(targetClassSheet$targetClassLabel[1]))) targetClassLabel <- as.character(targetClassSheet$targetClassLabel[1])
-}
+targetClassOptions <- parseTargetClassOptions(
+  datasheet(myScenario, "ecoClassify_TargetClassOptions")
+)
+targetClassValue <- targetClassOptions$targetClassValue
+targetClassLabel <- targetClassOptions$targetClassLabel
 
 # Load model and threshold (first row; validateModelObject() warns if more)
 validateModelObject(modelObjectDataframe, modelType)

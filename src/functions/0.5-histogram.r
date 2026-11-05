@@ -3,28 +3,6 @@
 ## ApexRMS, November 2024
 ## -------------------------------
 
-# ---- small helpers ----
-
-# Drop 'ID' column if present (terra::extract quirks)
-strip_id <- function(df) {
-  if (!is.null(df) && "ID" %in% names(df)) {
-    df <- df[, setdiff(names(df), "ID"), drop = FALSE]
-  }
-  df
-}
-
-# Extract values at cell IDs
-extract_df_at_cells <- function(r, cells) {
-  xy <- terra::xyFromCell(r, cells)
-  strip_id(terra::extract(r, xy))
-}
-
-# Extract single-layer values as vector
-extract_vals_at_cells <- function(r, cells) {
-  df <- extract_df_at_cells(r, cells)
-  as.vector(df[[1]])
-}
-
 #' Get Raster Layer Value Range ----
 #'
 #' @description
@@ -64,7 +42,7 @@ getValueRange <- function(rasterList, layerName, nBins = 20, nSample = 5000) {
       cell_ids <- sample.int(n_total, size = sample_size, replace = FALSE)
 
       # Extract and filter
-      vals <- extract_vals_at_cells(layer, cell_ids)
+      vals <- extractValsAtCells(layer, cell_ids)
       vals_clean <- vals[!is.na(vals)]
 
       # Take up to perRaster samples
@@ -234,7 +212,10 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
     # Perform prediction
     preds <- tryCatch({
       if (modelType == "CNN") {
-        predictCnnDataframe(model, predictLayerTemp, "prob")
+        presenceProb <- cnnPresenceProbability(
+          model, predictLayerTemp, warnContext = "predictResponseHistogram"
+        )
+        cbind(absence = 1 - presenceProb, presence = presenceProb)
       } else if (modelType == "Random Forest") {
         predict(model$model, predictLayerTemp, type = "response")$predictions
       } else if (modelType == "MaxEnt") {

@@ -67,25 +67,13 @@ if (nrow(classifiedRasterDataframe) == 0) {
   quit(save = "no", status = 0)
 }
 
-# Read TargetClassOptions (same parsing as 2b-predict.R) ------------------------
+# Read TargetClassOptions ------------------------------------------------------
 
-targetClassSheet <- datasheet(myScenario, "ecoClassify_TargetClassOptions")
-targetClassValue <- NA_integer_
-targetClassLabel <- NA_character_
-if (nrow(targetClassSheet) > 0) {
-  if (
-    !is.null(targetClassSheet$targetClassValue) &&
-      isTRUE(!is.na(targetClassSheet$targetClassValue[1]))
-  ) {
-    targetClassValue <- as.integer(targetClassSheet$targetClassValue[1])
-  }
-  if (
-    !is.null(targetClassSheet$targetClassLabel) &&
-      isTRUE(!is.na(targetClassSheet$targetClassLabel[1]))
-  ) {
-    targetClassLabel <- as.character(targetClassSheet$targetClassLabel[1])
-  }
-}
+targetClassOptions <- parseTargetClassOptions(
+  datasheet(myScenario, "ecoClassify_TargetClassOptions")
+)
+targetClassValue <- targetClassOptions$targetClassValue
+targetClassLabel <- targetClassOptions$targetClassLabel
 
 # Summarize each timestep ------------------------------------------------------
 
