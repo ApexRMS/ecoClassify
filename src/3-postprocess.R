@@ -50,20 +50,23 @@ postProcessingDataframe <- datasheet(
   name = "ecoClassify_PostProcessingFilter"
 )
 
-filterValue <- postProcessingDataframe$filterValue
-fillValue <- postProcessingDataframe$fillValue
-applyFiltering <- postProcessingDataframe$applyFiltering
+# Use the first row only; with no row, filtering is off
+hasFilterRow <- nrow(postProcessingDataframe) > 0
+filterValue <- if (hasFilterRow) postProcessingDataframe$filterValue[1] else NA
+fillValue <- if (hasFilterRow) postProcessingDataframe$fillValue[1] else NA
+applyFiltering <- hasFilterRow &&
+  isTRUE(as.logical(postProcessingDataframe$applyFiltering[1]))
 
 # Apply default filtering values if not specified
-if (dim(postProcessingDataframe)[1] != 0) {
-  if (is.na(filterValue) && applyFiltering == TRUE) {
+if (applyFiltering) {
+  if (is.na(filterValue)) {
     filterValue <- 8
     updateRunLog(
       "Number of neighbours for filtering was not supplied; using default value of 8",
       type = "info"
     )
   }
-  if (is.na(fillValue) && applyFiltering == TRUE) {
+  if (is.na(fillValue)) {
     fillValue <- 8
     updateRunLog(
       "Number of neighbours for filling was not supplied; using default value of 8",
@@ -98,12 +101,12 @@ trainingOutputDataframe <- datasheet(
   myScenario,
   name = "ecoClassify_RasterOutput"
 )
-# Deduplicate: spatial tiling causes RasterOutput rows to be replicated once
-# per tile job when SyncroSim merges job libraries back into the parent
-trainingOutputDataframe <- dplyr::distinct(trainingOutputDataframe)
 # Clear restricted columns so metrics only use paths written in the current run
 trainingOutputDataframe$PredictedUnfilteredRestricted <- NA_character_
 trainingOutputDataframe$PredictedFilteredRestricted   <- NA_character_
+# Deduplicate: spatial tiling causes RasterOutput rows to be replicated once
+# per tile job when SyncroSim merges job libraries back into the parent
+trainingOutputDataframe <- dplyr::distinct(trainingOutputDataframe)
 
 predictingOutputDataframe <- datasheet(
   myScenario,
@@ -112,6 +115,8 @@ predictingOutputDataframe <- datasheet(
 # Clear restricted columns so metrics only use paths written in the current run
 predictingOutputDataframe$ClassifiedUnfilteredRestricted <- NA_character_
 predictingOutputDataframe$ClassifiedFilteredRestricted   <- NA_character_
+# Deduplicate rows repeated by the tile-job merge (as for RasterOutput above)
+predictingOutputDataframe <- dplyr::distinct(predictingOutputDataframe)
 
 
 
@@ -253,7 +258,7 @@ if (nrow(ruleReclassDataframe) != 0) {
       # Get file paths
       unfilteredTrainFilepath <- trainingOutputDataframe$PredictedUnfiltered[
         trainingOutputDataframe$Timestep == t
-      ]
+      ][1]
 
       # Skip if no unfiltered path
       if (length(unfilteredTrainFilepath) == 0 ||
@@ -278,7 +283,7 @@ if (nrow(ruleReclassDataframe) != 0) {
 
           # Load rule raster
           rulePath <- ruleReclassDataframe$ruleRasterFile[i]
-          if (length(rulePath) == 0 || is.na(rulePath) || !file.exists(rulePath)) {
+          if (is.na(rulePath) || !file.exists(rulePath)) {
             updateRunLog(
               paste0("Rule raster missing for rule index ", i, "; skipping."),
               type = "warning"
@@ -437,7 +442,7 @@ if (nrow(ruleReclassDataframe) != 0) {
       # Get file paths
       unfilteredPredFilepath <- predictingOutputDataframe$ClassifiedUnfiltered[
         predictingOutputDataframe$Timestep == t
-      ]
+      ][1]
 
       # Skip if no unfiltered path
       if (length(unfilteredPredFilepath) == 0 ||
@@ -462,7 +467,7 @@ if (nrow(ruleReclassDataframe) != 0) {
 
           # Load rule raster; crop to tile extent when running as a spatial tile job
           rulePath <- ruleReclassDataframe$ruleRasterFile[i]
-          if (length(rulePath) == 0 || is.na(rulePath) || !file.exists(rulePath)) {
+          if (is.na(rulePath) || !file.exists(rulePath)) {
             updateRunLog(
               paste0("Rule raster missing for rule index ", i, "; skipping."),
               type = "warning"
@@ -720,13 +725,10 @@ if (length(trainTimestepList) > 0) {
     # long=TRUE always returns a data.frame regardless of how many class
     # combinations are present, avoiding the 1-D table issue when a class
     # is absent from one of the rasters.
+    # The saved GroundTruth raster is already binary (0/1, NA = ignored):
+    # reclassifyGroundTruth() runs before saveFiles() in the train transformer,
+    # so it must not be compared against targetClassValue again here.
     truth_r <- terra::rast(truthPath)
-    if (!is.na(targetClassValue)) {
-      old_todisk <- terraOptions()$todisk
-      terraOptions(todisk = FALSE)
-      truth_r <- terra::ifel(truth_r == targetClassValue, 1L, 0L)
-      terraOptions(todisk = old_todisk)
-    }
     ct <- tryCatch(
       terra::crosstab(c(truth_r, terra::rast(predPath)), long = TRUE),
       error = function(e) {
@@ -846,3 +848,8 @@ if (length(trainTimestepList) > 0) {
 }
 
 terra::tmpFiles(remove = TRUE)
+
+# Remove intermediate files; every saved output is written to transferDir
+# itself, not to these folders
+unlink(c(terra_tmp_dir, file.path(transferDir, "restrictedTmpDir")),
+       recursive = TRUE)

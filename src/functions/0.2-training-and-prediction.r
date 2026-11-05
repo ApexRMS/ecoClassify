@@ -50,12 +50,8 @@ skipBadTimesteps <- function(
     }
 
     # Build "valid predictors" mask: non-NA across all training layers
-    validMask <- !is.na(ls[[1]])
-    if (terra::nlyr(ls) > 1) {
-      for (b in 2:terra::nlyr(ls)) {
-        validMask <- validMask & !is.na(ls[[b]])
-      }
-    }
+    # (one pass over the stack instead of one per layer)
+    validMask <- terra::noNA(ls)
 
     nValid <- as.integer(terra::global(validMask, "sum", na.rm = TRUE)[[1]])
     nValidCells[i] <- ifelse(is.na(nValid), 0L, nValid)
@@ -65,8 +61,15 @@ skipBadTimesteps <- function(
     }
 
     # Mask GT to valid predictor cells and check class richness
-    gtMasked <- terra::mask(gtCheck, validMask)
-    vals <- unique(terra::values(gtMasked))
+    # terra::unique() works through the raster in C++, without copying every
+    # cell into R the way unique(values()) did
+    gtMasked <- terra::mask(gtCheck, validMask, maskvalues = FALSE)
+    uniqueVals <- terra::unique(gtMasked[[1]], na.rm = TRUE)
+    vals <- if (is.null(uniqueVals) || nrow(uniqueVals) == 0) {
+      numeric(0)
+    } else {
+      uniqueVals[[1]]
+    }
     vals <- vals[!is.na(vals)]
     classStr[i] <- if (length(vals)) paste(vals, collapse = ",") else ""
 
@@ -213,11 +216,6 @@ splitTrainTest <- function(
     stripId(terra::extract(r, xy))
   }
 
-  # Predictors only
-  extractAtCells <- function(rStack, cells) {
-    extractDfAtCells(rStack, cells)
-  }
-
   # Convenience: first-layer values as a vector
   extractValsAtCells <- function(r, cells) {
     df <- extractDfAtCells(r, cells)
@@ -243,28 +241,38 @@ splitTrainTest <- function(
       type = "info"
     )
 
-    # Get non-NA cell indices directly to avoid sampling mostly NA cells
-    # when ground truth is sparse relative to the raster extent.
-    # as.data.frame with na.rm=TRUE lets terra filter NAs in C++ before
-    # returning to R, avoiding long vector failure on large rasters.
-    validCells <- terra::as.data.frame(rGt, cells = TRUE, na.rm = TRUE)$cell
+    # First try random cells (oversampled 5x for NAs), which reads only those
+    # cells. If the ground truth is too sparse for that to find enough
+    # labelled cells, list every non-NA cell instead; as.data.frame with
+    # na.rm=TRUE filters NAs in C++, avoiding long-vector failures on large
+    # rasters. (spatSample(na.rm = TRUE) is avoided: it can hang.)
+    candidateCells <- sample.int(
+      nTotal, size = min(nTotal, 5L * targetValid), replace = FALSE
+    )
+    candidateVals <- extractValsAtCells(rGt, candidateCells)
+    valsClean <- candidateVals[!is.na(candidateVals)]
 
-    if (length(validCells) < 100) {
-      stop(
-        sprintf(
-          "Insufficient valid ground truth samples: only %d valid cells found from %d sampled. ",
-          length(validCells),
-          nTotal
-        ),
-        "The raster may have too many NA values."
-      )
+    if (length(valsClean) >= targetValid) {
+      valsClean <- valsClean[seq_len(targetValid)]
+    } else {
+      validCells <- terra::as.data.frame(rGt, cells = TRUE, na.rm = TRUE)$cell
+
+      if (length(validCells) < 100) {
+        stop(
+          sprintf(
+            "Insufficient valid ground truth samples: only %d valid cells found from %d sampled. ",
+            length(validCells),
+            nTotal
+          ),
+          "The raster may have too many NA values."
+        )
+      }
+
+      sampleSize <- min(length(validCells), targetValid)
+      cellIds <- sample(validCells, size = sampleSize, replace = FALSE)
+      vals <- extractValsAtCells(rGt, cellIds)
+      valsClean <- vals[!is.na(vals)]
     }
-
-    sampleSize <- min(length(validCells), targetValid)
-    cellIds <- sample(validCells, size = sampleSize, replace = FALSE)
-    vals <- extractValsAtCells(rGt, cellIds)
-
-    valsClean <- vals[!is.na(vals)]
 
     updateRunLog(
       sprintf("    Successfully obtained %d valid samples", length(valsClean)),
@@ -301,10 +309,13 @@ splitTrainTest <- function(
     chunkSize
   ) {
     if (nTarget <= 0) {
-      return(integer(0))
+      return(list(cells = integer(0), predictors = NULL))
     }
 
     got <- integer(0)
+    # Predictor values of the accepted cells, kept so the final training and
+    # testing rows do not have to be extracted from the stack a second time
+    gotPredictors <- list()
     tried <- 0L
     stalled <- 0L
     lastCount <- 0L
@@ -346,9 +357,11 @@ splitTrainTest <- function(
       predVals <- extractDfAtCells(rPred, candCells)
       keep <- stats::complete.cases(predVals)
 
-      acc <- unique(candCells[keep])
-      if (length(acc)) {
-        got <- unique(c(got, acc))
+      isNew <- keep & !duplicated(candCells) & !(candCells %in% got)
+      if (any(isNew)) {
+        got <- c(got, candCells[isNew])
+        gotPredictors[[length(gotPredictors) + 1]] <-
+          predVals[isNew, , drop = FALSE]
         stalled <- 0L
       }
 
@@ -379,7 +392,12 @@ splitTrainTest <- function(
       )
     }
 
-    got[seq_len(min(length(got), nTarget))]
+    nKeep <- min(length(got), nTarget)
+    predictors <- do.call(rbind, gotPredictors)
+    if (!is.null(predictors)) {
+      predictors <- predictors[seq_len(nKeep), , drop = FALSE]
+    }
+    list(cells = got[seq_len(nKeep)], predictors = predictors)
   }
 
   # ---- edge weights on candidate pool only ----
@@ -482,7 +500,7 @@ splitTrainTest <- function(
     # (3) Sample candidates per class (validation against predictor stack inside)
     chunk_size <- max(5000L, chunk_factor * nObs)
 
-    minor_pool <- sampleValidForClass(
+    minorSample <- sampleValidForClass(
       rPred = r_pred,
       rGt = r_gt,
       classValue = minorityClass,
@@ -490,13 +508,19 @@ splitTrainTest <- function(
       chunkSize = chunk_size
     )
 
-    major_pool <- sampleValidForClass(
+    majorSample <- sampleValidForClass(
       rPred = r_pred,
       rGt = r_gt,
       classValue = majorityClass,
       nTarget = targetMajorityN,
       chunkSize = chunk_size
     )
+    minor_pool <- minorSample$cells
+    major_pool <- majorSample$cells
+
+    # Predictor rows for every pooled cell (the two pools are disjoint)
+    poolCells <- c(minor_pool, major_pool)
+    poolPredictors <- rbind(minorSample$predictors, majorSample$predictors)
 
     if (length(minor_pool) < targetMinorityN) {
       updateRunLog(
@@ -649,9 +673,14 @@ splitTrainTest <- function(
       testPts <- pts[-tr_idx, , drop = FALSE]
     }
 
-    # (8) Extract predictors only at sampled cells
-    trainX <- extractAtCells(r_pred, trainPts$cell)
-    testX <- extractAtCells(r_pred, testPts$cell)
+    # (8) Look up the predictors already extracted for the sampled cells
+    poolRowsFor <- function(cells) {
+      rows <- poolPredictors[match(cells, poolCells), , drop = FALSE]
+      rownames(rows) <- NULL
+      rows
+    }
+    trainX <- poolRowsFor(trainPts$cell)
+    testX <- poolRowsFor(testPts$cell)
 
     trainDf_t <- cbind(trainX, presence = trainPts$presence)
     testDf_t <- cbind(testX, presence = testPts$presence)
@@ -1279,6 +1308,9 @@ saveFiles <- function(
     ".png"
   ))
   grDevices::png(filename = png_file)
+  # Close the device on exit so the PNG is flushed to disk and devices do not
+  # accumulate across timesteps/tiles (R errors at ~63 open devices).
+  on.exit(grDevices::dev.off(), add = TRUE)
   tryCatch(
     {
       terra::plotRGB(rgb_rast, r = 1, g = 2, b = 3, stretch = "lin")

@@ -288,10 +288,13 @@ plotVariableImportance <- function(importanceData, transferDir) {
 #'
 #' @noRd
 filterPredictionRaster <- function(r, filterValue = NULL, fillValue = NULL) {
-  # Temporarily disable disk-backing to avoid file conflicts
-  old_todisk <- terraOptions()$todisk
+  # Temporarily disable disk-backing to avoid file conflicts (needed in the
+  # conda environment). on.exit restores it even if a step below errors, so a
+  # failure here cannot leave later steps running fully in memory.
+  oldTodisk <- terraOptions()$todisk
   terraOptions(todisk = FALSE)
-  
+  on.exit(terraOptions(todisk = oldTodisk), add = TRUE)
+
   rBin <- classify(
     r,
     matrix(c(-Inf, 0.5, 0, 0.5, Inf, 1), ncol = 3, byrow = TRUE)
@@ -324,9 +327,6 @@ filterPredictionRaster <- function(r, filterValue = NULL, fillValue = NULL) {
     rBin <- ifel(rBin == 0 & neighborSum >= fillValue, 1, rBin)
   }
 
-  # Restore original setting
-  terraOptions(todisk = old_todisk)
-  
   return(rBin)
 }
 
@@ -372,7 +372,7 @@ filterRasterDataframe <- function(
   transferDir,
   fileName
 ) {
-  if (!applyFiltering) {
+  if (!isTRUE(applyFiltering)) {
     return(data.frame(
       Timestep = timestep,
       PredictedFiltered = NA_character_
@@ -421,36 +421,84 @@ filterRasterDataframe <- function(
 #' pixels (value == 1) and returns a single-row data.frame matching the
 #' SummaryOutput datasheet schema.
 #'
-#' @param predictionRaster SpatRaster of binary 0/1 predictions.
-#' @param probabilityRaster SpatRaster of continuous probability values.
+#' The rasters are read block by block and only the probabilities of
+#' predicted-present pixels are kept, so memory scales with the predicted area
+#' rather than with two full rasters. The median is exact.
+#'
+#' Present pixels with no probability value count towards `PredictedPixels`
+#' and `PredictedArea` but are excluded from the probability statistics.
+#' `PredictedArea` is in the squared map units of the raster's CRS.
+#'
+#' @param predictionRaster SpatRaster of binary 0/1 predictions (first layer
+#'   is used).
+#' @param probabilityRaster SpatRaster of continuous probability values on the
+#'   same grid (first layer is used).
 #' @param timestep Integer timestep identifier.
-#' @param predictionType Character label (e.g. "training", "predicting", "filtered").
+#' @param predictionType Character label (e.g. "training", "predicting",
+#'   "filtered - training").
 #' @param targetClassValue Integer or NA.
 #' @param targetClassLabel Character or NA.
 #'
 #' @return A one-row data.frame.
 #' @noRd
 buildSummaryRow <- function(predictionRaster, probabilityRaster, timestep,
-                             predictionType, targetClassValue = NA,
-                             targetClassLabel = NA) {
-  predVals  <- terra::values(predictionRaster, mat = FALSE)
-  probVals  <- terra::values(probabilityRaster, mat = FALSE)
+                            predictionType, targetClassValue = NA,
+                            targetClassLabel = NA) {
+  predictionRaster <- predictionRaster[[1]]
+  probabilityRaster <- probabilityRaster[[1]]
+
+  if (!terra::compareGeom(predictionRaster, probabilityRaster,
+                          stopOnError = FALSE)) {
+    stop(
+      "Prediction and probability rasters for timestep ", timestep,
+      " are not on the same grid; cannot build summary row."
+    )
+  }
+
   pixelArea <- prod(terra::res(predictionRaster))
 
-  presentMask <- !is.na(predVals) & predVals == 1
-  probPresent <- probVals[presentMask]
+  terra::readStart(predictionRaster)
+  on.exit(terra::readStop(predictionRaster), add = TRUE)
+  terra::readStart(probabilityRaster)
+  on.exit(terra::readStop(probabilityRaster), add = TRUE)
+
+  blockInfo <- terra::blocks(predictionRaster)
+  presentPixels <- 0
+  probChunks <- vector("list", blockInfo$n)
+
+  for (i in seq_len(blockInfo$n)) {
+    predVals <- terra::readValues(
+      predictionRaster,
+      row = blockInfo$row[i],
+      nrows = blockInfo$nrows[i]
+    )
+    present <- !is.na(predVals) & predVals == 1
+    nPresent <- sum(present)
+    if (nPresent == 0) next
+
+    presentPixels <- presentPixels + nPresent
+    probVals <- terra::readValues(
+      probabilityRaster,
+      row = blockInfo$row[i],
+      nrows = blockInfo$nrows[i]
+    )[present]
+    probChunks[[i]] <- probVals[!is.na(probVals)]
+  }
+
+  probPresent <- unlist(probChunks, use.names = FALSE)
+  hasProb <- length(probPresent) > 0
 
   data.frame(
     Timestep          = timestep,
     TargetClassValue  = targetClassValue,
     TargetClassLabel  = targetClassLabel,
     PredictionType    = predictionType,
-    PredictedPixels   = sum(presentMask, na.rm = TRUE),
-    PredictedArea     = sum(presentMask, na.rm = TRUE) * pixelArea,
-    MeanProbability   = mean(probPresent, na.rm = TRUE),
-    MedianProbability = median(probPresent, na.rm = TRUE),
-    MinProbability    = if (length(probPresent) > 0) min(probPresent) else NA_real_,
-    MaxProbability    = if (length(probPresent) > 0) max(probPresent) else NA_real_
+    PredictedPixels   = presentPixels,
+    PredictedArea     = presentPixels * pixelArea,
+    MeanProbability   = if (hasProb) mean(probPresent) else NA_real_,
+    MedianProbability = if (hasProb) stats::median(probPresent) else NA_real_,
+    MinProbability    = if (hasProb) min(probPresent) else NA_real_,
+    MaxProbability    = if (hasProb) max(probPresent) else NA_real_
   )
 }
 

@@ -36,10 +36,9 @@ transferDir <- e$TransferDirectory
 tileJobId     <- NULL
 tileRasterMap <- NULL
 tileExtent    <- NULL
+tileCropExtent <- NULL
 fullExtent    <- NULL
 buffer_px     <- 0L
-tilesDataDir  <- NULL
-tileCount     <- NULL
 
 # Use e$LibraryFilePath rather than the ssim_library env var, which can contain
 # surrounding quotes on Windows causing path construction to fail.
@@ -66,14 +65,18 @@ if (grepl("^Job-\\d+\\.ssim$", .lib_name)) {
     .manifest  <- jsonlite::read_json(.manifestPath, simplifyVector = FALSE)
     .tileInfo  <- .manifest$tiles[[tileJobId]]
 
-    tileRasterMap <- .tileInfo$raster_map   # named list: orig_path -> cropped_path
+    # Manifest v2 gives the buffered crop extent; v1 manifests listed
+    # pre-cropped copies of each raster instead (orig_path -> cropped_path)
+    tileRasterMap <- .tileInfo$raster_map
     .te <- .tileInfo$tile_extent
     tileExtent <- terra::ext(.te$xmin, .te$xmax, .te$ymin, .te$ymax)
+    .ce <- .tileInfo$crop_extent
+    if (!is.null(.ce)) {
+      tileCropExtent <- terra::ext(.ce$xmin, .ce$xmax, .ce$ymin, .ce$ymax)
+    }
     .fe <- .manifest$full_extent
     fullExtent <- terra::ext(.fe$xmin, .fe$xmax, .fe$ymin, .fe$ymax)
     buffer_px    <- if (!is.null(.manifest$buffer_px)) as.integer(.manifest$buffer_px) else 0L
-    tilesDataDir <- .tilesDataDir
-    tileCount    <- as.integer(.manifest$tile_count)
 
     updateRunLog(sprintf("Running as spatial tile job %d.", tileJobId), type = "info")
   } else {
@@ -174,7 +177,10 @@ if (nrow(targetClassSheet) > 0) {
   if (!is.null(targetClassSheet$targetClassLabel) && isTRUE(!is.na(targetClassSheet$targetClassLabel[1]))) targetClassLabel <- as.character(targetClassSheet$targetClassLabel[1])
 }
 
-# Load model and threshold
+# Load model and threshold (first row; validateModelObject() warns if more)
+validateModelObject(modelObjectDataframe, modelType)
+modelObjectDataframe <- modelObjectDataframe[1, , drop = FALSE]
+
 if (modelType == "CNN") {
   model <- loadCNNModel(
     weights_path = modelObjectDataframe$Weights, # e.g. "model_weights.pt"
@@ -182,9 +188,12 @@ if (modelType == "CNN") {
   )
 } else if (modelType == "Random Forest" || modelType == "MaxEnt") {
   model <- readRDS(modelObjectDataframe$Model)
+} else {
+  stop("Model type not recognized: ", modelType)
 }
+checkModelType(model, modelType)
 
-if (setManualThreshold == FALSE) {
+if (!isTRUE(setManualThreshold)) {
   threshold <- modelObjectDataframe$Threshold
 } else {
   threshold <- manualThreshold
@@ -196,8 +205,8 @@ if (setManualThreshold == FALSE) {
 # generate the full-extent RGB from the un-cropped source rasters.
 originalPredictingRasterDataframe <- predictingRasterDataframe
 
-# For tile jobs, substitute pre-cropped raster paths before loading
-if (!is.null(tileJobId) && !is.null(tileRasterMap)) {
+# For tile jobs with a v1 manifest, substitute the pre-cropped raster paths
+if (!is.null(tileJobId) && is.null(tileCropExtent) && !is.null(tileRasterMap)) {
   for (.i in seq_len(nrow(predictingRasterDataframe))) {
     .orig <- predictingRasterDataframe$predictingRasterFile[.i]
     if (!is.null(.orig) && !is.na(.orig) && nzchar(.orig)) {
@@ -211,6 +220,16 @@ if (!is.null(tileJobId) && !is.null(tileRasterMap)) {
 }
 
 predictRasterList <- extractRasters(predictingRasterDataframe, column = 2)
+
+# Tile jobs read only their own (buffered) part of the original rasters
+if (!is.null(tileJobId) && !is.null(tileCropExtent)) {
+  predictRasterList <- cropRastersToTile(predictRasterList, tileCropExtent)
+  updateRunLog(
+    sprintf("Tile %d: cropped predicting rasters to the tile extent.",
+            tileJobId),
+    type = "info"
+  )
+}
 
 # extractRasters() skips rows with no raster file, so re-align timestepList with
 # the rasters that were actually loaded. Outputs below are labelled positionally
@@ -258,20 +277,57 @@ if (
     length(rasterDecimalPlaces) > 0 &&
     !is.na(rasterDecimalPlaces)
 ) {
-  roundedRasters <- lapply(predictRasterList, function(r) {
-    return(app(r, fun = function(x) round(x, rasterDecimalPlaces)))
+  # terra's native round() (as in training) avoids calling back into R per
+  # block the way app() does
+  predictRasterList <- lapply(predictRasterList, function(r) {
+    round(r, digits = rasterDecimalPlaces)
   })
-  predictRasterList <- roundedRasters
 }
+
+# Pre-processing fitted at training time (saved with the model). Models trained
+# before v2.5 have no `preprocessing` element; they fall back to fitting the
+# normalization/PCA on the prediction rasters, which reproduces the old
+# behaviour but can shift features relative to training.
+modelPreprocessing <- model$preprocessing
 
 # Normalize predicting rasters, if selected
 if (isTRUE(normalizeRasters)) {
-  predictRasterList <- normalizeRaster(predictRasterList)
+  normalizationStats <- modelPreprocessing$normalizationStats
+  if (is.null(normalizationStats)) {
+    updateRunLog(
+      paste0(
+        "The trained model has no saved normalization statistics (trained ",
+        "with an earlier ecoClassify version, or without normalization). ",
+        "Normalizing with statistics from the predicting rasters instead; ",
+        "retrain the model for consistent results."
+      ),
+      type = "warning"
+    )
+    normalizationStats <- computeNormalizationStats(predictRasterList)
+  }
+  predictRasterList <- normalizeRaster(predictRasterList, normalizationStats)
 }
 
 # Apply contextualization to prediction rasters, if selected
 if (isTRUE(applyContextualization)) {
-  predictRasterList <- contextualizeRaster(predictRasterList)
+  contextPcaModel <- modelPreprocessing$contextPcaModel
+  if (is.null(contextPcaModel)) {
+    updateRunLog(
+      paste0(
+        "The trained model has no saved contextualization PCA (trained with ",
+        "an earlier ecoClassify version, or without contextualization). ",
+        "Fitting the PCA on the predicting rasters instead; retrain the model ",
+        "for consistent results."
+      ),
+      type = "warning"
+    )
+    contextPcaModel <- fitContextPca(predictRasterList)
+  }
+  predictRasterList <- contextualizeRaster(
+    predictRasterList,
+    windowSize = contextualizationWindowSize,
+    pcaModel = contextPcaModel
+  )
 }
 
 # Strip overlap buffer from tile rasters after contextualization.
@@ -305,6 +361,9 @@ if (!is.null(tileJobId) && !is.null(tileExtent) && !is.null(predictingCovariateL
 # Add covariate data to predicting rasters.
 # Pass transferDir so combined files are written there rather than R's tempdir().
 predictRasterList <- addCovariates(predictRasterList, predictingCovariateList, transferDir)
+
+# Fail early, with a clear message, if a predictor the model needs is missing
+checkPredictorNames(predictRasterList, model, timesteps = timestepList)
 
 # Check and mask NA values in predicting rasters
 checkNA(predictRasterList)
@@ -382,8 +441,10 @@ for (t in seq_along(predictRasterList)) {
     )
   }
 
-  # Accumulate summary row for this timestep (before extending, so counts reflect tile only)
-  tryCatch({
+  # Accumulate summary row for this timestep. Tile jobs skip this: a tile only
+  # sees part of the map, so the summary for tiled runs is computed from the
+  # merged rasters by the 2c-Summarize Tiles transformer instead.
+  if (is.null(tileJobId)) tryCatch({
     summaryRows[[length(summaryRows) + 1]] <- buildSummaryRow(
       predictionRaster  = terra::rast(classifiedPresencePath),
       probabilityRaster = terra::rast(classifiedProbabilityPath),
@@ -470,101 +531,12 @@ if (is.null(tileJobId) || tileJobId == 1L) {
   )
 }
 
+# Tile jobs build no summary rows (see above), so this only runs for
+# non-tiled predictions
 if (length(summaryRows) > 0) {
-  if (!is.null(tileJobId) && !is.null(tilesDataDir) && !is.null(tileCount)) {
-    # --- Tiling: save intermediate per-tile stats and aggregate in tile job 1 ---
-
-    # Write this tile's summary rows to an intermediate RDS file in tilesDataDir
-    # so that tile job 1 can read and aggregate all tiles' stats.
-    .tileStatsPath <- file.path(
-      tilesDataDir, paste0("tile_", tileJobId),
-      "summary_predicting.rds"
-    )
-    dir.create(dirname(.tileStatsPath), recursive = TRUE, showWarnings = FALSE)
-    saveRDS(do.call(rbind, summaryRows), .tileStatsPath)
-    updateRunLog(
-      sprintf("Tile %d: saved per-tile summary stats.", tileJobId),
-      type = "info"
-    )
-
-    if (tileJobId == 1L) {
-      # Tile job 1 waits for all other tiles to write their intermediate files,
-      # then aggregates and saves the combined result to SummaryOutput.
-      # Poll every 2 seconds up to 120 seconds.
-      .maxWait <- 120L
-      .waited  <- 0L
-      .allFiles <- character(0)
-      repeat {
-        .allFiles <- list.files(
-          tilesDataDir,
-          pattern    = "^summary_predicting\\.rds$",
-          recursive  = TRUE,
-          full.names = TRUE
-        )
-        if (length(.allFiles) >= tileCount || .waited >= .maxWait) break
-        Sys.sleep(2)
-        .waited <- .waited + 2L
-      }
-
-      if (length(.allFiles) < tileCount) {
-        updateRunLog(
-          sprintf(
-            "Tile 1: only %d of %d tile summary file(s) found after %ds; saving available stats.",
-            length(.allFiles), tileCount, .maxWait
-          ),
-          type = "warning"
-        )
-      }
-
-      .allStats <- do.call(rbind, lapply(.allFiles, readRDS))
-
-      .sum_na  <- function(x) if (all(is.na(x))) NA_real_ else sum(x,  na.rm = TRUE)
-      .mean_na <- function(x) if (all(is.na(x))) NA_real_ else mean(x, na.rm = TRUE)
-
-      .aggregated <- do.call(rbind, lapply(
-        split(.allStats, list(.allStats$Timestep, .allStats$PredictionType), drop = TRUE),
-        function(grp) {
-          .pixels <- if ("PredictedPixels" %in% names(grp)) grp$PredictedPixels else NULL
-          .totalPixels <- if (!is.null(.pixels)) .sum_na(.pixels) else NA_real_
-          .weightedMean <- if (!is.null(.pixels) && "MeanProbability" %in% names(grp) &&
-                                !is.na(.totalPixels) && .totalPixels > 0)
-            .sum_na(.pixels * grp$MeanProbability) / .totalPixels
-          else NA_real_
-          data.frame(
-            Timestep          = grp$Timestep[1],
-            TargetClassValue  = if ("TargetClassValue"  %in% names(grp)) grp$TargetClassValue[1]  else NA,
-            TargetClassLabel  = if ("TargetClassLabel"  %in% names(grp)) grp$TargetClassLabel[1]  else NA,
-            PredictionType    = grp$PredictionType[1],
-            PredictedPixels   = .totalPixels,
-            PredictedArea     = if ("PredictedArea"     %in% names(grp)) .sum_na(grp$PredictedArea) else NA_real_,
-            MeanProbability   = .weightedMean,
-            MedianProbability = NA_real_,
-            MinProbability    = if ("MinProbability"    %in% names(grp)) { if (all(is.na(grp$MinProbability))) NA_real_ else min(grp$MinProbability, na.rm = TRUE) } else NA_real_,
-            MaxProbability    = if ("MaxProbability"    %in% names(grp)) { if (all(is.na(grp$MaxProbability))) NA_real_ else max(grp$MaxProbability, na.rm = TRUE) } else NA_real_,
-            stringsAsFactors  = FALSE
-          )
-        }
-      ))
-      rownames(.aggregated) <- NULL
-
-      saveDatasheet(myScenario, data = .aggregated, name = "ecoClassify_SummaryOutput")
-      saveDatasheet(myScenario, data = .aggregated, name = "ecoClassify_SummaryOutputChart")
-      updateRunLog(
-        sprintf(
-          "Tile 1: aggregated summary from %d tile(s) and saved to SummaryOutput.",
-          length(.allFiles)
-        ),
-        type = "info"
-      )
-    }
-    # Tiles 2-N do not write to SummaryOutput; tile 1 handles the combined result.
-
-  } else {
-    # Non-tiling: save directly as before
-    summaryDf <- do.call(rbind, summaryRows)
-    saveDatasheet(myScenario, data = summaryDf, name = "ecoClassify_SummaryOutput")
-    saveDatasheet(myScenario, data = summaryDf, name = "ecoClassify_SummaryOutputChart")
-  }
+  summaryDf <- do.call(rbind, summaryRows)
+  saveDatasheet(myScenario, data = summaryDf, name = "ecoClassify_SummaryOutput")
+  saveDatasheet(myScenario, data = summaryDf, name = "ecoClassify_SummaryOutputChart")
 }
 
 terra::tmpFiles(remove = TRUE)

@@ -39,18 +39,16 @@ extract_vals_at_cells <- function(r, cells) {
 #'
 #' @noRd
 getValueRange <- function(rasterList, layerName, nBins = 20, nSample = 5000) {
-  mins <- vapply(
+  # One pass per raster for both statistics
+  ranges <- vapply(
     rasterList,
-    function(r) terra::global(r[[layerName]], "min", na.rm = TRUE)[1, 1],
-    numeric(1)
+    function(r) {
+      unlist(terra::global(r[[layerName]], c("min", "max"), na.rm = TRUE)[1, ])
+    },
+    numeric(2)
   )
-  maxs <- vapply(
-    rasterList,
-    function(r) terra::global(r[[layerName]], "max", na.rm = TRUE)[1, 1],
-    numeric(1)
-  )
-  rastMin <- min(mins, na.rm = TRUE)
-  rastMax <- max(maxs, na.rm = TRUE)
+  rastMin <- min(ranges[1, ], na.rm = TRUE)
+  rastMax <- max(ranges[2, ], na.rm = TRUE)
 
   brks <- seq(rastMin, rastMax, length.out = nBins + 1)
 

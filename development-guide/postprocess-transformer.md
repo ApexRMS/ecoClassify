@@ -2,7 +2,7 @@
 
 ## Overview
 
-The post-processing transformer is the third and final pipeline stage in ecoClassify. It applies spatial filtering and rule-based reclassification to the predicted/classified rasters generated during training and prediction phases. This transformer operates on outputs from both the training (1-train-classifier.R) and prediction (2-predict.r) transformers.
+The post-processing transformer is the third and final pipeline stage in ecoClassify. It applies spatial filtering and rule-based reclassification to the predicted/classified rasters generated during training and prediction phases. This transformer operates on outputs from both the training (1-train-classifier.R) and prediction (2b-predict.R) transformers.
 
 ## Purpose
 
@@ -149,7 +149,7 @@ Validates inputs and provides informative warnings:
 
 **Inputs** (from previous transformers):
 - Training: PredictedUnfiltered rasters from 1-train-classifier.R
-- Predicting: ClassifiedUnfiltered rasters from 2-predict.r
+- Predicting: ClassifiedUnfiltered rasters from 2b-predict.R
 
 **Outputs** (saved to SyncroSim):
 - Filtered and/or restricted rasters for downstream analysis

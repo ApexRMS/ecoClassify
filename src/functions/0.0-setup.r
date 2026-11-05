@@ -94,23 +94,32 @@ loadModelPackages <- function(modelType) {
 #' @noRd
 setCores <- function(mulitprocessingSheet) {
   availableCores <- parallel::detectCores()
-  if (mulitprocessingSheet$EnableMultiprocessing) {
-    requestedCores <- mulitprocessingSheet$MaximumJobs
-    if (requestedCores > availableCores) {
-      updateRunLog(
-        paste0(
-          "Requested number of jobs exceeds available cores. Continuing run with ",
-          availableCores,
-          " jobs."
-        ),
-        type = "warning"
-      )
-      nCores <- availableCores - 1
-    } else {
-      nCores <- requestedCores
-    }
+  if (is.na(availableCores)) availableCores <- 1L
+
+  # Treat a missing row or NA settings as "multiprocessing disabled"
+  enabled <- nrow(mulitprocessingSheet) > 0 &&
+    isTRUE(as.logical(mulitprocessingSheet$EnableMultiprocessing[1]))
+  if (!enabled) {
+    return(1L)
+  }
+
+  requestedCores <- as.integer(mulitprocessingSheet$MaximumJobs[1])
+  if (is.na(requestedCores) || requestedCores < 1L) {
+    return(1L)
+  }
+
+  if (requestedCores > availableCores) {
+    nCores <- max(1L, availableCores - 1L)
+    updateRunLog(
+      paste0(
+        "Requested number of jobs exceeds available cores. Continuing run with ",
+        nCores,
+        " jobs."
+      ),
+      type = "warning"
+    )
   } else {
-    nCores <- 1
+    nCores <- requestedCores
   }
   return(nCores)
 }

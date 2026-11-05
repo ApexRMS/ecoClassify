@@ -253,6 +253,12 @@ if (.RUN_INSTALLER) {
       # We'll probe .jinit() to confirm
       jvm_ok <- FALSE
       if (rjava_ok) {
+        # The JVM heap size is fixed when the JVM first starts, and this probe
+        # starts it. Set the same heap as loadModelPackages() (0.0-setup.r)
+        # here, or that later setting has no effect.
+        if (is.null(getOption("java.parameters"))) {
+          options(java.parameters = "-Xmx4g")
+        }
         jvm_ok <- isTRUE(try({ .jinit(); TRUE }, silent = TRUE))
         if (!jvm_ok) {
           # try setting JAVA_HOME from conda prefix if present
@@ -351,21 +357,23 @@ if (!interactive()) {
   .msg_con  <- file(.msg_file, open = "wt")
   sink(.msg_con, type = "message")
 
-  ok <- tryCatch(
+  .install_error <- NULL
+  tryCatch(
     installDependencies(),
-    error = function(e) {
-      sink(type = "message")
-      close(.msg_con)
-      writeLines(readLines(.msg_file), stderr())
-      message("Installation error: ", e$message)
-      FALSE
-    }
+    error = function(e) .install_error <<- e
   )
 
+  # Close the capture exactly once, on success and on failure. (Closing it in
+  # the error handler as well made this second close fail with "invalid
+  # connection", which replaced the real installation error.)
   sink(type = "message")
   close(.msg_con)
 
-  if (!ok) quit(status = 1)
+  if (!is.null(.install_error)) {
+    writeLines(readLines(.msg_file), stderr())
+    message("Installation error: ", conditionMessage(.install_error))
+    quit(status = 1)
+  }
 } else {
   message("Run installDependencies() to start.")
 }

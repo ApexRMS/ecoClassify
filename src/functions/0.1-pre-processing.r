@@ -316,32 +316,60 @@ reclassifyGroundTruth <- function(groundTruthRasterList,
                                    targetClassValue = NA,
                                    backgroundValues = NA,
                                    ignoreValues = NA) {
+  # Built from terra operations, which stream from disk, rather than by
+  # pulling every cell into R with values(). The output is the same as the
+  # earlier cell-by-cell version.
+  parseValues <- function(x) {
+    if (is.na(x) || nchar(trimws(x)) == 0) return(integer(0))
+    as.integer(trimws(strsplit(x, ",")[[1]]))
+  }
+
   lapply(groundTruthRasterList, function(raster) {
+    layerNames <- names(raster)
+    # Compare on the stored cell values, as values() did, not on category
+    # labels
+    if (any(terra::is.factor(raster))) levels(raster) <- NULL
+
     if (isTRUE(useTargetClass) && !is.na(targetClassValue)) {
-      result <- raster
-      result[] <- NA
-      vals <- terra::values(raster)
+      isTarget <- raster == targetClassValue
+      bgVals <- parseValues(backgroundValues)
 
-      # target class → 1
-      result[vals == targetClassValue] <- 1
-
-      if (!is.na(backgroundValues) && nchar(trimws(backgroundValues)) > 0) {
-        bgVals <- as.integer(trimws(strsplit(backgroundValues, ",")[[1]]))
-        result[vals %in% bgVals] <- 0
+      if (length(bgVals) > 0) {
+        # Background values -> 0 (taking precedence over the target, as
+        # before), target -> 1, everything else NA
+        result <- terra::ifel(
+          raster %in% bgVals, 0, terra::ifel(isTarget, 1, NA)
+        )
       } else {
-        ignoreVals <- if (!is.na(ignoreValues) && nchar(trimws(ignoreValues)) > 0)
-          as.integer(trimws(strsplit(ignoreValues, ",")[[1]]))
-        else integer(0)
-        result[!is.na(vals) & vals != targetClassValue & !(vals %in% ignoreVals)] <- 0
+        # Target -> 1, ignored values -> NA, every other value -> 0
+        ignoreVals <- parseValues(ignoreValues)
+        result <- if (length(ignoreVals) > 0) {
+          terra::ifel(isTarget, 1, terra::ifel(raster %in% ignoreVals, NA, 0))
+        } else {
+          terra::ifel(isTarget, 1, 0)
+        }
       }
-
-      return(result)
     } else {
-      # Original binary logic: min → 0, max → 1 (in-place, preserves any intermediate values)
-      raster[raster == min(terra::values(raster), na.rm = TRUE)] <- 0
-      raster[raster == max(terra::values(raster), na.rm = TRUE)] <- 1
-      return(raster)
+      # Original binary logic: min -> 0, then max -> 1, where the max is
+      # taken after the first step (so a single-valued raster becomes all 1,
+      # and an all-negative raster's max can be the new 0). Values in
+      # between are kept.
+      rangeStats <- terra::global(raster, c("min", "max"), na.rm = TRUE)
+      rasterMin <- suppressWarnings(min(rangeStats$min, na.rm = TRUE))
+      rasterMax <- suppressWarnings(max(rangeStats$max, na.rm = TRUE))
+      # All-NA raster: nothing to reclassify (the old version left it as is)
+      if (!is.finite(rasterMin) || !is.finite(rasterMax)) return(raster)
+      maxAfterMin <- if (rasterMin == rasterMax) 0 else max(rasterMax, 0)
+
+      result <- terra::ifel(raster == rasterMin, 0, raster)
+      result <- terra::ifel(result == maxAfterMin, 1, result)
     }
+
+    # NA cells stay NA in every branch, as before (ifel() does not always
+    # carry an NA condition through)
+    result <- terra::mask(result, raster)
+    names(result) <- layerNames
+    result
   })
 }
 
@@ -488,7 +516,19 @@ addCovariates <- function(rasterList, covariateList, outDir = NULL) {
       next
     }
 
+    checkCovariateGeometry(rasterList[[i]], covRaster, timestepKey, i)
+
     combined <- c(rasterList[[i]], covRaster)
+
+    # Only write the combined stack when a layer lives in a temporary file
+    # that could be cleaned up before it is read (see Details). When every
+    # layer is already a persistent file, or in memory, the stacked
+    # SpatRaster refers to the sources directly.
+    if (!hasTemporarySources(combined)) {
+      rasterList[[i]] <- combined
+      next
+    }
+
     outFile <- if (!is.null(outDir)) {
       file.path(outDir, paste0("covCombined_", i, ".tif"))
     } else {
@@ -501,33 +541,119 @@ addCovariates <- function(rasterList, covariateList, outDir = NULL) {
   return(rasterList)
 }
 
-#' Normalize Raster Band ----
+#' Check a Covariate Raster Matches its Raster's Grid ----
 #'
 #' @description
-#' Scales raster values to 0–1 range.
-#'
-#' @param band A SpatRaster layer.
-#'
-#' @return A normalized SpatRaster.
+#' Stops with a message naming the timestep and the property that differs
+#' (CRS, extent, resolution or dimensions) instead of terra's generic
+#' "extents do not match" error from `c()`.
 #'
 #' @noRd
-normalizeBand <- function(band) {
-  min_val <- min(values(band), na.rm = TRUE)
-  max_val <- max(values(band), na.rm = TRUE)
-  (band - min_val) / (max_val - min_val)
+checkCovariateGeometry <- function(raster, covRaster, timestepKey = NULL,
+                                   index = NULL) {
+  if (terra::compareGeom(raster, covRaster, stopOnError = FALSE)) {
+    return(invisible(TRUE))
+  }
+
+  problems <- c(
+    if (!terra::same.crs(raster, covRaster)) "CRS",
+    if (!isTRUE(all.equal(as.vector(terra::ext(raster)),
+                          as.vector(terra::ext(covRaster))))) "extent",
+    if (!isTRUE(all.equal(terra::res(raster), terra::res(covRaster)))) {
+      "resolution"
+    },
+    if (terra::nrow(raster) != terra::nrow(covRaster) ||
+          terra::ncol(raster) != terra::ncol(covRaster)) "dimensions"
+  )
+  if (length(problems) == 0) problems <- "grid"
+
+  label <- if (!is.null(timestepKey) && !is.na(timestepKey) &&
+                 nzchar(timestepKey)) timestepKey else index
+  stop(
+    "Covariate raster(s) for timestep ", label, " do not match the image ",
+    "raster's ", paste(problems, collapse = ", "), ". Covariates must share ",
+    "the CRS, extent and resolution of the rasters they are added to."
+  )
+}
+
+#' Test Whether a SpatRaster Reads From Temporary Files ----
+#'
+#' @description
+#' TRUE if any source file is under R's or terra's temporary directory.
+#' In-memory layers (empty source) count as persistent.
+#'
+#' @noRd
+hasTemporarySources <- function(r) {
+  sourceFiles <- terra::sources(r)
+  sourceFiles <- sourceFiles[nzchar(sourceFiles)]
+  if (length(sourceFiles) == 0) return(FALSE)
+
+  normalizeDir <- function(path) {
+    tolower(gsub("\\\\", "/", normalizePath(path, mustWork = FALSE)))
+  }
+  # `print = FALSE` is not available in older terra versions
+  terraOpts <- tryCatch(
+    terra::terraOptions(print = FALSE),
+    error = function(e) terra::terraOptions()
+  )
+  tempDirs <- unique(normalizeDir(c(tempdir(), terraOpts$tempdir)))
+  sourceFiles <- normalizeDir(sourceFiles)
+
+  any(vapply(tempDirs, function(d) {
+    any(startsWith(sourceFiles, paste0(sub("/$", "", d), "/")))
+  }, logical(1)))
+}
+
+#' Compute Band Normalization Statistics ----
+#'
+#' @description
+#' Computes one min and max per band, pooled across every raster in the list,
+#' using terra's on-disk `global()` (no values are pulled into R memory).
+#' Training computes these once and saves them with the model so prediction
+#' rescales bands on exactly the same scale.
+#'
+#' @param rasterList List of SpatRasters with identical band names.
+#'
+#' @return A list with named numeric vectors `min` and `max` (one per band).
+#'
+#' @noRd
+computeNormalizationStats <- function(rasterList) {
+  perRaster <- lapply(rasterList, function(r) {
+    terra::global(r, c("min", "max"), na.rm = TRUE)
+  })
+  bandNames <- rownames(perRaster[[1]])
+  mins <- do.call(cbind, lapply(perRaster, function(x) x[bandNames, "min"]))
+  maxs <- do.call(cbind, lapply(perRaster, function(x) x[bandNames, "max"]))
+
+  list(
+    min = stats::setNames(apply(mins, 1, min, na.rm = TRUE), bandNames),
+    max = stats::setNames(apply(maxs, 1, max, na.rm = TRUE), bandNames)
+  )
 }
 
 #' Normalize All Bands in Raster List ----
 #'
 #' @description
-#' Applies 0–1 normalization to each band in a list of raster stacks.
+#' Rescales each band to 0-1 using the supplied `normalizationStats` (from
+#' `computeNormalizationStats()`, normally saved with the model at training
+#' time). Bands are matched by name. Values outside the training range fall
+#' outside 0-1, which is intended: the model sees them on the training scale.
 #'
-#' @param rasterList List of SpatRasters.
+#' @param rasterList Named list of SpatRasters.
+#' @param normalizationStats List with named `min` and `max` vectors.
 #'
-#' @return List of normalized SpatRasters.
+#' @return List of normalized SpatRasters, retaining the names of `rasterList`.
 #'
 #' @noRd
-normalizeRaster <- function(rasterList) {
+normalizeRaster <- function(rasterList, normalizationStats) {
+  statMin <- normalizationStats$min
+  statMax <- normalizationStats$max
+
+  # Constant bands would divide by zero; leave them unscaled apart from the
+  # offset so they become 0 instead of NaN.
+  statRange <- statMax - statMin
+  statRange[!is.finite(statRange) | statRange == 0] <- 1
+
   # Preallocate and carry over the timestep names of rasterList; downstream
   # functions such as addCovariates() match rasters to per-timestep covariates
   # by name, so dropping the names silently discards covariate data.
@@ -536,12 +662,21 @@ normalizeRaster <- function(rasterList) {
 
   for (i in seq_along(rasterList)) {
     raster <- rasterList[[i]]
+    bandNames <- names(raster)
 
-    # normalize bands for each raster in rasterList
-    normalizedRasterList[[i]] <- lapply(1:nlyr(raster), function(b) {
-      normalizeBand(raster[[b]])
-    }) %>%
-      rast()
+    missingBands <- setdiff(bandNames, names(statMin))
+    if (length(missingBands) > 0) {
+      stop(
+        "Cannot normalize raster: no training normalization statistics for ",
+        "band(s) ", paste(missingBands, collapse = ", "), ". Band names must ",
+        "match those used to train the model."
+      )
+    }
+
+    # Vectorised over layers: one lazy terra expression for the whole stack
+    normalizedRasterList[[i]] <- (raster - statMin[bandNames]) /
+      statRange[bandNames]
+    names(normalizedRasterList[[i]]) <- bandNames
   }
 
   return(normalizedRasterList)
@@ -571,8 +706,8 @@ checkNA <- function(rasterList, verbose = TRUE) {
       next
     }
 
-    # Fast check using global function - correct syntax
-    cellCounts <- terra::global(raster, fun = function(x) sum(!is.na(x)))
+    # Built-in "notNA" counts in C++; an R function here is called per block
+    cellCounts <- terra::global(raster, fun = "notNA")
     cellCounts <- as.numeric(cellCounts[, 1])
 
     if (length(unique(cellCounts)) != 1) {
@@ -813,4 +948,176 @@ overrideBandNames <- function(rasterList, bandLabelFile) {
   }
 
   return(renamedRasterList)
+}
+
+#' Validate the Model Object Datasheet Before Prediction ----
+#'
+#' @description
+#' Checks that a trained model exists for the scenario and that its files are
+#' present, so prediction fails early with a clear message rather than inside
+#' `readRDS()` or `torch_load()`.
+#'
+#' @param modelObjectDataframe The `ecoClassify_ModelObject` datasheet.
+#' @param modelType Character; the model type selected in ClassifierOptions.
+#'
+#' @return Invisibly TRUE; stops with an informative error otherwise.
+#'
+#' @noRd
+validateModelObject <- function(modelObjectDataframe, modelType) {
+  if (is.null(modelObjectDataframe) || nrow(modelObjectDataframe) == 0) {
+    stop(
+      "No trained model was found for this scenario. Run 1-Train Classifier ",
+      "first, or add the training scenario as a dependency."
+    )
+  }
+  if (nrow(modelObjectDataframe) > 1) {
+    updateRunLog(
+      paste0(
+        "More than one trained model was found; using the first. Check the ",
+        "scenario's dependencies if this is unexpected."
+      ),
+      type = "warning"
+    )
+  }
+
+  isMissingFile <- function(path) {
+    length(path) == 0 || is.na(path) || !nzchar(path) || !file.exists(path)
+  }
+
+  modelPath <- modelObjectDataframe$Model[1]
+  if (isMissingFile(modelPath)) {
+    stop("The trained model file could not be found: ", modelPath)
+  }
+  if (modelType == "CNN" && isMissingFile(modelObjectDataframe$Weights[1])) {
+    stop(
+      "Model type is CNN but the trained model has no CNN weights file. ",
+      "Check that 'Model Type' matches the model that was trained."
+    )
+  }
+
+  invisible(TRUE)
+}
+
+#' Check a Loaded Model Matches the Selected Model Type ----
+#'
+#' @param model A loaded model list (from `readRDS()` or `loadCNNModel()`).
+#' @param modelType Character; the model type selected in ClassifierOptions.
+#'
+#' @return Invisibly TRUE; stops with an informative error otherwise.
+#'
+#' @noRd
+checkModelType <- function(model, modelType) {
+  fitted <- model$model
+  trainedType <- if (inherits(fitted, "ranger")) {
+    "Random Forest"
+  } else if (inherits(fitted, "torchCNN")) {
+    "CNN"
+  } else {
+    "MaxEnt"
+  }
+  if (!identical(trainedType, modelType)) {
+    stop(
+      "Model type is set to '", modelType, "' but the trained model is a ",
+      trainedType, " model. Set 'Model Type' to match the trained model, or ",
+      "retrain."
+    )
+  }
+  invisible(TRUE)
+}
+
+#' Check Predicting Rasters Contain the Model's Predictors ----
+#'
+#' @description
+#' Compares the layer names of each predicting raster (after band renaming,
+#' contextualization and covariates) with the predictors the model was trained
+#' on, and stops listing any that are missing.
+#'
+#' @param rasterList List of SpatRasters to predict on.
+#' @param model A loaded model list with `cat_vars` and `num_vars`.
+#' @param timesteps Optional timestep labels for messages.
+#'
+#' @return Invisibly TRUE; stops with an informative error otherwise.
+#'
+#' @noRd
+checkPredictorNames <- function(rasterList, model, timesteps = NULL) {
+  expected <- c(model$cat_vars, model$num_vars)
+  if (length(expected) == 0) return(invisible(TRUE))
+
+  for (i in seq_along(rasterList)) {
+    missingVars <- setdiff(expected, names(rasterList[[i]]))
+    if (length(missingVars) > 0) {
+      label <- if (!is.null(timesteps)) timesteps[i] else i
+      stop(
+        "Predicting raster for timestep ", label, " is missing predictor(s) ",
+        "used to train the model: ", paste(missingVars, collapse = ", "),
+        ". Band names, covariates and pre-processing options must match ",
+        "the training scenario."
+      )
+    }
+  }
+  invisible(TRUE)
+}
+
+#' Write the Spatial Tiling Mask Raster ----
+#'
+#' @description
+#' Writes the TileID mask used by SyncroSim spatial multiprocessing, block by
+#' block, so memory holds one block of cells rather than the whole grid. Each
+#' grid cell (tile row `iy`, tile column `ix`) covers rows
+#' `rowBreaks[iy] + 1` to `rowBreaks[iy + 1]` and the matching columns.
+#'
+#' @param template SpatRaster defining the full grid (values are not used).
+#' @param tileIdGrid Integer matrix (numTilesY x numTilesX) of tile IDs, NA
+#'   for skipped tiles.
+#' @param rowBreaks,colBreaks Cumulative row/column breakpoints, starting at 0.
+#' @param filename Output GeoTIFF path.
+#'
+#' @return The written SpatRaster.
+#'
+#' @noRd
+writeTileMask <- function(template, tileIdGrid, rowBreaks, colBreaks,
+                          filename) {
+  out <- terra::rast(template, nlyrs = 1)
+  names(out) <- "TileID"
+
+  # Tile row of every raster row, and tile column of every raster column
+  tileColOfCol <- findInterval(seq_len(terra::ncol(out)) - 1, colBreaks)
+  rowPatterns <- tileIdGrid[, tileColOfCol, drop = FALSE]
+
+  blockInfo <- terra::writeStart(
+    out, filename,
+    overwrite = TRUE, datatype = "INT4S", NAflag = -9999L,
+    gdal = c("COMPRESS=LZW")
+  )
+  on.exit(try(terra::writeStop(out), silent = TRUE), add = TRUE)
+
+  for (b in seq_len(blockInfo$n)) {
+    rows <- blockInfo$row[b] + seq_len(blockInfo$nrows[b]) - 1L
+    tileRowOfRow <- findInterval(rows - 1, rowBreaks)
+    vals <- as.integer(t(rowPatterns[tileRowOfRow, , drop = FALSE]))
+    terra::writeValues(out, vals, blockInfo$row[b], blockInfo$nrows[b])
+  }
+  out <- terra::writeStop(out)
+  on.exit()
+
+  terra::rast(filename)
+}
+
+#' Crop Rasters to a Spatial Tile ----
+#'
+#' @description
+#' Used by tile jobs in 2b-predict.R: crops each predicting raster to the
+#' tile's (buffered) extent, reading only that part of the source file. The
+#' list's timestep names are kept.
+#'
+#' @param rasterList Named list of SpatRasters.
+#' @param cropExtent SpatExtent to crop to.
+#'
+#' @return Named list of cropped SpatRasters.
+#'
+#' @noRd
+cropRastersToTile <- function(rasterList, cropExtent) {
+  croppedList <- lapply(rasterList, function(r) terra::crop(r, cropExtent))
+  names(croppedList) <- names(rasterList)
+  croppedList
 }

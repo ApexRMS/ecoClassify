@@ -97,9 +97,13 @@ if (autoTiling) {
   } else {
     parallel::detectCores()
   }
+  # Pick the most square grid whose tile count equals the job count exactly
+  # (largest divisor <= sqrt(nTiles)), so no configured job sits idle.
+  # e.g. 3 jobs -> 3 x 1, 6 jobs -> 3 x 2, 9 jobs -> 3 x 3.
   nTiles <- max(nCores, 1L)
-  numTilesX <- ceiling(sqrt(nTiles))
-  numTilesY <- floor(nTiles / numTilesX)
+  divisors <- seq_len(floor(sqrt(nTiles)))
+  numTilesY <- max(divisors[nTiles %% divisors == 0])
+  numTilesX <- nTiles %/% numTilesY
   updateRunLog(paste0(
     "Auto-tiling: ", nCores, " job(s) configured -> ",
     numTilesX, " x ", numTilesY, " tile grid (",
@@ -132,9 +136,10 @@ if (autoTiling) {
 
 
 # Compute per-tile buffer for contextualization edge correction ----------------
-# Tiles are pre-cropped with an extra border of floor(window/2) pixels so the
-# focal neighbourhood step in 2-predict.r sees valid values at tile edges.
-# The buffer is stripped back to the original tile extent after contextualization.
+# Each tile job crops the predicting rasters with an extra border of
+# floor(window/2) pixels so the focal neighbourhood step in 2b-predict.R sees
+# valid values at tile edges. The buffer is stripped back to the original tile
+# extent after contextualization.
 
 buffer_px <- 0L
 if (nrow(advancedOptionsDataframe) > 0 &&
@@ -235,13 +240,16 @@ fullExt     <- as.vector(terra::ext(templateRast))  # named: xmin, xmax, ymin, y
 .crs        <- terra::crs(templateRast)
 nTotalTiles <- as.integer(numTilesX * numTilesY)
 
-# Initialise tile assignment matrix (NA = empty/skipped tile)
-tileMatrix <- matrix(NA_integer_, nrow = nRows, ncol = nCols)
+# Tile ID of each grid cell (row iy, column ix); NA = empty/skipped tile. The
+# full-size mask is written block by block from this small grid below.
+tileIdGrid <- matrix(NA_integer_, nrow = numTilesY, ncol = numTilesX)
 
 
-# Pre-crop predicting rasters per tile, skipping tiles with no valid pixels ----
+# Define tiles, skipping tiles with no valid pixels ----------------------------
+# Tile jobs crop the original predicting rasters to their own extent (see
+# 2b-predict.R), so no per-tile copies of the rasters are written here.
 
-progressBar(type = "message", message = "Pre-cropping rasters per tile")
+progressBar(type = "message", message = "Defining tiles")
 
 allRasterFiles <- predictingRasterDataframe$predictingRasterFile
 allRasterFiles <- unique(allRasterFiles[
@@ -264,6 +272,17 @@ if (length(allRasterFiles) > 0) {
     "ecoClassifyTiles"
   )
   dir.create(tilesDataDir, recursive = TRUE, showWarnings = FALSE)
+
+  # Remove per-tile raster copies written by earlier versions (or by earlier
+  # runs with more tiles); tiles are now cropped from the originals
+  oldTileDirs <- list.dirs(tilesDataDir, recursive = FALSE)
+  oldTileDirs <- oldTileDirs[grepl("^tile_\\d+$", basename(oldTileDirs))]
+  if (length(oldTileDirs) > 0) {
+    unlink(oldTileDirs, recursive = TRUE)
+    updateRunLog(sprintf(
+      "Removed %d tile folder(s) left by an earlier run.", length(oldTileDirs)
+    ), type = "info")
+  }
 
   for (iy in seq_len(numTilesY)) {
     rowStart <- tileRowBreaks[iy] + 1L
@@ -306,24 +325,7 @@ if (length(allRasterFiles) > 0) {
       }
 
       # Assign this grid cell the next contiguous job ID
-      tileMatrix[rowStart:rowEnd, colStart:colEnd] <- newId
-
-      tileDirPath <- file.path(tilesDataDir, paste0("tile_", newId))
-      dir.create(tileDirPath, recursive = TRUE, showWarnings = FALSE)
-
-      rasterMap <- list()
-      for (j in seq_along(allRasterFiles)) {
-        rPath   <- allRasterFiles[j]
-        outName <- paste0("tile_", newId, "_r", j, "_", basename(rPath))
-        outPath <- file.path(tileDirPath, outName)
-        terra::writeRaster(
-          terra::crop(terra::rast(rPath), cropExt),
-          filename  = outPath,
-          overwrite = TRUE,
-          gdal      = c("COMPRESS=LZW")
-        )
-        rasterMap[[rPath]] <- outPath
-      }
+      tileIdGrid[iy, ix] <- newId
 
       manifestTiles[[newId]] <- list(
         tile_id     = newId,
@@ -333,20 +335,18 @@ if (length(allRasterFiles) > 0) {
           ymin = tileYmin,
           ymax = tileYmax
         ),
-        raster_map  = rasterMap
+        # Extent the tile job crops the predicting rasters to (tile extent
+        # plus the contextualization buffer)
+        crop_extent = as.list(as.vector(cropExt)[c("xmin", "xmax",
+                                                   "ymin", "ymax")])
       )
-
-      updateRunLog(sprintf(
-        "Tile %d: pre-cropped %d predicting raster(s).",
-        newId, length(allRasterFiles)
-      ))
 
       newId <- newId + 1L
     }
   }
 } else {
   updateRunLog(
-    "No valid predicting rasters found; skipping per-tile pre-cropping.",
+    "No valid predicting rasters found; no tiles were defined.",
     type = "warning"
   )
 }
@@ -375,8 +375,6 @@ tileRast <- terra::rast(
   ymax  = fullExt["ymax"],
   crs   = .crs
 )
-terra::values(tileRast) <- as.integer(t(tileMatrix))
-rm(tileMatrix)
 names(tileRast) <- "TileID"
 
 updateRunLog(paste0(
@@ -390,24 +388,23 @@ gridFilename <- paste0(
 )
 gridPath <- file.path(transferDir, gridFilename)
 
-terra::writeRaster(
+writeTileMask(
   tileRast,
-  filename  = gridPath,
-  datatype  = "INT4S",
-  NAflag    = -9999L,
-  gdal      = c("COMPRESS=LZW"),
-  overwrite = TRUE
+  tileIdGrid,
+  tileRowBreaks,
+  tileColBreaks,
+  filename = gridPath
 )
 
 updateRunLog(paste0("Tile grid raster saved to: ", gridPath))
-rm(tileRast)
+rm(tileRast, tileIdGrid)
 
 
 # Write tile manifest ----------------------------------------------------------
 
 if (!is.null(tilesDataDir) && length(manifestTiles) > 0) {
   manifestData <- list(
-    version    = "1.0",
+    version    = "2.0",
     tile_count = as.integer(nValidTiles),
     buffer_px  = buffer_px,
     full_extent = list(
@@ -423,7 +420,10 @@ if (!is.null(tilesDataDir) && length(manifestTiles) > 0) {
   )
 
   manifestPath <- file.path(tilesDataDir, "tile_manifest.json")
-  jsonlite::write_json(manifestData, manifestPath, auto_unbox = TRUE, pretty = TRUE)
+  # digits = NA keeps full precision; jsonlite's default of 4 decimals would
+  # round extents in degrees (lat/long rasters) by up to half a 30 m pixel
+  jsonlite::write_json(manifestData, manifestPath, auto_unbox = TRUE,
+                       pretty = TRUE, digits = NA)
   updateRunLog(paste0("Tile manifest saved to: ", manifestPath))
   rm(manifestData)
 }
@@ -439,14 +439,27 @@ saveDatasheet(
 
 updateRunLog("core_SpatialMultiprocessing datasheet updated.")
 
+# Never raise MaximumJobs above the user's configured value: when there are
+# more tiles than jobs, the tiles run in batches (see the message above).
+userMaxJobs <- if (
+  nrow(multiprocessingSheet) > 0 &&
+  !is.null(multiprocessingSheet$MaximumJobs) &&
+  !is.na(multiprocessingSheet$MaximumJobs[1]) &&
+  multiprocessingSheet$MaximumJobs[1] > 0L
+) as.integer(multiprocessingSheet$MaximumJobs[1]) else nValidTiles
+nJobs <- min(nValidTiles, userMaxJobs)
+
 saveDatasheet(
   myScenario,
-  data = data.frame(EnableMultiprocessing = TRUE, MaximumJobs = nValidTiles,
+  data = data.frame(EnableMultiprocessing = TRUE, MaximumJobs = nJobs,
                     stringsAsFactors = FALSE),
   name = "core_Multiprocessing"
 )
 
-updateRunLog(paste0("core_Multiprocessing set to ", nValidTiles, " job(s) to match tile count."))
+updateRunLog(paste0(
+  "core_Multiprocessing set to ", nJobs, " job(s) for ", nValidTiles,
+  " tile(s)."
+))
 
 terra::tmpFiles(remove = TRUE)
 

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<update comment="Update ecoClassify to version 2.5">
+
+  <!-- Add optional Timesteps column for per-timestep covariates -->
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_InputTrainingCovariates">
+    <item>ALTER TABLE ecoClassify_InputTrainingCovariates ADD COLUMN Timesteps INTEGER</item>
+  </action>
+
+  <action code="Exec" condition="TableExists" criteria="ecoClassify_InputPredictingCovariates">
+    <item>ALTER TABLE ecoClassify_InputPredictingCovariates ADD COLUMN Timesteps INTEGER</item>
+  </action>
+
+</update>

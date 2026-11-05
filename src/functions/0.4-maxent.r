@@ -57,8 +57,9 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
   absenceTrainData <- allTrainData[allTrainData$presence == 0, predictorVars]
   presenceTrainData <- allTrainData[allTrainData$presence == 1, predictorVars]
 
-  # limit java memory usage
-  nCores <- min(2, parallel::detectCores() - 1)
+  # Respect the user's core setting, but cap at 2 to limit Java memory usage
+  # (each parallel worker starts its own JVM with the -Xmx heap)
+  nCores <- min(2L, as.integer(nCores))
 
   max1 <- tryCatch(
     {

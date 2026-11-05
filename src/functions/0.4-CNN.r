@@ -51,8 +51,15 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
       stop(sprintf("Categorical variable '%s' is not a factor in training data.", v))
     }
   }
+  # Map NA to the "unknown" bucket at length(levels) + 1, matching the index
+  # used for unseen/NA levels at prediction time (see predictCNN and
+  # predictCnnDataframe). Embedding tables are sized length(levels) + 2.
   cat_indices <- if (length(cat_vars)) {
-    lapply(predictors[cat_vars], function(x) as.integer(x))
+    lapply(predictors[cat_vars], function(x) {
+      v <- as.integer(x)
+      v[is.na(v)] <- length(levels(x)) + 1L
+      v
+    })
   } else {
     list()
   }
@@ -85,11 +92,8 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
       if (length(X_cat)) {
         # store each categorical column as a 1-D [n] long tensor
         self$X_cat <- lapply(seq_along(X_cat), function(i) {
+          # NA already mapped to the "unknown" bucket when building cat_indices
           v <- as.integer(X_cat[[i]])
-          # map NA to "unknown" bucket at end; tolerate all-NA by treating base levels as 0
-          nlev <- suppressWarnings(max(v, na.rm = TRUE))
-          if (!is.finite(nlev)) nlev <- 0L
-          v[is.na(v)] <- nlev + 1L
           torch_tensor(unname(v), dtype = torch_long())$view(c(self$n))
         })
       } else {
@@ -279,7 +283,9 @@ predictCNN <- function(model, newdata, isRaster = TRUE, filename = "", memfrac =
         var <- cat_vars[i]
         levels_train <- cat_levels[[i]]
         x <- df[[var]]
-        if (!is.factor(x)) x <- factor(x, levels = levels_train)
+        # Always re-level to the training order: a factor from terra carries its
+        # own level order, so as.integer() would otherwise use the wrong codes.
+        x <- factor(as.character(x), levels = levels_train)
 
         unseen <- sum(is.na(x))
         if (unseen > 0) {
@@ -345,7 +351,9 @@ predictCNN <- function(model, newdata, isRaster = TRUE, filename = "", memfrac =
         var <- cat_vars[i]
         levels_train <- cat_levels[[i]]
         x <- data[[var]]
-        if (!is.factor(x)) x <- factor(x, levels = levels_train)
+        # Always re-level to the training order: a factor from terra carries its
+        # own level order, so as.integer() would otherwise use the wrong codes.
+        x <- factor(as.character(x), levels = levels_train)
 
         idx <- as.integer(x)
         idx[is.na(idx)] <- length(levels_train) + 1
@@ -538,7 +546,8 @@ loadCNNModel <- function(weights_path, metadata_path) {
     num_vars = metadata$num_vars,
     cat_level_lengths = metadata$cat_level_lengths,
     cat_levels = metadata$cat_levels,
-    embedding_dims = metadata$embedding_dims
+    embedding_dims = metadata$embedding_dims,
+    preprocessing = metadata$preprocessing
   )
 
   return(result)
@@ -591,8 +600,7 @@ predictCnnDataframe <- function(model, newdata, return = c("class", "prob")) {
       var <- cat_vars[i]
       levels_train <- cat_levels[[i]]
       x <- newdata[[var]]
-      if (!is.factor(x)) x <- factor(x, levels = levels_train)
-      else x <- factor(x, levels = levels_train)
+      x <- factor(as.character(x), levels = levels_train)
 
       unseen <- sum(is.na(x))
       if (unseen > 0) {

@@ -206,14 +206,26 @@ if (
   })
 }
 
-# Normalize training rasters, if selected
+# Normalize training rasters, if selected. The per-band min/max are pooled
+# across all training rasters and saved with the model, so prediction rescales
+# on exactly the same scale.
+normalizationStats <- NULL
 if (isTRUE(normalizeRasters)) {
-  trainingRasterList <- normalizeRaster(trainingRasterList)
+  normalizationStats <- computeNormalizationStats(trainingRasterList)
+  trainingRasterList <- normalizeRaster(trainingRasterList, normalizationStats)
 }
 
-# Apply contextualization to training rasters, if selected
+# Apply contextualization to training rasters, if selected. The PCA is fitted
+# once across all training rasters and saved with the model, so PC1/PC2 mean
+# the same thing at prediction time.
+contextPcaModel <- NULL
 if (isTRUE(applyContextualization)) {
-  trainingRasterList <- contextualizeRaster(trainingRasterList)
+  contextPcaModel <- fitContextPca(trainingRasterList)
+  trainingRasterList <- contextualizeRaster(
+    trainingRasterList,
+    windowSize = contextualizationWindowSize,
+    pcaModel = contextPcaModel
+  )
 }
 
 # Reclassify ground truth rasters
@@ -240,8 +252,8 @@ flt <- skipBadTimesteps(
 ## using filtered datasets going forward
 trainingRasterList <- flt$trainingRasterList
 groundTruthRasterList <- flt$groundTruthRasterList
-if (!is.null(flt$kept_timesteps)) {
-  timestepList <- flt$kept_timesteps
+if (!is.null(flt$keptTimesteps)) {
+  timestepList <- flt$keptTimesteps
 }
 ## guard: if all timesteps were dropped, abort early with a clear message
 if (length(trainingRasterList) == 0) {
@@ -356,6 +368,14 @@ rastLayerHistogram <- getRastLayerHistogram(
   modelOut,
   nBins = 20,
   nSample = 10000
+)
+
+# Save the fitted pre-processing with the model so 2b-predict.R can apply the
+# same normalization and PCA (appended last so positional access to modelOut
+# elements is unaffected)
+modelOut$preprocessing <- list(
+  normalizationStats = normalizationStats,
+  contextPcaModel = contextPcaModel
 )
 
 if (modelType == "CNN") {

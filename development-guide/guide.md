@@ -13,7 +13,7 @@ This file provides guidance on the development of this package.
 - **SyncroSim Package Structure**: This is a SyncroSim package defined by `src/package.xml` which specifies datasheets, transformers, and UI layouts
 - **Transformer Scripts**: Main execution scripts in `src/` that process datasheets and run ML workflows:
   - `1-train-classifier.R`: Training pipeline orchestrator
-  - `2-predict.r`: Prediction pipeline
+  - `2b-predict.R`: Prediction pipeline
   - `3-postprocess.R`: Post-processing and output generation
 - **Function Library**: Modular functions in `src/functions/` organized by workflow stage:
   - `0.0-setup.r`: Core setup and initialization

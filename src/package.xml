@@ -190,8 +190,8 @@
         <column name="Weights" dataType="String" isExternalFile="True"/>
     </dataSheet>
 
-    <!--Transformer 0: prepare spatial tiling-->
-    <transformer name="PrepareSpatialTiling" displayName="2a-Prepare Spatial Tiling"
+    <!--Transformer 2a: prepare spatial tiling (optional, runs before Predict)-->
+    <transformer name="PrepareSpatialTiling" displayName="2a-Prepare Spatial Tiling (Optional)"
         programName="Rscript" programArguments="2a-prepare-spatial-tiling.R"
         condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.5"
         isMultiprocessing="False">
@@ -212,6 +212,7 @@
         <dataSheet name="ConfusionMatrix" type="Output"/>
         <dataSheet name="ModelStatistics" type="Output"/>
         <dataSheet name="VariableImportanceOutput" type="Output"/>
+        <dataSheet name="VariableImportanceOutputDataframe" type="Output"/>
         <dataSheet name="ConfusionMatrixPlotOutput" type="Output"/>
         <dataSheet name="LayerHistogramPlotOutput" type="Output"/>
         <dataSheet name="RgbOutput" type="Output"/>
@@ -221,8 +222,8 @@
         <dataSheet name="ModelMetricsByClass" type="Output"/>
     </transformer>
 
-    <!--Transformer 2: predicting-->
-    <transformer name="Predict" displayName="2-Predict" programName="Rscript" programArguments="2-predict.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.5">
+    <!--Transformer 2b: predicting-->
+    <transformer name="Predict" displayName="2b-Predict" programName="Rscript" programArguments="2b-predict.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.5">
         <dataSheet name="InputPredictingRasters" type="Input"/>
         <dataSheet name="InputPredictingCovariates" type="Input"/>
         <dataSheet name="ClassifierOptions" type="Input"/>
@@ -234,6 +235,14 @@
         <dataSheet name="ClassifiedRasterOutput" type="Output" spatialMultiProcessing="True"/>
         <dataSheet name="ClassifiedRgbOutput" type="Output"/>
         <dataSheet name="SummaryOutput" type="Output"/>
+        <dataSheet name="SummaryOutputChart" type="Output"/>
+    </transformer>
+
+    <!--Transformer 2c: summarize tiled predictions (optional, runs once after tiles merge)-->
+    <transformer name="SummarizeTiles" displayName="2c-Summarize Tiles (Optional)" programName="Rscript" programArguments="2c-summarize-tiles.R" condaEnv="ecoClassify-conda.yml" condaEnvVersion="1.5" isMultiprocessing="False">
+        <dataSheet name="ClassifiedRasterOutput" type="Input"/>
+        <dataSheet name="TargetClassOptions" type="Input"/>
+        <dataSheet name="SummaryOutput" type="Both"/>
         <dataSheet name="SummaryOutputChart" type="Output"/>
     </transformer>
 
