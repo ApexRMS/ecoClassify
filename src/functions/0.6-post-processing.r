@@ -48,7 +48,23 @@ calculateStatistics <- function(
   } else if (inherits(model[[1]], "torchCNN")) {
     probs <- predictCNN(model, testData, isRaster = FALSE)
   } else {
-    probs <- predict(model[[1]], testData, type = "logistic")
+    probs <- predictMaxentProbability(model, testData)
+  }
+
+  # Drop rows the model could not predict (MaxEnt gives NA for categories
+  # not seen in training), as getOptimalThreshold() does
+  predictable <- !is.na(probs)
+  if (!all(predictable)) {
+    updateRunLog(
+      paste0(
+        sum(!predictable), " test sample(s) could not be predicted (e.g. ",
+        "categories not seen in training) and were left out of the ",
+        "model statistics."
+      ),
+      type = "warning"
+    )
+    probs <- probs[predictable]
+    testData <- testData[predictable, , drop = FALSE]
   }
 
   # Binary classification based on threshold

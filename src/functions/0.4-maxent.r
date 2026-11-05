@@ -54,8 +54,29 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
     tuneArgs <- list(fc = c("LQH"), rm = 1)
   }
 
-  absenceTrainData <- allTrainData[allTrainData$presence == 0, predictorVars]
-  presenceTrainData <- allTrainData[allTrainData$presence == 1, predictorVars]
+  # Without rasters, ENMevaluate() reads the first two columns of occs/bg as
+  # longitude/latitude and fits on the remaining columns only. Prepend
+  # placeholder coordinates so every predictor is used. They are unique per
+  # row and are not used by the "randomkfold" partitioning.
+  addPlaceholderCoordinates <- function(df, offset) {
+    cbind(
+      data.frame(
+        ecoClassifyX = offset + seq_len(nrow(df)),
+        ecoClassifyY = 0
+      ),
+      df
+    )
+  }
+  absenceTrainData <- allTrainData[
+    allTrainData$presence == 0, predictorVars, drop = FALSE
+  ]
+  presenceTrainData <- allTrainData[
+    allTrainData$presence == 1, predictorVars, drop = FALSE
+  ]
+  presenceTrainData <- addPlaceholderCoordinates(presenceTrainData, 0)
+  absenceTrainData <- addPlaceholderCoordinates(
+    absenceTrainData, nrow(presenceTrainData)
+  )
 
   # Respect the user's core setting, but cap at 2 to limit Java memory usage
   # (each parallel worker starts its own JVM with the -Xmx heap)
@@ -126,53 +147,77 @@ getMaxentModel <- function(allTrainData, nCores, isTuningOn) {
   )
   maxentImportance <- getMaxentImportance(varImp)
 
-  # --- factor/level metadata like RF ---
+  # Levels of each categorical predictor, in the order ENMevaluate() used to
+  # code them (see encodeMaxentCategoricals()); NULL for numeric predictors
   cat_levels <- lapply(
     allTrainData[, predictorVars, drop = FALSE],
     function(x) if (is.factor(x)) levels(x) else NULL
   )
 
-  # --- wrapper: consistent 2-col prob output ---
-  predictMaxentDataframe <- function(mxModel, newdata) {
-    # align factor levels for any categorical predictors seen at train-time
-    if (length(cat_levels)) {
-      for (v in names(cat_levels)) {
-        if (v %in% names(newdata)) {
-          lv <- cat_levels[[v]]
-          if (!is.null(lv)) {
-            # coerce to character first to avoid level drop warnings
-            f <- factor(as.character(newdata[[v]]), levels = lv)
-            # unseen → NA (MaxEnt ignores; alternative is to set first level)
-            newdata[[v]] <- f
-          }
-        }
-      }
-    }
-
-    # ENMeval/MaxEnt logistic output is a numeric vector of P(presence)
-    p1 <- tryCatch(
-      as.numeric(dismo::predict(mxModel, newdata, type = "logistic")),
-      error = function(e) {
-        # some MaxEnt builds require 'dismo::predict' signature
-        as.numeric(dismo::predict(mxModel, newdata, args = "logistic"))
-      }
-    )
-
-    p1[!is.finite(p1)] <- NA_real_
-    cbind(absence = 1 - p1, presence = p1)
-  }
-
   model <- max1@models[[bestMax]]
 
+  # No prediction closure is stored: it would carry this function's whole
+  # environment (all training data and every candidate model) into model.rds.
+  # Use predictMaxentProbability() instead.
   return(list(
     model       = model,
     vimp        = maxentImportance,
     cat_vars    = cat_vars,
     num_vars    = num_vars,
-    cat_levels  = cat_levels,
-    predict_df  = predictMaxentDataframe
+    cat_levels  = cat_levels
   ))
 
+}
+
+#' Encode Categorical Predictors as MaxEnt Was Trained ----
+#'
+#' @description
+#' For maxent.jar, `ENMevaluate()` replaces each categorical predictor with
+#' its level position (1, 2, 3, ...) in the training factor, while
+#' `dismo::predict()` converts factors using their labels (e.g. land-cover
+#' classes 11, 21, 41). This converts each categorical column to the training
+#' positions, so predictions see the same values the model was trained on.
+#' Categories not seen in training become NA (no prediction for that row).
+#'
+#' @param data Data frame of predictors.
+#' @param catLevels Named list of training levels (NULL for numeric
+#'   predictors), as saved in the model's `cat_levels`.
+#'
+#' @return `data` with categorical columns encoded as factors of positions.
+#'
+#' @noRd
+encodeMaxentCategoricals <- function(data, catLevels) {
+  catLevels <- Filter(Negate(is.null), catLevels)
+  for (v in intersect(names(catLevels), names(data))) {
+    trainLevels <- catLevels[[v]]
+    positions <- match(as.character(data[[v]]), trainLevels)
+    data[[v]] <- factor(positions, levels = seq_along(trainLevels))
+  }
+  data
+}
+
+#' Predict MaxEnt Presence Probability for a Data Frame ----
+#'
+#' @param model A MaxEnt model list from `getMaxentModel()` (or a saved
+#'   model.rds), with `$model` and `$cat_levels`.
+#' @param newdata Data frame of predictors.
+#'
+#' @return Numeric vector of P(presence); NA where a row cannot be predicted.
+#'
+#' @noRd
+predictMaxentProbability <- function(model, newdata) {
+  newdata <- as.data.frame(newdata, stringsAsFactors = FALSE)
+  newdata <- encodeMaxentCategoricals(newdata, model$cat_levels)
+
+  p1 <- tryCatch(
+    as.numeric(dismo::predict(model$model, newdata, type = "logistic")),
+    error = function(e) {
+      # some MaxEnt builds require the 'args' signature
+      as.numeric(dismo::predict(model$model, newdata, args = "logistic"))
+    }
+  )
+  p1[!is.finite(p1)] <- NA_real_
+  p1
 }
 
 #' Predict presence probability using a Maxent model ----
@@ -205,38 +250,10 @@ predictMaxent <- function(raster, model, filename = "", memfrac = 0.5) {
     )
   }
 
-  # prediction function for terra::predict
+  # prediction function for terra::predict; categorical predictors are
+  # encoded as at training time (unseen categories become NA)
   predictFn <- function(m, data, ...) {
-    # Handle categorical variables if present
-    cat_vars_present <- intersect(names(m$cat_levels), names(data))
-
-    if (length(cat_vars_present) > 0) {
-      # Work on a local copy
-      data <- as.data.frame(data, stringsAsFactors = FALSE)
-
-      for (var in cat_vars_present) {
-        var_levels <- m$cat_levels[[var]]
-        if (!is.null(var_levels)) {
-          # Convert to factor, coercing unseen levels to NA
-          f <- factor(as.character(data[[var]]), levels = var_levels)
-          data[[var]] <- f
-        }
-      }
-    }
-
-    # MaxEnt logistic prediction
-    p1 <- tryCatch(
-      as.numeric(dismo::predict(m$model, data, type = "logistic")),
-      error = function(e) {
-        # some MaxEnt builds require 'dismo::predict' signature
-        as.numeric(dismo::predict(m$model, data, args = "logistic"))
-      }
-    )
-
-    # Clean invalid values
-    p1[!is.finite(p1)] <- NA_real_
-
-    return(as.numeric(p1))
+    predictMaxentProbability(m, data)
   }
 
   # terra::predict handles chunking; memfrac controls block size.

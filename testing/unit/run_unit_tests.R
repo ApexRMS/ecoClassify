@@ -31,6 +31,7 @@ for (expr in parse("src/functions/0.0-setup.r")) {
 source("src/functions/0.1-pre-processing.r")
 source("src/functions/0.2-training-and-prediction.r")
 source("src/functions/0.3-contextualization.r")
+source("src/functions/0.4-maxent.r")
 source("src/functions/0.5-histogram.r")
 source("src/functions/0.6-post-processing.r")
 
@@ -444,6 +445,57 @@ test_results$tiling <- test_that("tile mask and tile crops are unchanged", {
   expect_true(terra::compareGeom(cropped[[1]], terra::rast(oldCopy)))
   expect_equal(values(cropped[[1]]), values(terra::rast(oldCopy)),
                ignore_attr = TRUE)
+})
+
+test_results$maxentEncoding <- test_that("MaxEnt categoricals use training codes", {
+  catLevels <- list(band_1 = NULL, lc = c("11", "21", "41", "90"))
+  data <- data.frame(
+    band_1 = c(0.1, 0.2, 0.3, 0.4),
+    lc = factor(c("41", "11", "55", "21"))  # different level order; 55 unseen
+  )
+  encoded <- encodeMaxentCategoricals(data, catLevels)
+  expect_equal(as.integer(as.character(encoded$lc)), c(3L, 1L, NA, 2L))
+  expect_equal(levels(encoded$lc), as.character(1:4))
+  expect_equal(encoded$band_1, data$band_1)
+
+  # Numeric raster values (no factor) are matched on their labels too
+  numericLc <- encodeMaxentCategoricals(data.frame(lc = c(21, 90)), catLevels)
+  expect_equal(as.integer(as.character(numericLc$lc)), c(2L, 4L))
+})
+
+test_results$maxentModel <- test_that("MaxEnt uses every predictor", {
+  maxentReady <- requireNamespace("ENMeval", quietly = TRUE) &&
+    requireNamespace("dismo", quietly = TRUE) &&
+    isTRUE(tryCatch(dismo::maxent(silent = TRUE), error = function(e) FALSE))
+  skip_if_not(maxentReady, "maxent.jar / ENMeval not available")
+
+  MAXENT_AVAILABLE <<- TRUE
+  on.exit(MAXENT_AVAILABLE <<- FALSE, add = TRUE)
+  set.seed(3)
+  n <- 1000
+  lc <- factor(sample(c("11", "21", "41"), n, TRUE),
+               levels = c("11", "21", "41", "90"))
+  trainData <- data.frame(band_1 = runif(n), band_2 = runif(n),
+                          band_3 = runif(n), band_4 = runif(n), lc = lc)
+  trainData$presence <- rbinom(
+    n, 1, plogis(-3 + 5 * trainData$band_1 + 2 * (lc == "41"))
+  )
+  model <- suppressWarnings(suppressMessages(
+    getMaxentModel(trainData, nCores = 1, isTuningOn = FALSE)
+  ))
+
+  # band_1 and band_2 used to be read as coordinates and dropped
+  expect_setequal(colnames(model$model@presence),
+                  c("band_1", "band_2", "band_3", "band_4", "lc"))
+  expect_null(model$predict_df)
+
+  newData <- data.frame(band_1 = c(0.05, 0.95, 0.5, 0.5, 0.5),
+                        band_2 = 0.5, band_3 = 0.5, band_4 = 0.5,
+                        lc = c("41", "41", "11", "41", "55"))
+  probs <- predictMaxentProbability(model, newData)
+  expect_gt(probs[2], probs[1])        # band_1 has an effect
+  expect_gt(probs[4], probs[3])        # class 41 above class 11
+  expect_true(is.na(probs[5]))         # unseen category
 })
 
 # Test 4: Validation Logic

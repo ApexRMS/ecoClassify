@@ -238,7 +238,8 @@ predictResponseHistogram <- function(rastLayerHistogram, model, modelType) {
       } else if (modelType == "Random Forest") {
         predict(model$model, predictLayerTemp, type = "response")$predictions
       } else if (modelType == "MaxEnt") {
-        model$predict_df(model$model, predictLayerTemp)
+        presenceProb <- predictMaxentProbability(model, predictLayerTemp)
+        cbind(absence = 1 - presenceProb, presence = presenceProb)
       } else {
         stop("Model type not recognized.")
       }

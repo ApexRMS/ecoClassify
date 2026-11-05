@@ -836,7 +836,7 @@ getOptimalThreshold <- function(
     }
   } else if (modelType == "MaxEnt") {
     testingObservations <- as.numeric(testingData$presence)
-    testingPredictions <- predict(model$model, testingData, type = "logistic")
+    testingPredictions <- predictMaxentProbability(model, testingData)
   } else if (modelType == "CNN") {
     testingObservations <- as.numeric(testingData$presence)
     testingPredictions <- predictCNN(model, testingData, isRaster = FALSE)
