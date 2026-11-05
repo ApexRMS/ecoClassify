@@ -30,6 +30,9 @@ myProject <- project(myScenario)
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
+# Send temporary files to a folder that is removed when the run ends
+runTempDir <- createRunTempDir(transferDir)
+
 # --- Tile job detection -------------------------------------------------------
 # SyncroSim names each spatial MP job library "Job-N.ssim". Detect that here
 # and load the tile manifest written by the prep transformer.
@@ -349,8 +352,8 @@ if (!is.null(tileJobId) && !is.null(tileExtent) && !is.null(predictingCovariateL
 }
 
 # Add covariate data to predicting rasters.
-# Pass transferDir so combined files are written there rather than R's tempdir().
-predictRasterList <- addCovariates(predictRasterList, predictingCovariateList, transferDir)
+# Combined files go to the run's temporary folder rather than R's tempdir().
+predictRasterList <- addCovariates(predictRasterList, predictingCovariateList, runTempDir)
 
 # Fail early, with a clear message, if a predictor the model needs is missing
 checkPredictorNames(predictRasterList, model, timesteps = timestepList)
@@ -529,4 +532,4 @@ if (length(summaryRows) > 0) {
   saveDatasheet(myScenario, data = summaryDf, name = "ecoClassify_SummaryOutputChart")
 }
 
-terra::tmpFiles(remove = TRUE)
+removeRunTempDir()

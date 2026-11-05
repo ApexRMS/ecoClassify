@@ -29,6 +29,9 @@ myScenario <- scenario()
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
+# Send temporary files to a folder that is removed when the run ends
+runTempDir <- createRunTempDir(transferDir)
+
 
 # Load input datasheets --------------------------------------------------------
 
@@ -461,6 +464,6 @@ updateRunLog(paste0(
   " tile(s)."
 ))
 
-terra::tmpFiles(remove = TRUE)
+removeRunTempDir()
 
 progressBar(type = "message", message = "Spatial tiling preparation complete")

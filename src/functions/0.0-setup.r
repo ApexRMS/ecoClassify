@@ -123,3 +123,85 @@ setCores <- function(mulitprocessingSheet) {
   }
   return(nCores)
 }
+
+#' Create the Run's Temporary Folder ----
+#'
+#' @description
+#' Creates a temporary folder for this transformer run inside the SyncroSim
+#' transfer directory and sends every temporary file there:
+#' * terra's own temporary rasters (`terraOptions(tempdir = )`)
+#' * files named with `runTempFile()`
+#' * the session temp folders of child R processes (doParallel/PSOCK workers,
+#'   e.g. ENMeval's MaxEnt fits), which read `TMPDIR` when they start. Workers
+#'   that are stopped abruptly otherwise leave `Rtmp*` folders in the system
+#'   temp folder.
+#'
+#' The folder is removed by `removeRunTempDir()` at the end of the script and,
+#' through an exit finalizer, when R exits after an error or `quit()`.
+#' The process ID in the name keeps concurrent jobs from sharing a folder.
+#'
+#' @param transferDir The SyncroSim transfer directory.
+#'
+#' @return The path of the temporary folder (invisibly).
+#'
+#' @noRd
+createRunTempDir <- function(transferDir) {
+  runTempDir <- file.path(
+    transferDir,
+    paste0("ecoClassifyTemp-", Sys.getpid())
+  )
+  dir.create(runTempDir, recursive = TRUE, showWarnings = FALSE)
+  runTempDir <- normalizePath(runTempDir, winslash = "/", mustWork = TRUE)
+
+  terra::terraOptions(tempdir = runTempDir)
+  options(ecoClassify.runTempDir = runTempDir)
+  Sys.setenv(TMPDIR = runTempDir)
+
+  # Exit finalizers run on normal exit, quit() and after an error in Rscript
+  guard <- new.env()
+  reg.finalizer(guard, function(e) removeRunTempDir(runTempDir), onexit = TRUE)
+  assign(".ecoClassifyRunTempGuard", guard, envir = globalenv())
+
+  invisible(runTempDir)
+}
+
+#' Temporary File Path in the Run's Temporary Folder ----
+#'
+#' @description
+#' Like `tempfile()`, but inside the folder from `createRunTempDir()` so the
+#' file is removed with it. Falls back to R's `tempdir()` when no run folder
+#' was created (e.g. in unit tests).
+#'
+#' @noRd
+runTempFile <- function(fileext = ".tif") {
+  runTempDir <- getOption("ecoClassify.runTempDir")
+  if (is.null(runTempDir) || !dir.exists(runTempDir)) {
+    runTempDir <- tempdir()
+  }
+  tempfile(tmpdir = runTempDir, fileext = fileext)
+}
+
+#' Remove the Run's Temporary Folder ----
+#'
+#' @description
+#' Deletes terra's temporary files and the folder from `createRunTempDir()`.
+#' Safe to call more than once. Nothing saved to a datasheet is written
+#' there, so removing it never affects outputs.
+#'
+#' @param runTempDir Folder to remove; defaults to the current run's folder.
+#'
+#' @return TRUE if the folder no longer exists (invisibly).
+#'
+#' @noRd
+removeRunTempDir <- function(
+  runTempDir = getOption("ecoClassify.runTempDir")
+) {
+  try(terra::tmpFiles(remove = TRUE), silent = TRUE)
+  if (is.null(runTempDir) || !dir.exists(runTempDir)) {
+    return(invisible(TRUE))
+  }
+  # Release terra file handles so Windows allows the files to be deleted
+  gc()
+  unlink(runTempDir, recursive = TRUE, force = TRUE)
+  invisible(!dir.exists(runTempDir))
+}

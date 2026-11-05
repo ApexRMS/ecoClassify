@@ -30,6 +30,9 @@ progressBar(type = "message", message = "Summarizing tiled predictions")
 
 myScenario <- scenario()
 
+# Send temporary files to a folder that is removed when the run ends
+runTempDir <- createRunTempDir(ssimEnvironment()$TransferDirectory)
+
 # Skip if 2b-Predict already summarized (non-tiled run) ------------------------
 
 existingSummary <- datasheet(myScenario, name = "ecoClassify_SummaryOutput")
@@ -157,6 +160,6 @@ if (length(summaryRows) > 0) {
   )
 }
 
-terra::tmpFiles(remove = TRUE)
+removeRunTempDir()
 
 progressBar(type = "message", message = "Summarize tiles complete")

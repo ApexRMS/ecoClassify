@@ -423,7 +423,7 @@ processCovariates <- function(trainingCovariateDataframe, modelType) {
     } else {
       stop("Data type not recognized")
     }
-    tmpFile <- tempfile(fileext = ".tif")
+    tmpFile <- runTempFile(".tif")
     terra::writeRaster(covariateRaster, tmpFile, overwrite = TRUE)
     terra::rast(tmpFile)
   }
@@ -469,10 +469,11 @@ processCovariates <- function(trainingCovariateDataframe, modelType) {
 #' A warning is logged if neither a timestep-specific nor a global covariate is
 #' found for a particular timestep.
 #'
-#' outDir should be the SyncroSim transferDir rather than R's tempdir() so that
-#' the combined files survive for the full transformer run. On Windows, doParallel
-#' PSOCK workers can scan and remove orphaned Rtmp* directories from tempdir(),
-#' which would delete these files and trigger [readValues] errors.
+#' outDir should be the run's temporary folder (`createRunTempDir()`) rather
+#' than R's tempdir() so that the combined files survive for the full
+#' transformer run. On Windows, doParallel PSOCK workers can scan and remove
+#' orphaned Rtmp* directories from tempdir(), which would delete these files
+#' and trigger [readValues] errors.
 #'
 #' @param rasterList Named list of SpatRasters (names are timestep strings).
 #' @param covariateList Named list of SpatRasters from processCovariates(), or NULL.
@@ -532,7 +533,7 @@ addCovariates <- function(rasterList, covariateList, outDir = NULL) {
     outFile <- if (!is.null(outDir)) {
       file.path(outDir, paste0("covCombined_", i, ".tif"))
     } else {
-      tempfile(fileext = ".tif")
+      runTempFile(".tif")
     }
     terra::writeRaster(combined, outFile, overwrite = TRUE)
     rasterList[[i]] <- terra::rast(outFile)

@@ -20,11 +20,14 @@ updateRunLog <- function(message, type = "info") {
   invisible(NULL)
 }
 
-# 0.0-setup.r attaches heavy packages at the top level, so only the setCores()
-# definition is evaluated from it
+# 0.0-setup.r attaches heavy packages at the top level, so only its function
+# definitions are evaluated from it
+setupFunctions <- c(
+  "setCores", "createRunTempDir", "runTempFile", "removeRunTempDir"
+)
 for (expr in parse("src/functions/0.0-setup.r")) {
   if (is.call(expr) && identical(expr[[1]], as.name("<-")) &&
-      identical(expr[[2]], as.name("setCores"))) {
+      as.character(expr[[2]]) %in% setupFunctions) {
     eval(expr)
   }
 }
@@ -93,6 +96,78 @@ test_results$setup <- test_that("setCores function works correctly", {
   )
   expect_warning(result <- setCores(mp_excessive))
   expect_equal(result, available_cores - 1)
+})
+
+test_results$runTempDir <- test_that("run temp folder is removed", {
+  transferDir <- file.path(tempdir(), "runTempTransfer")
+  dir.create(transferDir, showWarnings = FALSE)
+  oldTerraTemp <- terra::terraOptions(print = FALSE)$tempdir
+  oldTmpdir <- Sys.getenv("TMPDIR", unset = NA)
+  on.exit({
+    terra::terraOptions(tempdir = oldTerraTemp)
+    if (is.na(oldTmpdir)) Sys.unsetenv("TMPDIR") else Sys.setenv(TMPDIR = oldTmpdir)
+    options(ecoClassify.runTempDir = NULL)
+    unlink(transferDir, recursive = TRUE)
+  }, add = TRUE)
+
+  # Without a run folder, temporary files fall back to tempdir()
+  options(ecoClassify.runTempDir = NULL)
+  expect_equal(
+    normalizePath(dirname(runTempFile()), "/"), normalizePath(tempdir(), "/")
+  )
+
+  runTempDir <- createRunTempDir(transferDir)
+  expect_true(dir.exists(runTempDir))
+  expect_equal(dirname(runTempFile()), runTempDir)
+  expect_equal(
+    normalizePath(terra::terraOptions(print = FALSE)$tempdir, "/"),
+    runTempDir
+  )
+  expect_equal(Sys.getenv("TMPDIR"), runTempDir)
+
+  # terra's own temporary rasters land in the run folder
+  r <- terra::rast(nrows = 5, ncols = 5, vals = 1:25)
+  terra::writeRaster(r, runTempFile())
+  expect_length(list.files(runTempDir), 1)
+
+  expect_true(removeRunTempDir())
+  expect_false(dir.exists(runTempDir))
+  expect_true(removeRunTempDir())
+
+  # In a separate R process: worker temp folders go into the run folder, and
+  # the folder is removed when the script stops with an error
+  childTransfer <- file.path(transferDir, "child")
+  dir.create(childTransfer)
+  script <- tempfile(fileext = ".R")
+  writeLines(c(
+    "suppressPackageStartupMessages(library(terra))",
+    "for (expr in parse('src/functions/0.0-setup.r')) {",
+    "  if (is.call(expr) && identical(expr[[1]], as.name('<-')) &&",
+    "      as.character(expr[[2]]) %in%",
+    "        c('createRunTempDir', 'runTempFile', 'removeRunTempDir')) eval(expr)",
+    "}",
+    "args <- commandArgs(TRUE)",
+    "runTempDir <- createRunTempDir(args[1])",
+    "cl <- parallel::makePSOCKcluster(1)",
+    "workerTemp <- parallel::clusterEvalQ(cl, tempdir())[[1]]",
+    "parallel::stopCluster(cl)",
+    "writeLines(c(runTempDir, workerTemp), args[2])",
+    "writeLines('x', runTempFile('.txt'))",
+    "stop('simulated failure')"
+  ), script)
+  report <- tempfile(fileext = ".txt")
+  rscript <- file.path(R.home("bin"), "Rscript")
+  status <- suppressWarnings(system2(
+    rscript, c(shQuote(script), shQuote(childTransfer), shQuote(report)),
+    stdout = FALSE, stderr = FALSE
+  ))
+  expect_false(identical(status, 0L))
+  paths <- readLines(report)
+  expect_true(startsWith(
+    normalizePath(paths[2], "/", mustWork = FALSE), paths[1]
+  ))
+  expect_false(dir.exists(paths[1]))
+  expect_length(list.files(childTransfer), 0)
 })
 
 # Test 3: Preprocessing Functions  

@@ -30,6 +30,9 @@ myProject <- project(myScenario)
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
+# Send temporary files to a folder that is removed when the run ends
+runTempDir <- createRunTempDir(transferDir)
+
 # Load project-level datasheets ------------------------------------------------
 terminologyDataframe <- datasheet(myProject, name = "ecoClassify_Terminology")
 terminology <- parseTerminology(terminologyDataframe)
@@ -241,9 +244,9 @@ if (length(trainingRasterList) == 0) {
 
 
 # Add covariate data to training rasters.
-# Pass transferDir so combined files are written there rather than R's
-# tempdir(), which doParallel PSOCK workers can clean up on Windows.
-trainingRasterList <- addCovariates(trainingRasterList, trainingCovariateList, transferDir)
+# Combined files go to the run's temporary folder rather than R's tempdir(),
+# which doParallel PSOCK workers can clean up on Windows.
+trainingRasterList <- addCovariates(trainingRasterList, trainingCovariateList, runTempDir)
 
 # Check for NA values in training rasters
 # NOTE: Masking is not applied, but a message is returned if there are an uneven
@@ -661,4 +664,4 @@ if (length(metricsRows) > 0) {
   )
 }
 
-terra::tmpFiles(remove = TRUE)
+removeRunTempDir()

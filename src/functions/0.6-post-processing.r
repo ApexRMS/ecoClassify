@@ -571,7 +571,7 @@ buildMetricsRow <- function(statsDataframe, targetClassValue = NA,
 applyReclassRules <- function(baseRaster, ruleReclassDataframe, rasterLabel,
                               wopt) {
   reclassed <- writeRaster(
-    baseRaster, filename = tempfile(fileext = ".tif"),
+    baseRaster, filename = runTempFile(".tif"),
     overwrite = TRUE, wopt = wopt
   )
 
@@ -630,19 +630,19 @@ applyReclassRules <- function(baseRaster, ruleReclassDataframe, rasterLabel,
       # Categorical: apply where ruleRaster == vmin
       reclassed <- ifel(
         ruleRaster == vmin, rval, reclassed,
-        filename = tempfile(fileext = ".tif"), overwrite = TRUE
+        filename = runTempFile(".tif"), overwrite = TRUE
       )
     } else {
       # Continuous: apply where ruleRaster is within [vmin, vmax]
       classedMask <- classify(
         ruleRaster, matrix(c(vmin, vmax, rval), ncol = 3, byrow = TRUE),
         others = NA,
-        filename = tempfile(fileext = ".tif"), overwrite = TRUE,
+        filename = runTempFile(".tif"), overwrite = TRUE,
         right = FALSE, include.lowest = TRUE
       )
       reclassed <- ifel(
         !is.na(classedMask), rval, reclassed,
-        filename = tempfile(fileext = ".tif"), overwrite = TRUE
+        filename = runTempFile(".tif"), overwrite = TRUE
       )
       rm(classedMask)
     }

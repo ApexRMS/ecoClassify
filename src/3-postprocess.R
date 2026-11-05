@@ -27,13 +27,13 @@ myScenario <- scenario()
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
+# Send temporary files to a folder that is removed when the run ends
+runTempDir <- createRunTempDir(transferDir)
+
 # Set terra options to minimize memory use ----
-terra_tmp_dir <- file.path(transferDir, "terra_tmp")
-dir.create(terra_tmp_dir, showWarnings = FALSE, recursive = TRUE)
 terraOptions(
   todisk = TRUE,
-  memfrac = 0.6,
-  tempdir = terra_tmp_dir
+  memfrac = 0.6
 )
 wopt_int <- list(
   datatype = "INT2S",
@@ -246,7 +246,7 @@ for (t in predTimestepList) {
 progressBar(type = "message", message = "Reclassifying")
 
 if (nrow(ruleReclassDataframe) != 0) {
-  restrictedTmpDir <- file.path(transferDir, "restrictedTmpDir")
+  restrictedTmpDir <- file.path(runTempDir, "restricted")
   dir.create(restrictedTmpDir, showWarnings = FALSE, recursive = TRUE)
 
   trainingReclass <- reclassifyOutputs(
@@ -508,9 +508,4 @@ if (length(trainTimestepList) > 0) {
   }
 }
 
-terra::tmpFiles(remove = TRUE)
-
-# Remove intermediate files; every saved output is written to transferDir
-# itself, not to these folders
-unlink(c(terra_tmp_dir, file.path(transferDir, "restrictedTmpDir")),
-       recursive = TRUE)
+removeRunTempDir()
