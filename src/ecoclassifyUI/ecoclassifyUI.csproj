@@ -1,0 +1,49 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Custom SyncroSim Studio views for the ecoClassify package.
+    SyncroSim.Core.Forms targets .NET Framework 4.8, so this must too.
+    Build:  dotnet build src/ecoclassifyUI -c Release   (or run src/build.ps1)
+    The Release post-build step copies ecoclassifyUI.dll next to package.xml so it ships in the .ssimpkg.
+    Override the SyncroSim install location with -p:SyncroSimDir="D:\path\to\SyncroSim\".
+    Migrated from https://github.com/ApexRMS/ecoClassifyUI (commit 1d6f9dd).
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>ecoclassifyUI</RootNamespace>
+    <AssemblyName>ecoclassifyUI</AssemblyName>
+    <Version>2.0.0</Version>
+    <Company>ApexRMS</Company>
+    <Product>ecoClassify</Product>
+    <Copyright>Copyright © ApexRMS 2026</Copyright>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <SyncroSimDir Condition="'$(SyncroSimDir)' == ''">C:\Program Files\SyncroSim\</SyncroSimDir>
+    <SyncroSimDir>$([MSBuild]::EnsureTrailingSlash('$(SyncroSimDir)'))</SyncroSimDir>
+    <PackageDir>$(MSBuildProjectDirectory)\..\</PackageDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="SyncroSim.Core">
+      <HintPath>$(SyncroSimDir)SyncroSim.Core.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="SyncroSim.Core.Forms">
+      <HintPath>$(SyncroSimDir)SyncroSim.Core.Forms.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="CopyToPackage" AfterTargets="Build" Condition="'$(Configuration)' == 'Release'">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(PackageDir)" />
+    <Message Importance="high" Text="Copied $(TargetFileName) to $(PackageDir)" />
+  </Target>
+
+</Project>

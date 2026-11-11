@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 
 <package
-    name="ecoClassify" displayName="ecoClassify" version="2.4.0"
+    name="ecoClassify" displayName="ecoClassify" version="2.5.0"
     description="Image classifier using semantic image segmentation" 
     url="https://apexrms.github.io/ecoClassify/" 
     minSyncroSimVersion="3.1.0">
 
     <!--Project Level-->
-    <dataSheet name="Terminology" isSingleRow="True" dataScope="Project">
+    <dataSheet name="Terminology" isSingleRow="True" dataScope="Project" viewClassName="ecoclassifyUI.TerminologyView" viewClassAssembly="ecoclassifyUI">
         <column name="bandNames" dataType="String" displayName="Band label override file" isExternalFile="True"/>
         <column name="timestepName" dataType="String" displayName="Raster group name"/>
         <column name="redBand" dataType="String" displayName="Red band" isOptional="True"/>
@@ -41,7 +41,7 @@
         <column name="predictingCovariateType" displayName="Data Type" dataType="Integer" validationType="List" formula1="0:Categorical|1:Continuous"/>
     </dataSheet>
 
-    <dataSheet name="ClassifierOptions" displayName="Classifier Options" isSingleRow="True">
+    <dataSheet name="ClassifierOptions" displayName="Classifier Options" isSingleRow="True" viewClassName="ecoclassifyUI.ClassifierOptionsView" viewClassAssembly="ecoclassifyUI">
         <column name="nObs" dataType="Integer" displayName="Sample size"/>
         <column name="modelType" displayName="Model type" dataType="Integer" validationType="List" formula1="0:Random Forest|1:MaxEnt|2:CNN"/>
         <record columns="nObs|modelType" values="10000|0"/>
@@ -61,7 +61,7 @@
         <record columns="overrideBandnames|normalizeRasters|rasterDecimalPlaces|modelTuning|tuningObjective|setManualThreshold|manualThreshold|applyContextualization|setSeed" values="0|0|2|-1|5|0|0.5|0|0"/>
     </dataSheet>
     
-    <dataSheet name="TargetClassOptions" displayName="Target Class Options" isSingleRow="True">
+    <dataSheet name="TargetClassOptions" displayName="Target Class Options" isSingleRow="True" viewClassName="ecoclassifyUI.TargetClassOptionsView" viewClassAssembly="ecoclassifyUI">
         <column name="useTargetClass" dataType="Boolean" displayName="Use target class" isOptional="True"/>
         <column name="targetClassValue" dataType="Integer" displayName="Target class value" isOptional="True"/>
         <column name="backgroundValues" dataType="String" displayName="Background values (comma-separated)" isOptional="True"/>
@@ -70,7 +70,7 @@
         <record columns="useTargetClass" values="0"/>
     </dataSheet>
 
-    <dataSheet name="PostProcessingFilter" displayName="Filtering" isSingleRow="True">
+    <dataSheet name="PostProcessingFilter" displayName="Filtering" isSingleRow="True" viewClassName="ecoclassifyUI.PostProcessingFilterView" viewClassAssembly="ecoclassifyUI">
         <column name="applyFiltering" dataType="Boolean" displayName="Apply filtering"/>
         <column name="filterValue" dataType="Integer" displayName="Min neighbors to keep"/>
         <column name="fillValue" dataType="Integer" displayName="Min neighbors to fill"/>
@@ -84,7 +84,7 @@
         <column name="ruleReclassValue" dataType="Integer" displayName="Reclassify Value" validationType="List" formula1="0:0|1:1"/>
     </dataSheet>
 
-    <dataSheet name="TilingOptions" displayName="Tiling Options" isSingleRow="True">
+    <dataSheet name="TilingOptions" displayName="Tiling Options" isSingleRow="True" viewClassName="ecoclassifyUI.TilingOptionsView" viewClassAssembly="ecoclassifyUI">
         <column name="AutoTiling" dataType="Boolean" displayName="Auto-calculate tile count from cores" isOptional="True"/>
         <column name="NumTilesX" dataType="Integer" displayName="Number of Tiles (X axis)" isOptional="True"/>
         <column name="NumTilesY" dataType="Integer" displayName="Number of Tiles (Y axis)" isOptional="True"/>
