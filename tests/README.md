@@ -49,12 +49,24 @@ source("tests/R/testthat/helper-ecoclassify.R")
 test_file("tests/R/testthat/test-pre-processing.R")
 ```
 
+By default the integration test runs the transformers with the R configured in SyncroSim. To test
+the package's conda environment instead (what Studio users get, and what catches dependency
+problems in `src/ecoClassify-conda.yml` / `src/installDependencies.r`), set
+`ECOCLASSIFY_TEST_CONDA=true` before running it:
+
+```powershell
+$env:ECOCLASSIFY_TEST_CONDA = "true"; Rscript tests/R/testthat.R
+```
+
 ## Runtime expectations
 
 - Unit tests: about 10 seconds.
 - Integration test: a few minutes. It trains a single Random Forest with tuning off on three
   50 x 50 synthetic rasters (two training timesteps, one predicting timestep), then predicts and
   post-processes. It does not cover MaxEnt, CNN, tuning, contextualization or spatial tiling.
+- With `ECOCLASSIFY_TEST_CONDA=true`, the first run after a `condaEnvVersion` change builds the
+  conda environment and installs every R package from CRAN (including the torch backend), which
+  can take 20+ minutes. Later runs reuse the environment.
 
 ## Notes for maintainers
 

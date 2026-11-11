@@ -1,18 +1,12 @@
-name: ecoClassifyEnv-2-3-2
+name: ecoClassifyEnv-2-5-0
+# Conda provides R and Java only. All R packages (terra, sf, tidymodels, torch, ...) are installed
+# from CRAN Windows binaries by installDependencies.r on the first run: conda-forge's win-64 R
+# packages are incomplete for R >= 4.2 (no terra, rsyncrosim stops at R 4.2), and mixing conda-built
+# and CRAN-built spatial packages risks GDAL DLL conflicts.
+# CRAN only keeps Windows binaries for recent R releases; when it drops this one, bump r-base here
+# and condaEnvVersion in package.xml.
 channels:
   - conda-forge
 dependencies:
-  - r-base=4.1.*
-  - gdal
-  - geos
-  - proj
-  - libudunits2
-  - libxml2
-  - libtiff
-  - libcurl
-  - openssl
-  - r-terra
-  - r-sf
-  - r-ranger
-  - r-rsyncrosim
-  - r-gower
+  - r-base=4.4.*
+  - openjdk=21

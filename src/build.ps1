@@ -65,7 +65,8 @@ finally {
 
 if ($Install) {
     Write-Host "Installing..."
-    & $pm "--finstall=$OutFile"
+    # --force replaces an installed copy of the same version (the usual case while developing).
+    & $pm "--finstall=$OutFile" --force
     if ($LASTEXITCODE -ne 0) { throw "Package install failed" }
 }
 

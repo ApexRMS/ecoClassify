@@ -55,11 +55,16 @@ test_that("a synthetic library trains, predicts and post-processes with Random F
 
   # -- library, project and scenario
   libraryPath <- file.path(workDir, "ecoclassify-synthetic-test.ssim")
+  # Set ECOCLASSIFY_TEST_CONDA=true to run the transformers in the package's conda environment
+  # (what Studio users get) instead of the R configured in SyncroSim. The first conda run builds
+  # the environment and installs every R package, so it can take 20+ minutes.
+  useConda <- tolower(Sys.getenv("ECOCLASSIFY_TEST_CONDA", "false")) == "true"
   myLibrary <- ssimLibrary(
     name = libraryPath,
     session = session(),
     packages = "ecoClassify",
-    overwrite = TRUE
+    overwrite = TRUE,
+    useConda = useConda
   )
   myProject <- rsyncrosim::project(myLibrary, project = "Definitions")
   myScenario <- scenario(myProject, scenario = "Synthetic Random Forest")
