@@ -288,10 +288,8 @@ plotVariableImportance <- function(importanceData, transferDir) {
 #'
 #' @noRd
 filterPredictionRaster <- function(r, filterValue = NULL, fillValue = NULL) {
-  # Temporarily disable disk-backing to avoid file conflicts
-  old_todisk <- terraOptions()$todisk
-  terraOptions(todisk = FALSE)
-  
+  # terra decides whether intermediates fit in memory (it used to be forced to
+  # todisk = FALSE, holding several full-size rasters in RAM at once).
   rBin <- classify(
     r,
     matrix(c(-Inf, 0.5, 0, 0.5, Inf, 1), ncol = 3, byrow = TRUE)
@@ -324,10 +322,124 @@ filterPredictionRaster <- function(r, filterValue = NULL, fillValue = NULL) {
     rBin <- ifel(rBin == 0 & neighborSum >= fillValue, 1, rBin)
   }
 
-  # Restore original setting
-  terraOptions(todisk = old_todisk)
-  
   return(rBin)
+}
+
+#' Raster write options ----
+#'
+#' @description
+#' Both use Float32: SyncroSim only reads Int32, Float32 and Float64 rasters
+#' (Spatial.OSGeoDataTypeToSSim), and fails on Byte/Int16 when merging spatial
+#' tiles or extracting bands for maps. Values are unchanged; only lossless
+#' compression differs.
+#' `binaryWopt()`: for 0/1 rasters (presence, filtered, restricted). DEFLATE
+#' makes these about 45% smaller than terra's default.
+#' `floatWopt()`: for continuous rasters (probability, ground truth). DEFLATE
+#' with the floating-point predictor, about 30% smaller than the default.
+#' @noRd
+binaryWopt <- function() {
+  list(
+    datatype = "FLT4S",
+    gdal = c("COMPRESS=DEFLATE", "TILED=YES", "BIGTIFF=IF_SAFER")
+  )
+}
+
+floatWopt <- function() {
+  list(
+    datatype = "FLT4S",
+    gdal = c("COMPRESS=DEFLATE", "PREDICTOR=3", "TILED=YES", "BIGTIFF=IF_SAFER")
+  )
+}
+
+#' Apply rule-based restrictions to a binary prediction raster ----
+#'
+#' @description
+#' Applies every rule in order (later rules win) in a single pass and writes the
+#' result straight to `outPath`. Rules whose raster is missing, does not match
+#' the prediction grid, or has missing values are skipped with a warning.
+#'
+#' For each rule, with value range [vmin, vmax] and reclass value rval:
+#' - vmin == vmax (categorical): cells where the rule raster equals vmin become
+#'   rval.
+#' - otherwise (continuous): cells where vmin <= rule raster <= vmax become
+#'   rval.
+#' All other cells, including cells where the rule raster is NA, are unchanged.
+#' This matches the previous classify()/ifel() chain cell for cell.
+#'
+#' @param predictionPath Path to the unrestricted 0/1 prediction raster.
+#' @param rules The ecoClassify_PostProcessingRule datasheet.
+#' @param outPath Output file path.
+#' @param wopt terra write options.
+#' @return `outPath` (invisibly).
+#' @noRd
+applyRestrictionRules <- function(predictionPath, rules, outPath, wopt = binaryWopt()) {
+  base <- terra::rast(predictionPath)
+  ruleRasters <- list()
+  ruleSpecs <- list()
+
+  for (i in seq_len(nrow(rules))) {
+    rulePath <- rules$ruleRasterFile[i]
+    if (length(rulePath) == 0 || is.na(rulePath) || !file.exists(rulePath)) {
+      updateRunLog(paste0("Rule raster missing for rule index ", i, "; skipping."), type = "warning")
+      next
+    }
+    ruleRaster <- terra::rast(rulePath)
+    if (!terra::compareGeom(ruleRaster, base, stopOnError = FALSE)) {
+      updateRunLog(
+        paste0("Rule raster for rule index ", i, " does not match the prediction raster extent. Skipping this rule."),
+        type = "warning"
+      )
+      next
+    }
+
+    vmin <- rules$ruleMinValue[i]
+    vmax <- rules$ruleMaxValue[i]
+    rval <- as.numeric(rules$ruleReclassValue[i]) - 1
+    if (any(is.na(c(vmin, vmax, rval)))) {
+      updateRunLog(
+        paste0("Rule values (min/max/reclass) contain NA for rule index ", i, "; skipping."),
+        type = "warning"
+      )
+      next
+    }
+    if (vmin > vmax) {
+      tmp <- vmin; vmin <- vmax; vmax <- tmp
+      updateRunLog(paste0("Swapped vmin/vmax for rule index ", i, " to maintain [min,max]."), type = "info")
+    }
+
+    ruleRasters[[length(ruleRasters) + 1]] <- ruleRaster[[1]]
+    ruleSpecs[[length(ruleSpecs) + 1]] <- list(vmin = vmin, vmax = vmax, rval = rval)
+  }
+
+  if (length(ruleRasters) == 0) {
+    terra::writeRaster(base, outPath, overwrite = TRUE, wopt = wopt)
+    return(invisible(outPath))
+  }
+
+  applyRules <- function(...) {
+    layers <- list(...)
+    out <- layers[[1]]
+    for (k in seq_along(ruleSpecs)) {
+      r <- layers[[k + 1]]
+      s <- ruleSpecs[[k]]
+      if (isTRUE(s$vmin == s$vmax)) {
+        out[!is.na(r) & r == s$vmin] <- s$rval
+      } else {
+        out[!is.na(r) & r >= s$vmin & r <= s$vmax] <- s$rval
+      }
+    }
+    out
+  }
+
+  terra::lapp(
+    terra::rast(c(list(base[[1]]), ruleRasters)),
+    fun = applyRules,
+    usenames = FALSE,
+    filename = outPath,
+    overwrite = TRUE,
+    wopt = wopt
+  )
+  invisible(outPath)
 }
 
 #' Filter predicted presence raster and write to file ----
@@ -370,7 +482,8 @@ filterRasterDataframe <- function(
   category,
   timestep,
   transferDir,
-  fileName
+  fileName,
+  wopt = binaryWopt()
 ) {
   if (!applyFiltering) {
     return(data.frame(
@@ -398,11 +511,12 @@ filterRasterDataframe <- function(
     ".tif"
   ))
 
-  # Save raster
+  # Save raster (0/1 values; compressed Float32, see binaryWopt())
   writeRaster(
     filteredPredictedPresence,
     filename = filteredPath,
-    overwrite = TRUE
+    overwrite = TRUE,
+    wopt = wopt
   )
 
   # Build dataframe
@@ -433,20 +547,25 @@ filterRasterDataframe <- function(
 buildSummaryRow <- function(predictionRaster, probabilityRaster, timestep,
                              predictionType, targetClassValue = NA,
                              targetClassLabel = NA) {
-  predVals  <- terra::values(predictionRaster, mat = FALSE)
-  probVals  <- terra::values(probabilityRaster, mat = FALSE)
   pixelArea <- prod(terra::res(predictionRaster))
 
-  presentMask <- !is.na(predVals) & predVals == 1
-  probPresent <- probVals[presentMask]
+  # Read probabilities at the predicted-present cells only, instead of copying
+  # both full rasters into memory. Same values, in the same cell order.
+  presentCells <- terra::cells(predictionRaster[[1]], 1)[[1]]
+  probPresent <- if (length(presentCells) > 0) {
+    terra::extract(probabilityRaster[[1]], presentCells)[[1]]
+  } else {
+    numeric(0)
+  }
+  nPresent <- length(presentCells)
 
   data.frame(
     Timestep          = timestep,
     TargetClassValue  = targetClassValue,
     TargetClassLabel  = targetClassLabel,
     PredictionType    = predictionType,
-    PredictedPixels   = sum(presentMask, na.rm = TRUE),
-    PredictedArea     = sum(presentMask, na.rm = TRUE) * pixelArea,
+    PredictedPixels   = nPresent,
+    PredictedArea     = nPresent * pixelArea,
     MeanProbability   = mean(probPresent, na.rm = TRUE),
     MedianProbability = median(probPresent, na.rm = TRUE),
     MinProbability    = if (length(probPresent) > 0) min(probPresent) else NA_real_,

@@ -26,6 +26,34 @@ test_that("focal range equals focal max minus focal min", {
   )
 })
 
+test_that("contextualization on a single-band raster gives a clear error", {
+  source_ecoclassify_r("0.3-contextualization.r")
+
+  r <- make_test_stack(nlayers = 1)
+  expect_error(addRasterAdjacencyValues(r, adjacencyWindow = 3), "at least two bands")
+})
+
+test_that("a shared PCA gives identical PCs for identical pixels in different rasters", {
+  source_ecoclassify_r("0.3-contextualization.r")
+
+  set.seed(10)
+  a <- make_test_stack(nlayers = 3, nrows = 20, ncols = 20)
+  # Second raster: a next to a doubled copy of a, so its own value distribution
+  # (and hence a PCA fitted on it alone) differs from a's.
+  b <- terra::rast(lapply(1:3, function(i) terra::merge(a[[i]], terra::shift(a[[i]] * 2, dx = 200))))
+  names(b) <- names(a)
+
+  pca <- fitContextPca(list(a, b), pcaSample = 2000)
+  pcA <- addRasterAdjacencyValues(a, adjacencyWindow = 3, pcaModel = pca)[["PC1"]]
+  pcB <- addRasterAdjacencyValues(b, adjacencyWindow = 3, pcaModel = pca)[["PC1"]]
+
+  # The left half of b has exactly the pixels of a, so PC1 must match there.
+  expect_equal(
+    as.vector(terra::values(pcA)),
+    as.vector(terra::values(terra::crop(pcB, terra::ext(a))))
+  )
+})
+
 test_that("contextualizeRaster uses the contextualizationWindowSize setting for every raster", {
   source_ecoclassify_r("0.3-contextualization.r")
 

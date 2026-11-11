@@ -79,6 +79,24 @@ test_that("reclassifyGroundTruth leaves ignore values as NA", {
   expect_equal(as.vector(terra::values(out)), c(0, 1, NA, NA))
 })
 
+test_that("reclassifyGroundTruth keeps NA ground truth as NA in every mode", {
+  source_ecoclassify_r("0.1-pre-processing.r")
+
+  r <- make_test_raster(nrows = 1, ncols = 5)
+  terra::values(r) <- c(1, 2, 3, NA, 4)
+
+  withIgnore <- reclassifyGroundTruth(list(r), useTargetClass = TRUE,
+                                      targetClassValue = 2, ignoreValues = "3")[[1]]
+  expect_equal(as.vector(terra::values(withIgnore)), c(0, 1, NA, NA, 0))
+
+  withBackground <- reclassifyGroundTruth(list(r), useTargetClass = TRUE,
+                                          targetClassValue = 2, backgroundValues = "1")[[1]]
+  expect_equal(as.vector(terra::values(withBackground)), c(0, 1, NA, NA, NA))
+
+  binary <- reclassifyGroundTruth(list(r))[[1]]
+  expect_true(is.na(terra::values(binary)[4]))
+})
+
 test_that("reclassifyGroundTruth uses only background values as absence when given", {
   source_ecoclassify_r("0.1-pre-processing.r")
 

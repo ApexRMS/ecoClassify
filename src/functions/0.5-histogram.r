@@ -38,17 +38,14 @@ extract_vals_at_cells <- function(r, cells) {
 #' @return A dataframe of histogram bins and percentages.
 #'
 #' @noRd
-getValueRange <- function(rasterList, layerName, nBins = 20, nSample = 5000) {
-  mins <- vapply(
-    rasterList,
-    function(r) terra::global(r[[layerName]], "min", na.rm = TRUE)[1, 1],
-    numeric(1)
-  )
-  maxs <- vapply(
-    rasterList,
-    function(r) terra::global(r[[layerName]], "max", na.rm = TRUE)[1, 1],
-    numeric(1)
-  )
+getValueRange <- function(rasterList, layerName, nBins = 20, nSample = 5000,
+                          ranges = NULL) {
+  # `ranges`: optional list of rasterRanges() matrices (one per raster), so the
+  # min/max of every layer is computed in one pass per raster rather than two
+  # passes per layer.
+  if (is.null(ranges)) ranges <- lapply(rasterList, function(r) rasterRanges(r[[layerName]]))
+  mins <- vapply(ranges, function(rng) rng[layerName, "min"], numeric(1))
+  maxs <- vapply(ranges, function(rng) rng[layerName, "max"], numeric(1))
   rastMin <- min(mins, na.rm = TRUE)
   rastMax <- max(maxs, na.rm = TRUE)
 
@@ -131,12 +128,17 @@ getRastLayerHistogram <- function(
   numeric_layers <- intersect(model$num_vars, layerNames)
   categorical_layers <- intersect(model$cat_vars, layerNames)
 
-  # Histogram for numeric layers
+  # Histogram for numeric layers (layer ranges computed once per raster)
+  layerRanges <- if (length(numeric_layers)) {
+    lapply(rasterList, function(r) rasterRanges(r[[numeric_layers]]))
+  } else {
+    NULL
+  }
   numeric_df <- foreach(
     layerName = numeric_layers,
     .combine = rbind
   ) %do% {
-    getValueRange(rasterList, layerName, nBins, nSample)
+    getValueRange(rasterList, layerName, nBins, nSample, ranges = layerRanges)
   }
 
   # Placeholder for categorical layers

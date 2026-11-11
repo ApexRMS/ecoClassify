@@ -30,6 +30,12 @@ myProject <- project(myScenario)
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
+# Keep terra temporary files with this run (R's tempdir() can be cleaned up by
+# parallel worker processes on Windows); removed by tmpFiles() at the end.
+terraTmpDir <- file.path(transferDir, "terra_tmp")
+dir.create(terraTmpDir, showWarnings = FALSE, recursive = TRUE)
+terra::terraOptions(tempdir = terraTmpDir)
+
 # --- Tile job detection -------------------------------------------------------
 # SyncroSim names each spatial MP job library "Job-N.ssim". Detect that here
 # and load the tile manifest written by the prep transformer.
@@ -140,6 +146,12 @@ isSpatialMP <- nrow(spatialMPSheet) > 0 &&
   nzchar(spatialMPSheet$MaskFileName[1])
 nCoresForPrediction <- if (isSpatialMP) 1L else nCores
 
+# Concurrent tile jobs share the machine's memory: give each a fair share
+# instead of each assuming terra's default 60%.
+if (isSpatialMP) {
+  terra::terraOptions(memfrac = max(0.05, 0.6 / max(1L, nCores)))
+}
+
 # Assign variables -------------------------------------------------------------
 
 inputVariables <- assignVariables(
@@ -249,20 +261,48 @@ if (
     length(rasterDecimalPlaces) > 0 &&
     !is.na(rasterDecimalPlaces)
 ) {
-  roundedRasters <- lapply(predictRasterList, function(r) {
-    return(app(r, fun = function(x) round(x, rasterDecimalPlaces)))
+  # Native terra rounding (same as training); app() with an R function was
+  # evaluated cell by cell and was very slow on large rasters.
+  predictRasterList <- lapply(predictRasterList, function(r) {
+    round(r, digits = rasterDecimalPlaces)
   })
-  predictRasterList <- roundedRasters
 }
 
-# Normalize predicting rasters, if selected
+# Normalize predicting rasters, if selected. Each image is scaled by its own band
+# ranges (as in training). A spatial tile job uses the ranges of the full image
+# it was cut from, so every tile is scaled the same way as an untiled run.
 if (isTRUE(normalizeRasters)) {
-  predictRasterList <- normalizeRaster(predictRasterList)
+  normRanges <- NULL
+  if (!is.null(tileJobId)) {
+    fullRasterList <- extractRasters(originalPredictingRasterDataframe, column = 2)
+    if (isTRUE(overrideBandnames) && !is.null(bandLabelFile)) {
+      fullRasterList <- overrideBandNames(fullRasterList, bandLabelFile)
+    }
+    normRanges <- lapply(fullRasterList, function(r) {
+      if (is.numeric(rasterDecimalPlaces) && length(rasterDecimalPlaces) > 0 && !is.na(rasterDecimalPlaces)) {
+        r <- round(r, digits = rasterDecimalPlaces)
+      }
+      rasterRanges(r)
+    })
+    rm(fullRasterList)
+  }
+  predictRasterList <- normalizeRaster(predictRasterList, ranges = normRanges)
 }
 
-# Apply contextualization to prediction rasters, if selected
+# Apply contextualization to prediction rasters, if selected, using the PCA
+# fitted on the training rasters.
 if (isTRUE(applyContextualization)) {
-  predictRasterList <- contextualizeRaster(predictRasterList)
+  contextPca <- model$preprocessing$contextPca
+  if (is.null(contextPca)) {
+    updateRunLog(
+      paste0(
+        "This model was trained before ecoClassify 2.5 and has no saved contextualization PCA; ",
+        "a PCA is fitted on each predicting raster instead. Retrain the model for consistent results."
+      ),
+      type = "warning"
+    )
+  }
+  predictRasterList <- contextualizeRaster(predictRasterList, pcaModel = contextPca)
 }
 
 # Strip overlap buffer from tile rasters after contextualization.
@@ -385,9 +425,15 @@ for (t in seq_along(predictRasterList)) {
 
   # Extend tile outputs to full raster extent so SyncroSim can mosaic tiles
   if (!is.null(tileJobId) && !is.null(fullExtent)) {
-    for (.outPath in c(classifiedPresencePath, classifiedProbabilityPath)) {
-      .r_extended <- terra::extend(terra::rast(.outPath), fullExtent)
-      terra::writeRaster(.r_extended, .outPath, overwrite = TRUE, gdal = c("COMPRESS=LZW"))
+    # SPARSE_OK: the area outside this tile is all NoData, so those blocks are
+    # not written at all.
+    .extendWopt <- list(binaryWopt(), floatWopt())
+    .outPaths <- c(classifiedPresencePath, classifiedProbabilityPath)
+    for (.k in seq_along(.outPaths)) {
+      .wopt <- .extendWopt[[.k]]
+      .wopt$gdal <- c(.wopt$gdal, "SPARSE_OK=TRUE")
+      .r_extended <- terra::extend(terra::rast(.outPaths[.k]), fullExtent)
+      terra::writeRaster(.r_extended, .outPaths[.k], overwrite = TRUE, wopt = .wopt)
       rm(.r_extended)
     }
     updateRunLog(

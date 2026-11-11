@@ -30,6 +30,12 @@ myProject <- project(myScenario)
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
+# Keep terra temporary files with this run (R's tempdir() can be cleaned up by
+# parallel worker processes on Windows); removed by tmpFiles() at the end.
+terraTmpDir <- file.path(transferDir, "terra_tmp")
+dir.create(terraTmpDir, showWarnings = FALSE, recursive = TRUE)
+terra::terraOptions(tempdir = terraTmpDir)
+
 # Load project-level datasheets ------------------------------------------------
 terminologyDataframe <- datasheet(myProject, name = "ecoClassify_Terminology")
 
@@ -161,8 +167,9 @@ groundTruthRasterList <- validateAndAlignRasters(
 
 if (isTRUE(useTargetClass) && !is.na(targetClassValue)) {
   timestepsWithTarget <- vapply(groundTruthRasterList, function(r) {
-    vals <- terra::values(r)
-    any(vals == targetClassValue, na.rm = TRUE)
+    # Block-wise on disk; avoids loading the whole raster into memory
+    found <- terra::global(r == targetClassValue, "max", na.rm = TRUE)[1, 1]
+    isTRUE(found == 1)
   }, logical(1))
 
   if (!any(timestepsWithTarget)) {
@@ -203,9 +210,12 @@ if (isTRUE(normalizeRasters)) {
   trainingRasterList <- normalizeRaster(trainingRasterList)
 }
 
-# Apply contextualization to training rasters, if selected
+# Apply contextualization to training rasters, if selected. One PCA is fitted on
+# all training rasters and saved with the model so prediction uses the same one.
+contextPca <- NULL
 if (isTRUE(applyContextualization)) {
-  trainingRasterList <- contextualizeRaster(trainingRasterList)
+  contextPca <- fitContextPca(trainingRasterList)
+  trainingRasterList <- contextualizeRaster(trainingRasterList, pcaModel = contextPca)
 }
 
 # Reclassify ground truth rasters
@@ -232,8 +242,10 @@ flt <- skipBadTimesteps(
 ## using filtered datasets going forward
 trainingRasterList <- flt$trainingRasterList
 groundTruthRasterList <- flt$groundTruthRasterList
-if (!is.null(flt$kept_timesteps)) {
-  timestepList <- flt$kept_timesteps
+if (!is.null(flt$keptTimesteps)) {
+  # (Was flt$kept_timesteps, which never matched, so dropped timesteps left
+  # outputs labelled with the wrong timestep.)
+  timestepList <- flt$keptTimesteps
 }
 ## guard: if all timesteps were dropped, abort early with a clear message
 if (length(trainingRasterList) == 0) {
@@ -341,6 +353,9 @@ if (modelType == "MaxEnt") {
 }
 model <- modelOut[[1]]
 variableImportance <- modelOut[[2]]
+
+# Preprocessing that prediction must repeat exactly (saved with the model)
+modelOut$preprocessing <- list(contextPca = contextPca)
 
 # Extract raster values for diagnostics
 rastLayerHistogram <- getRastLayerHistogram(

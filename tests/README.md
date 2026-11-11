@@ -13,8 +13,13 @@ tests/
       test-training-prediction.R             # unit tests, src/functions/0.2-training-and-prediction.r
       test-contextualization.R               # unit tests, src/functions/0.3-contextualization.r
       test-post-processing.R                 # unit tests, src/functions/0.6-post-processing.r
-      test-integration-synthetic-library.R   # builds a library from synthetic rasters, runs it
+      test-spatial-tiling.R                  # unit tests, src/functions/0.7-spatial-tiling.r
+      test-integration-synthetic-library.R   # builds libraries from synthetic rasters, runs them
 ```
+
+Some unit tests compare a rewritten function against a copy of the code it replaced
+(`reference_restrict()`, `reference_tile_matrix()`), to prove performance rewrites give
+identical results.
 
 Unit tests source the real `src/functions/*.r` files (via `source_ecoclassify_r()` in
 `helper-ecoclassify.R`) rather than copies of the functions, so they test what ships.
@@ -61,9 +66,13 @@ $env:ECOCLASSIFY_TEST_CONDA = "true"; Rscript tests/R/testthat.R
 ## Runtime expectations
 
 - Unit tests: about 10 seconds.
-- Integration test: a few minutes. It trains a single Random Forest with tuning off on three
-  50 x 50 synthetic rasters (two training timesteps, one predicting timestep), then predicts and
-  post-processes. It does not cover MaxEnt, CNN, tuning, contextualization or spatial tiling.
+- Integration tests: about 8 minutes. Each trains a Random Forest with tuning off on small
+  synthetic rasters (two training timesteps, one predicting timestep, target class 2):
+  - full pipeline (train, predict, post-process) with filtering;
+  - normalization + contextualization, predicting on a copy of a training image (must reproduce
+    its training probabilities, which checks the saved PCA is reused);
+  - spatial tiling (2a + 2 x 2 tiles) against an untiled run (must match).
+  They do not cover MaxEnt, CNN or tuning.
 - With `ECOCLASSIFY_TEST_CONDA=true`, the first run after a `condaEnvVersion` change builds the
   conda environment and installs every R package from CRAN (including the torch backend), which
   can take 20+ minutes. Later runs reuse the environment.
@@ -73,8 +82,13 @@ $env:ECOCLASSIFY_TEST_CONDA = "true"; Rscript tests/R/testthat.R
 - The integration test runs whichever `ecoClassify` version SyncroSim picks for a new library
   (normally the newest installed). Install your working copy with `src/build.ps1 -Install` first,
   otherwise you are testing the released package, not your changes.
-- `addRasterAdjacencyValues()` always derives two principal components, so contextualization
-  needs rasters with at least two bands. The contextualization tests use multi-band rasters for
-  this reason.
+- Contextualization derives two principal components, so it needs rasters with at least two
+  bands; `fitContextPca()` stops with a clear message otherwise.
+- Output rasters must use a datatype SyncroSim can read (Int32, Float32, Float64): it rejects
+  Byte/Int16 when merging spatial tiles or extracting bands. A unit test guards `binaryWopt()` /
+  `floatWopt()`.
+- terra's `ifel()` handles an NA condition inconsistently (keeps a raster "no" argument, gives NA
+  for a constant one, and nested calls can turn NA into 0). Prefer `lapp()` with vector logic, or
+  check NA handling with a test.
 - `normalizeBand()` has no guard for a constant band (max == min); it returns NaN. There is no
   test for that case yet.
