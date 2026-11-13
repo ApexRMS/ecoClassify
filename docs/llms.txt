@@ -1,0 +1,45 @@
+# ecoClassify
+
+> ecoClassify is an open-source SyncroSim package (by ApexRMS) for classifying images, such as satellite imagery, with semantic image segmentation. Users supply multi-band training rasters, matching user-classified (ground truth) rasters and optional covariates. The package trains a Random Forest, MaxEnt or CNN classifier, predicts the target class on new rasters, then filters and restricts the predictions. It needs SyncroSim 3.1.0 or later. The models run in R inside a conda environment.
+
+Key facts:
+
+- The package is defined in `src/package.xml`. Datasheets hold the inputs and outputs, and transformers are the pipeline stages, each running an R script with `Rscript`.
+- Pipeline: `1-Train Classifier` (`src/1-train-classifier.R`), optionally `2a-Prepare Spatial Tiling` (`src/2a-prepare-spatial-tiling.R`) for large rasters, `2-Predict` (`src/2-predict.R`), and `3-Post-Process` (`src/3-postprocess.R`).
+- Shared R functions are in `src/functions/`, numbered by stage: setup, pre-processing, training and prediction, contextualization (pooled PCA plus neighbourhood features), model backends (`ranger` Random Forest, `maxnet`/`dismo` MaxEnt, `torch` CNN), histograms, post-processing and spatial tiling. Rasters are handled with `terra`.
+- The classifier is binary. The target class can be set from multi-class ground truth through the Target Class Options (target, background and ignore values).
+- Post-processing has two parts. Filtering is a neighbour-count filter that removes or fills pixels. Rule-based restrictions reclassify pixels where a condition raster falls inside a min/max range. Outputs come in four forms: unfiltered, filtered, restricted, and filtered plus restricted.
+- Outputs include probability and binary rasters, a confusion matrix, model statistics (accuracy, precision, recall, specificity, F1, AUC), variable importance, layer histograms, RGB previews and a per-timestep prediction summary.
+- R code style: camelCase, 2-space indents, roxygen2 docs, and testthat tests (see `src/copilot-instructions.md`).
+
+## Docs
+
+- [Home page](https://apexrms.github.io/ecoClassify/): overview of ecoClassify
+- [Getting Started](https://apexrms.github.io/ecoClassify/getting_started.html): quickstart tutorial covering the pipeline stages, inputs, outputs, post-processing options, charts, maps and export
+- [README](https://github.com/ApexRMS/ecoClassify/blob/main/README.md): repository layout, build and test commands
+
+## Package definition
+
+- [package.xml](https://github.com/ApexRMS/ecoClassify/blob/main/src/package.xml): all datasheets (columns, defaults, validation lists), transformers, charts, maps and layouts
+- [Update scripts](https://github.com/ApexRMS/ecoClassify/tree/main/src/updates): XML schema migrations between package versions
+- [Conda environment](https://github.com/ApexRMS/ecoClassify/blob/main/src/ecoClassify-conda.yml): R 4.4 and OpenJDK. The R packages come from CRAN binaries through `src/installDependencies.r`.
+
+## Source code
+
+- [1-train-classifier.R](https://github.com/ApexRMS/ecoClassify/blob/main/src/1-train-classifier.R): training transformer
+- [2a-prepare-spatial-tiling.R](https://github.com/ApexRMS/ecoClassify/blob/main/src/2a-prepare-spatial-tiling.R): splits large rasters into tiles for parallel prediction
+- [2-predict.R](https://github.com/ApexRMS/ecoClassify/blob/main/src/2-predict.R): prediction transformer
+- [3-postprocess.R](https://github.com/ApexRMS/ecoClassify/blob/main/src/3-postprocess.R): filtering and rule-based restrictions
+- [functions/](https://github.com/ApexRMS/ecoClassify/tree/main/src/functions): shared R functions (`0.0-setup.r` through `0.7-spatial-tiling.r`)
+- [ecoclassifyUI/](https://github.com/ApexRMS/ecoClassify/tree/main/src/ecoclassifyUI): C# WinForms views for SyncroSim Studio, built into `src/ecoclassifyUI.dll`
+
+## Development
+
+- [build.ps1](https://github.com/ApexRMS/ecoClassify/blob/main/src/build.ps1): builds the package (`-Install` installs it into SyncroSim, `-SkipUI` reuses the committed DLL)
+- [Test suite README](https://github.com/ApexRMS/ecoClassify/blob/main/tests/README.md): testthat unit tests and synthetic-library integration tests. Run them with `Rscript tests/R/testthat.R`.
+- [Coding standards](https://github.com/ApexRMS/ecoClassify/blob/main/src/copilot-instructions.md): style and review rules for contributors and AI assistants
+
+## Optional
+
+- [SyncroSim](https://syncrosim.com/): the modelling platform that hosts ecoClassify
+- [ApexRMS](https://apexrms.com/): developer of ecoClassify and SyncroSim
