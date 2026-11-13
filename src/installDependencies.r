@@ -135,6 +135,12 @@ if (.RUN_INSTALLER) {
     message(R.version.string)
     message("Platform: ", .Platform$OS.type, "\n")
 
+    # Use only the conda env's library. Without this, R also searches the user's personal
+    # library for the same R version (e.g. AppData/Local/R/win-library/4.4), so the env would
+    # load, and install into, packages outside the env. This also applies to the rest of the
+    # transformer run, which sources this file in the same R session.
+    fix_lib_paths()
+
     # Show library paths
     message("Current .libPaths():")
     for (i in seq_along(.libPaths())) message(sprintf("  [%d] %s", i, .libPaths()[i]))
@@ -143,26 +149,9 @@ if (.RUN_INSTALLER) {
     lib_path <- get_conda_lib_path()
     message("Target library path: ", lib_path)
 
-    # Packages expected from conda env (do NOT load them here)
+    # Core packages. The conda env (ecoClassify-conda.yml) supplies only R and Java, so these
+    # come from CRAN binaries along with everything else below (do NOT load them here).
     conda_pkgs <- c("terra", "sf", "ranger", "rsyncrosim")
-
-    message("Checking conda-provided packages...")
-    missing_conda <- character(0)
-    for (pkg in conda_pkgs) {
-      if (pkg_is_installed(pkg, lib_path)) {
-        message(sprintf("✓ %s found (version %s)", pkg, pkg_version(pkg, lib_path)))
-      } else {
-        message(sprintf("✗ %s not found in library", pkg))
-        missing_conda <- c(missing_conda, pkg)
-      }
-    }
-    if (length(missing_conda) > 0) {
-      warning(
-        "The following packages are missing but should be supplied by the conda env: ",
-        paste(missing_conda, collapse = ", "),
-        "\nPlease (re)create the environment from ecoClassifyEnv.yml and rerun this installer."
-      )
-    }
 
     # -------------------------
     # Preflight: ensure terra >= 1.7-23 on R 4.1.*
@@ -181,7 +170,11 @@ if (.RUN_INSTALLER) {
           type = if (.Platform$OS.type == "windows") "win.binary" else "source",
           dependencies = TRUE
         )
-        message("✓ terra updated; continuing…")
+        v <- pkg_version("terra", lib_path)
+        if (is.null(v) || utils::compareVersion(v, TERRA_MIN) < 0) {
+          stop(sprintf("Could not update terra to >= %s (installed: %s).", TERRA_MIN, if (is.null(v)) "none" else v))
+        }
+        message(sprintf("✓ terra updated to %s; continuing…", v))
       }
     }
 
@@ -191,6 +184,7 @@ if (.RUN_INSTALLER) {
     message("\nInstalling CRAN packages into the conda env library...")
 
     cran_pkgs <- c(
+      conda_pkgs,
       "tidyverse",
       "magrittr",
       "foreach",
@@ -351,21 +345,25 @@ if (!interactive()) {
   .msg_con  <- file(.msg_file, open = "wt")
   sink(.msg_con, type = "message")
 
+  .install_error <- NULL
   ok <- tryCatch(
     installDependencies(),
     error = function(e) {
-      sink(type = "message")
-      close(.msg_con)
-      writeLines(readLines(.msg_file), stderr())
-      message("Installation error: ", e$message)
+      .install_error <<- conditionMessage(e)
       FALSE
     }
   )
 
+  # Restore message output exactly once (closing it twice raises "invalid connection",
+  # which used to hide the real installation error).
   sink(type = "message")
   close(.msg_con)
 
-  if (!ok) quit(status = 1)
+  if (!isTRUE(ok)) {
+    writeLines(readLines(.msg_file), stderr())
+    message("Installation error: ", .install_error)
+    quit(status = 1)
+  }
 } else {
   message("Run installDependencies() to start.")
 }

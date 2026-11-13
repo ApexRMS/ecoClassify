@@ -250,32 +250,51 @@ reclassifyGroundTruth <- function(groundTruthRasterList,
                                    targetClassValue = NA,
                                    backgroundValues = NA,
                                    ignoreValues = NA) {
+  # All steps are block-wise terra operations, so the raster is never pulled into
+  # R memory in full.
+  parseList <- function(x) {
+    if (!is.na(x) && nchar(trimws(x)) > 0) as.integer(trimws(strsplit(x, ",")[[1]])) else integer(0)
+  }
+
   lapply(groundTruthRasterList, function(raster) {
     if (isTRUE(useTargetClass) && !is.na(targetClassValue)) {
-      result <- raster
-      result[] <- NA
-      vals <- terra::values(raster)
+      bgVals <- parseList(backgroundValues)
+      ignoreVals <- parseList(ignoreValues)
 
-      # target class → 1
-      result[vals == targetClassValue] <- 1
-
-      if (!is.na(backgroundValues) && nchar(trimws(backgroundValues)) > 0) {
-        bgVals <- as.integer(trimws(strsplit(backgroundValues, ",")[[1]]))
-        result[vals %in% bgVals] <- 0
-      } else {
-        ignoreVals <- if (!is.na(ignoreValues) && nchar(trimws(ignoreValues)) > 0)
-          as.integer(trimws(strsplit(ignoreValues, ",")[[1]]))
-        else integer(0)
-        result[!is.na(vals) & vals != targetClassValue & !(vals %in% ignoreVals)] <- 0
+      reclass <- function(vals) {
+        result <- rep(NA_real_, length(vals))
+        # target class -> 1
+        result[!is.na(vals) & vals == targetClassValue] <- 1
+        if (length(bgVals) > 0) {
+          # only background values -> 0 (wins over the target if listed in both)
+          result[!is.na(vals) & vals %in% bgVals] <- 0
+        } else {
+          # every other non-NA value -> 0, except ignored values
+          result[!is.na(vals) & vals != targetClassValue & !(vals %in% ignoreVals)] <- 0
+        }
+        result
       }
-
-      return(result)
     } else {
-      # Original binary logic: min → 0, max → 1 (in-place, preserves any intermediate values)
-      raster[raster == min(terra::values(raster), na.rm = TRUE)] <- 0
-      raster[raster == max(terra::values(raster), na.rm = TRUE)] <- 1
-      return(raster)
+      # Binary rasters: min -> 0, then max -> 1, where the max is taken after the
+      # first step (as the original in-place code did). From one min/max pass:
+      # after min -> 0 the largest value is max(0, original max), or 0 if every
+      # cell held the min.
+      mm <- terra::minmax(raster, compute = TRUE)
+      lo <- mm[1, 1]
+      hi <- if (mm[2, 1] > lo) max(0, mm[2, 1]) else 0
+
+      reclass <- function(vals) {
+        vals[!is.na(vals) & vals == lo] <- 0
+        vals[!is.na(vals) & vals == hi] <- 1
+        vals
+      }
     }
+
+    # One block-wise pass with the vector logic above (no full in-memory copy and
+    # no chain of intermediate rasters).
+    result <- terra::lapp(raster[[1]], fun = reclass)
+    names(result) <- names(raster)[1]
+    result
   })
 }
 
@@ -383,37 +402,49 @@ addCovariates <- function(rasterList, covariateRaster, outDir = NULL) {
 #'
 #' @noRd
 normalizeBand <- function(band) {
-  min_val <- min(values(band), na.rm = TRUE)
-  max_val <- max(values(band), na.rm = TRUE)
-  (band - min_val) / (max_val - min_val)
+  rng <- rasterRanges(band)
+  (band - rng[1, 1]) / (rng[1, 2] - rng[1, 1])
+}
+
+#' Per-layer value ranges ----
+#'
+#' @description
+#' Min and max of every layer, computed block-wise on disk (one pass).
+#'
+#' @param raster A SpatRaster.
+#' @return A matrix with one row per layer and columns min, max.
+#' @noRd
+rasterRanges <- function(raster) {
+  rng <- as.matrix(terra::global(raster, "range", na.rm = TRUE))
+  colnames(rng) <- c("min", "max")
+  rownames(rng) <- names(raster)
+  rng
 }
 
 #' Normalize All Bands in Raster List ----
 #'
 #' @description
-#' Applies 0–1 normalization to each band in a list of raster stacks.
+#' Applies 0–1 (min-max) normalization to each band of each raster stack. By
+#' default each raster is scaled by its own band ranges (per-image
+#' standardization). Pass `ranges` to scale by fixed ranges instead, e.g. so a
+#' spatial tile is scaled by the ranges of the full image it was cut from.
 #'
 #' @param rasterList List of SpatRasters.
+#' @param ranges Optional list (one entry per raster) of matrices from
+#'   `rasterRanges()`.
 #'
 #' @return List of normalized SpatRasters.
 #'
 #' @noRd
-normalizeRaster <- function(rasterList) {
-  # make an empty list for normalized rasters
-  normalizedRasterList <- c()
-
-  for (raster in rasterList) {
-    # normalize bands for each raster in rasterList
-    normalizedRaster <- lapply(1:nlyr(raster), function(i) {
-      normalizeBand(raster[[i]])
-    }) %>%
-      rast()
-
-    # append to normalizedRasterList
-    normalizedRasterList <- c(normalizedRasterList, normalizedRaster)
-  }
-
-  return(normalizedRasterList)
+normalizeRaster <- function(rasterList, ranges = NULL) {
+  lapply(seq_along(rasterList), function(i) {
+    raster <- rasterList[[i]]
+    rng <- if (is.null(ranges)) rasterRanges(raster) else ranges[[i]]
+    # Arithmetic with a vector of length nlyr applies one value per layer.
+    normalized <- (raster - rng[, 1]) / (rng[, 2] - rng[, 1])
+    names(normalized) <- names(raster)
+    normalized
+  })
 }
 
 #' Ensure Consistent NA Masking ----
@@ -440,8 +471,8 @@ checkNA <- function(rasterList, verbose = TRUE) {
       next
     }
 
-    # Fast check using global function - correct syntax
-    cellCounts <- terra::global(raster, fun = function(x) sum(!is.na(x)))
+    # Native block-wise count (an R function here would load each layer into memory)
+    cellCounts <- terra::global(raster, "notNA")
     cellCounts <- as.numeric(cellCounts[, 1])
 
     if (length(unique(cellCounts)) != 1) {

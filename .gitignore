@@ -2,9 +2,9 @@ docs/
 dev/
 packages/
 scratch/
-testing/snow
-example-library/
 *.sif
 *.sh
 *.ssimpkg
 .claude/
+src/ecoclassifyUI/bin/
+src/ecoclassifyUI/obj/

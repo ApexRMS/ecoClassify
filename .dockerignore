@@ -1,4 +1,3 @@
-example-library/
 dev/
 packages/
 .git/
@@ -6,3 +5,5 @@ packages/
 .claude/
 *.ssimpkg
 *.md
+src/ecoclassifyUI/
+src/build.ps1

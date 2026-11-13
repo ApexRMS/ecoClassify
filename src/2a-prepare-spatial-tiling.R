@@ -29,6 +29,12 @@ myScenario <- scenario()
 e <- ssimEnvironment()
 transferDir <- e$TransferDirectory
 
+# Keep terra temporary files with this run (R's tempdir() can be cleaned up by
+# parallel worker processes on Windows); removed by tmpFiles() at the end.
+terraTmpDir <- file.path(transferDir, "terra_tmp")
+dir.create(terraTmpDir, showWarnings = FALSE, recursive = TRUE)
+terra::terraOptions(tempdir = terraTmpDir)
+
 
 # Load input datasheets --------------------------------------------------------
 
@@ -235,8 +241,10 @@ fullExt     <- as.vector(terra::ext(templateRast))  # named: xmin, xmax, ymin, y
 .crs        <- terra::crs(templateRast)
 nTotalTiles <- as.integer(numTilesX * numTilesY)
 
-# Initialise tile assignment matrix (NA = empty/skipped tile)
-tileMatrix <- matrix(NA_integer_, nrow = nRows, ncol = nCols)
+# Job ID for each grid position (row-major: (iy - 1) * numTilesX + ix).
+# NA = empty/skipped tile. The full-size mask raster is built from this small
+# lookup further down, instead of a full-size in-memory matrix.
+tileIdLookup <- rep(NA_integer_, nTotalTiles)
 
 
 # Pre-crop predicting rasters per tile, skipping tiles with no valid pixels ----
@@ -306,7 +314,7 @@ if (length(allRasterFiles) > 0) {
       }
 
       # Assign this grid cell the next contiguous job ID
-      tileMatrix[rowStart:rowEnd, colStart:colEnd] <- newId
+      tileIdLookup[origId] <- newId
 
       tileDirPath <- file.path(tilesDataDir, paste0("tile_", newId))
       dir.create(tileDirPath, recursive = TRUE, showWarnings = FALSE)
@@ -375,8 +383,7 @@ tileRast <- terra::rast(
   ymax  = fullExt["ymax"],
   crs   = .crs
 )
-terra::values(tileRast) <- as.integer(t(tileMatrix))
-rm(tileMatrix)
+tileRast <- buildTileIdRaster(tileRast, tileRowBreaks, tileColBreaks, tileIdLookup)
 names(tileRast) <- "TileID"
 
 updateRunLog(paste0(

@@ -247,7 +247,8 @@ predictMaxent <- function(raster, model, filename = "", memfrac = 0.5) {
     na.rm = TRUE,
     cores = 1,
     memfrac = memfrac,
-    filename = filename
+    filename = filename,
+    wopt = floatWopt()
   )
 
   names(predictionRaster) <- "present"

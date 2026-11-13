@@ -249,7 +249,12 @@ getCNNModel <- function(allTrainData, nCores, isTuningOn) {
 #' @return A SpatRaster (if raster input) or a vector of predictions.
 #'
 #' @noRd
-predictCNN <- function(model, newdata, isRaster = TRUE, filename = "", memfrac = 0.5, ...) {
+predictCNN <- function(model, newdata, isRaster = TRUE, filename = "", memfrac = 0.5,
+                       nThreads = NULL, ...) {
+  # Limit torch threads when asked (spatial tile jobs pass 1), so concurrent
+  # tile jobs don't each use every core.
+  if (!is.null(nThreads)) torch::torch_set_num_threads(as.integer(nThreads))
+
   # Handle tabular data (non-raster) - original implementation
   if (!isRaster) {
     df <- as.data.frame(newdata, stringsAsFactors = TRUE)
@@ -382,7 +387,8 @@ predictCNN <- function(model, newdata, isRaster = TRUE, filename = "", memfrac =
     na.rm = TRUE,
     cores = 1,  # torch handles its own threading
     memfrac = memfrac,
-    filename = filename
+    filename = filename,
+    wopt = floatWopt()
   )
 
   names(predictionRaster) <- "presence"
@@ -538,7 +544,8 @@ loadCNNModel <- function(weights_path, metadata_path) {
     num_vars = metadata$num_vars,
     cat_level_lengths = metadata$cat_level_lengths,
     cat_levels = metadata$cat_levels,
-    embedding_dims = metadata$embedding_dims
+    embedding_dims = metadata$embedding_dims,
+    preprocessing = metadata$preprocessing
   )
 
   return(result)

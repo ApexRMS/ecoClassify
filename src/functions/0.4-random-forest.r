@@ -71,7 +71,8 @@ predictRanger <- function(raster, model, filename = "", nThreads = 2L) {
   bs <- terra::blocks(out, n = nAdditional)
   terra::readStart(raster)
   on.exit(terra::readStop(raster), add = TRUE)
-  terra::writeStart(out, filename, overwrite = TRUE, n = nAdditional)
+  terra::writeStart(out, filename, overwrite = TRUE, n = nAdditional,
+                    datatype = floatWopt()$datatype, gdal = floatWopt()$gdal)
   on.exit(terra::writeStop(out), add = TRUE)
 
   for (i in seq_len(bs$n)) {

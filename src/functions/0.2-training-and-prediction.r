@@ -49,13 +49,8 @@ skipBadTimesteps <- function(
       }
     }
 
-    # Build "valid predictors" mask: non-NA across all training layers
-    validMask <- !is.na(ls[[1]])
-    if (terra::nlyr(ls) > 1) {
-      for (b in 2:terra::nlyr(ls)) {
-        validMask <- validMask & !is.na(ls[[b]])
-      }
-    }
+    # Build "valid predictors" mask: non-NA across all training layers (one pass)
+    validMask <- terra::noNA(ls)
 
     nValid <- as.integer(terra::global(validMask, "sum", na.rm = TRUE)[[1]])
     nValidCells[i] <- ifelse(is.na(nValid), 0L, nValid)
@@ -65,9 +60,12 @@ skipBadTimesteps <- function(
     }
 
     # Mask GT to valid predictor cells and check class richness
-    gtMasked <- terra::mask(gtCheck, validMask)
-    vals <- unique(terra::values(gtMasked))
-    vals <- vals[!is.na(vals)]
+    # validMask is TRUE/FALSE, so mask the FALSE cells (the default only masks NA,
+    # which never occurs here and left invalid cells in the class check).
+    gtMasked <- terra::mask(gtCheck, validMask, maskvalues = FALSE)
+    u <- terra::unique(gtMasked, na.rm = TRUE)
+    vals <- if (is.null(u) || NROW(u) == 0) numeric(0) else u[[1]]
+    vals <- sort(vals[!is.na(vals)])
     classStr[i] <- if (length(vals)) paste(vals, collapse = ",") else ""
 
     if (requireTwoClasses && length(vals) < 2) {
@@ -207,10 +205,33 @@ splitTrainTest <- function(
     df
   }
 
-  # Generic "extract at cell ids" for a stack
+  # Generic "extract at cell ids" for a stack (by cell number: same values as
+  # extracting at the cell centres, without the xy conversion)
   extractDfAtCells <- function(r, cells) {
-    xy <- terra::xyFromCell(r, cells)
-    stripId(terra::extract(r, xy))
+    stripId(terra::extract(r, cells))
+  }
+
+  # Predictor values already extracted for accepted pool cells, so the final
+  # train/test extraction does not read the same cells from disk again.
+  predCache <- new.env(parent = emptyenv())
+  resetPredCache <- function() {
+    predCache$cells <- integer(0)
+    predCache$values <- NULL
+  }
+  addToPredCache <- function(cells, df) {
+    isNew <- !(cells %in% predCache$cells) & !duplicated(cells)
+    if (!any(isNew)) return(invisible())
+    predCache$cells <- c(predCache$cells, cells[isNew])
+    predCache$values <- rbind(predCache$values, df[isNew, , drop = FALSE])
+  }
+  cachedPredictors <- function(rStack, cells) {
+    idx <- match(cells, predCache$cells)
+    if (anyNA(idx)) {
+      return(extractDfAtCells(rStack, cells))
+    }
+    out <- predCache$values[idx, , drop = FALSE]
+    rownames(out) <- NULL
+    out
   }
 
   # Predictors only
@@ -245,7 +266,8 @@ splitTrainTest <- function(
 
     # Get non-NA cell indices directly to avoid sampling mostly NA cells
     # when ground truth is sparse relative to the raster extent
-    validCells <- which(!is.na(terra::values(rGt, mat = FALSE)))
+    # terra::cells() lists non-NA cells without copying all values into R
+    validCells <- terra::cells(rGt)
 
     if (length(validCells) < 100) {
       stop(
@@ -343,6 +365,7 @@ splitTrainTest <- function(
       # Validate predictors at those cells
       predVals <- extractDfAtCells(rPred, candCells)
       keep <- stats::complete.cases(predVals)
+      addToPredCache(candCells[keep], predVals[keep, , drop = FALSE])
 
       acc <- unique(candCells[keep])
       if (length(acc)) {
@@ -418,6 +441,7 @@ splitTrainTest <- function(
   for (t in seq_len(n_t)) {
     r_pred <- trainingRasterList[[t]]
     r_gt <- groundTruthRasterList[[t]]
+    resetPredCache()
 
     # (1) Estimate classes & current minority proportion
     cls <- estimateClasses(r_gt, sampleN = quick_prop_sample)
@@ -579,8 +603,12 @@ splitTrainTest <- function(
       ))
     }
 
-    # Labels for the sampled cells
-    sampledGT <- extractValsAtCells(r_gt, sampledCells)
+    # Labels for the sampled cells: every pool cell was accepted because its
+    # ground truth equals that pool's class, so no need to read it again.
+    sampledGT <- c(
+      rep(minorityClass, length(sampledMinority)),
+      rep(majorityClass, length(sampledMajority))
+    )
 
     # (6) Assign spatial blocks
     rc <- terra::rowColFromCell(r_pred, sampledCells)
@@ -648,8 +676,8 @@ splitTrainTest <- function(
     }
 
     # (8) Extract predictors only at sampled cells
-    trainX <- extractAtCells(r_pred, trainPts$cell)
-    testX <- extractAtCells(r_pred, testPts$cell)
+    trainX <- cachedPredictors(r_pred, trainPts$cell)
+    testX <- cachedPredictors(r_pred, testPts$cell)
 
     trainDf_t <- cbind(trainX, presence = trainPts$presence)
     testDf_t <- cbind(testX, presence = testPts$presence)
@@ -945,7 +973,9 @@ getPredictionRasters <- function(
       raster,
       model,
       filename = probabilityPath,
-      nThreads = min(nCores, 4L)
+      # No 4-thread cap: ranger prediction scales with threads. Tiled runs
+      # already pass nCores = 1 per tile job.
+      nThreads = nCores
     )
   } else if (modelType == "CNN") {
     probabilityRaster <- predictCNN(
@@ -953,7 +983,8 @@ getPredictionRasters <- function(
       raster,
       isRaster = TRUE,
       filename = probabilityPath,
-      memfrac = 0.5
+      memfrac = 0.5,
+      nThreads = nCores
     )
   } else if (modelType == "MaxEnt") {
     probabilityRaster <- predictMaxent(
@@ -973,7 +1004,8 @@ getPredictionRasters <- function(
     1,
     0,
     filename = presencePath,
-    overwrite = TRUE
+    overwrite = TRUE,
+    wopt = binaryWopt()
   )
 
   # Return paths instead of rasters
@@ -1195,7 +1227,10 @@ saveFiles <- function(
         timestep,
         ".tif"
       )),
-      overwrite = TRUE
+      overwrite = TRUE,
+      # Float32 + lossless compression (in binary mode the raster can keep
+      # intermediate class values such as 2 or -1)
+      wopt = floatWopt()
     )
   }
 
@@ -1277,6 +1312,9 @@ saveFiles <- function(
     ".png"
   ))
   grDevices::png(filename = png_file)
+  # Close the device when done: it was never closed, which kept every image in
+  # memory and fails after R's 63-device limit on long runs.
+  on.exit(grDevices::dev.off(), add = TRUE)
   tryCatch(
     {
       terra::plotRGB(rgb_rast, r = 1, g = 2, b = 3, stretch = "lin")
