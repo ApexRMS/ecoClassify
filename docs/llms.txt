@@ -16,6 +16,7 @@ Key facts:
 
 - [Home page](https://apexrms.github.io/ecoClassify/): overview of ecoClassify
 - [Getting Started](https://apexrms.github.io/ecoClassify/getting_started.html): quickstart tutorial covering the pipeline stages, inputs, outputs, post-processing options, charts, maps and export
+- [Reference](https://apexrms.github.io/ecoClassify/reference): every datasheet field explained (terminology, training and predicting rasters, classifier and advanced options, target class, tiling, post-processing, outputs)
 - [README](https://github.com/ApexRMS/ecoClassify/blob/main/README.md): repository layout, build and test commands
 
 ## Package definition
